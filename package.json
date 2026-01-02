@@ -1,0 +1,20 @@
+{
+  "name": "crypto-backtesting",
+  "version": "1.0.0",
+  "description": "Trading market backtesting",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "type": "module",
+  "author": "GuillianV",
+  "license": "ISC",
+  "dependencies": {
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "extract-zip": "^2.0.1",
+    "pino": "^10.1.0",
+    "pino-pretty": "^13.1.3"
+  }
+}
