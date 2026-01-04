@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
 import express from "express";
-import BinanceDataDownloader, {
-  BinanceDataSetting,
-  BinanceDataSettingsIntervals,
-} from "./modules/binance/downloader.js";
+import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./modules/binance/downloader.js";
+import CryptoBacktester from "./modules/binance/index.js";
+import util from "util";
+
 const app = express();
 const port = 3000;
 
@@ -11,29 +11,46 @@ dotenv.config();
 
 app.use(express.static("public"));
 
-app.get("/", (req, res) => {
-  res.send("Hello World!");
+const dataSettings = [new BinanceDataSetting("btcusdc", 730, BinanceDataSettingsIntervals.all)];
+const backtester = new CryptoBacktester(dataSettings);
+
+app.get("/api/:symbol/:interval/:timestamp", (req, res) => {
+  const { symbol, interval, timestamp } = req.params;
+
+  backtester.start((entries) => {
+    if (entries[symbol] == null || entries[symbol][interval] == null || entries[symbol][interval][timestamp] == null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    res.json(entries[symbol][interval][timestamp]);
+  });
+});
+
+app.get("/api/:symbol/:interval", (req, res) => {
+  const { symbol, interval } = req.params;
+
+  backtester.start((entries) => {
+    if (entries[symbol] == null || entries[symbol][interval] == null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    res.json(entries[symbol][interval]);
+  });
+});
+
+app.get("/api/intervals", (req, res) => {
+  res.json(
+    BinanceDataSettingsIntervals.all.map((interval) => {
+      return {
+        interval,
+        count: BinanceDataSettingsIntervals.getKlineIntervalCount(interval),
+      };
+    })
+  );
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
-
-const dataSettings = new BinanceDataSetting(
-  "btcusdc",
-  10,
-  BinanceDataSettingsIntervals.all
-);
-
-const dataDownloader = new BinanceDataDownloader(
-  process.env.BINANCE_VISION_URL,
-  [dataSettings]
-)
-
-dataDownloader.onReady(async (datas) => {
-  console.log("ready");
-});
-
-dataDownloader.onLoading(({actual, total},data) => {
-  console.log(`loading : ${actual}/${total}, file : ${data}`);
+  console.log(`App listening on port ${port}`);
 });

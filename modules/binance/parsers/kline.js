@@ -41,3 +41,16 @@ export function parseKlines(rows) {
   });
   return klines;
 }
+
+
+export function parseKlinesSaved(klinesPromises) {
+  const klines = {};
+
+  for (const klinesPromise of klinesPromises) {
+    Object.entries(klinesPromise).forEach(([time, kline]) => {
+      klines[time] = kline;
+    });
+  }
+
+  return klines;
+}

@@ -14,12 +14,7 @@ export default class BinanceDataDownloader extends EventEmitter {
   #timestamp_now;
   #loading;
 
-  constructor(
-    binanceVisionUrl,
-    binanceDatasSettings = [
-      new BinanceDataSetting("btcusdc", 5, BinanceDataSettingsIntervals.all),
-    ]
-  ) {
+  constructor(binanceVisionUrl, binanceDatasSettings = [new BinanceDataSetting("btcusdc", 5, BinanceDataSettingsIntervals.all)]) {
     super();
 
     if (!binanceVisionUrl) {
@@ -37,9 +32,7 @@ export default class BinanceDataDownloader extends EventEmitter {
     this.#timestamp_now = Date.now();
     this.#loading = {
       actual: 0,
-      total: this.#binanceDatasSettings
-        .map((item) => item.klinesIntervals.length * item.backward_days)
-        .reduce((a, b) => a + b, 0),
+      total: this.#binanceDatasSettings.map((item) => item.klinesIntervals.length * item.backward_days).reduce((a, b) => a + b, 0),
     };
     this._init();
     return this;
@@ -57,91 +50,50 @@ export default class BinanceDataDownloader extends EventEmitter {
 
       await this._getKiles(binanceDatasSetting);
     }
-
-    this.trigger("ready");
   }
 
-  onLoading(callback) {
+  onLoading(callback = () => {}) {
     this.on("loading", async (filename) => {
       if (typeof callback !== "function") {
         throw new Error("Callback must be a function");
       }
-      logger.debug(
-        `loading : ${this.#loading.actual}/${
-          this.#loading.total
-        }, file : ${filename}`
-      );
+      // logger.info(`loading : ${this.#loading.actual}/${this.#loading.total}, file : ${filename}`);
 
       callback(this.#loading, filename);
     });
   }
 
-  onReady(callback) {
-    this.on("ready", async () => {
-      if (typeof callback !== "function") {
-        throw new Error("Callback must be a function");
-      }
+  async retrieveData(symbol, binanceDataSettingsInterval = BinanceDataSettingsIntervals.m1, date) {
+    return new Promise((resolve, reject) => {
+      try {
+        const klineFilePath = `${this.symbolPaths[`kline${binanceDataSettingsInterval}Json`]}/${symbol.toUpperCase()}-${binanceDataSettingsInterval}-${date}.json`;
 
-      const fulldatas = {};
+        // if (!fs.existsSync(klineFilePath)) {
+        //   logger.warn(`Kline file ${klineFilePath} does not exist`);
+        //   reject(`Kline file ${klineFilePath} does not exist`);
+        //   return;
+        // }
 
-      //Klines part
-      const datasPromises = [];
-      fulldatas.klines = {};
-
-      for (const binanceDatasSetting of this.#binanceDatasSettings) {
-        for (const interval of binanceDatasSetting.klinesIntervals) {
-          fulldatas.klines[interval] = {};
-          for (let i = 1; i <= binanceDatasSetting.backward_days; i++) {
-            const date = timestampParser(
-              this.#timestamp_now - 1000 * 60 * 60 * 24 * i
-            );
-            const zipFilename = `${binanceDatasSetting.symbol.toUpperCase()}-${interval}-${
-              date.utc["yyyy-MM-dd"]
-            }.json`;
-            const zipFileFullPath = `${
-              this.symbolPaths[`kline${interval}Json`]
-            }/${zipFilename}`;
-
-            datasPromises.push(
-              new Promise((resolve, reject) => {
-                fs.readFile(zipFileFullPath, "utf8", (err, data) => {
-                  if (err) {
-                    reject(err);
-                  }
-                  resolve({ data: JSON.parse(data), interval });
-                });
-              })
-            );
+        fs.readFile(klineFilePath, "utf8", (err, data) => {
+          if (err) {
+            logger.error(`Error reading kline file ${klineFilePath}`);
+            reject(err);
+            return;
           }
-        }
-      }
-
-      await Promise.all(datasPromises).then((datas) => {
-        datas.forEach(({ data, interval }, index) => {
-          for (const time in data) {
-            fulldatas.klines[interval][time] = data[time];
-          }
+          resolve(JSON.parse(data));
         });
-      });
-
-      //End klines part
-
-      callback(fulldatas);
-      this.off("ready");
+      } catch (err) {
+        logger.error(`Error retrieving kline data ${err}`);
+        reject(err);
+      }
     });
   }
 
   async _getKiles(binanceDatasSetting) {
     binanceDatasSetting.klinesIntervals.forEach((interval) => {
-      this.symbolPaths[
-        `kline${interval}Zip`
-      ] = `${this.symbolPaths.kline}/${interval}/zip`;
-      this.symbolPaths[
-        `kline${interval}Csv`
-      ] = `${this.symbolPaths.kline}/${interval}/csv`;
-      this.symbolPaths[
-        `kline${interval}Json`
-      ] = `${this.symbolPaths.kline}/${interval}/json`;
+      this.symbolPaths[`kline${interval}Zip`] = `${this.symbolPaths.kline}/${interval}/zip`;
+      this.symbolPaths[`kline${interval}Csv`] = `${this.symbolPaths.kline}/${interval}/csv`;
+      this.symbolPaths[`kline${interval}Json`] = `${this.symbolPaths.kline}/${interval}/json`;
     });
 
     Object.values(this.symbolPaths).forEach((path) => {
@@ -153,9 +105,7 @@ export default class BinanceDataDownloader extends EventEmitter {
 
     const datesToCheck = [];
     for (let i = 1; i <= binanceDatasSetting.backward_days; i++) {
-      datesToCheck.push(
-        timestampParser(this.#timestamp_now - 1000 * 60 * 60 * 24 * i)
-      );
+      datesToCheck.push(timestampParser(this.#timestamp_now - 1000 * 60 * 60 * 24 * i));
     }
 
     for (const date of datesToCheck) {
@@ -166,22 +116,12 @@ export default class BinanceDataDownloader extends EventEmitter {
   }
 
   async _getKline(binanceDatasSetting, date, interval) {
-    const zipFilename = `${binanceDatasSetting.symbol.toUpperCase()}-${interval}-${
-      date.utc["yyyy-MM-dd"]
-    }.zip`;
-    const zipFullpath = `${
-      this.#binanceVisionUrl
-    }spot/daily/klines/${binanceDatasSetting.symbol.toUpperCase()}/${interval}/${zipFilename}`;
+    const zipFilename = `${binanceDatasSetting.symbol.toUpperCase()}-${interval}-${date.utc["yyyy-MM-dd"]}.zip`;
+    const zipFullpath = `${this.#binanceVisionUrl}spot/daily/klines/${binanceDatasSetting.symbol.toUpperCase()}/${interval}/${zipFilename}`;
 
-    const zipFileFullPath = `${
-      this.symbolPaths[`kline${interval}Zip`]
-    }/${zipFilename}`;
-    const csvFileFullPath = `${
-      this.symbolPaths[`kline${interval}Csv`]
-    }/${zipFilename.replace(".zip", ".csv")}`;
-    const jsonFileFullPath = `${
-      this.symbolPaths[`kline${interval}Json`]
-    }/${zipFilename.replace(".zip", ".json")}`;
+    const zipFileFullPath = `${this.symbolPaths[`kline${interval}Zip`]}/${zipFilename}`;
+    const csvFileFullPath = `${this.symbolPaths[`kline${interval}Csv`]}/${zipFilename.replace(".zip", ".csv")}`;
+    const jsonFileFullPath = `${this.symbolPaths[`kline${interval}Json`]}/${zipFilename.replace(".zip", ".json")}`;
 
     // Downloading zip file from binance vision
     if (!fs.existsSync(zipFileFullPath)) {
@@ -190,7 +130,7 @@ export default class BinanceDataDownloader extends EventEmitter {
       const file = fs.createWriteStream(zipFileFullPath);
 
       const downloading = await new Promise(async (resolve, reject) => {
-        const request = await https.get(zipFullpath, function (response) {
+        await https.get(zipFullpath, function (response) {
           response.pipe(file);
 
           file.on("finish", () => {
@@ -206,17 +146,12 @@ export default class BinanceDataDownloader extends EventEmitter {
       if (downloading.isDownload && downloading.error === null) {
         logger.info(`Download ${zipFileFullPath} done`);
       } else {
-        logger.error(
-          `Download ${zipFileFullPath} failed , error: ${downloading.error}`
-        );
+        logger.error(`Download ${zipFileFullPath} failed , error: ${downloading.error}`);
         throw new Error(downloading.error);
       }
     }
 
-    const csvFilesUnpackingAbsolutePath = path.join(
-      path.resolve("./"),
-      this.symbolPaths[`kline${interval}Csv`]
-    );
+    const csvFilesUnpackingAbsolutePath = path.join(path.resolve("./"), this.symbolPaths[`kline${interval}Csv`]);
     if (!fs.existsSync(csvFileFullPath)) {
       logger.info(`Start Unpacking ${zipFileFullPath} into ${csvFileFullPath}`);
 
@@ -248,9 +183,7 @@ export default class BinanceDataDownloader extends EventEmitter {
       });
 
       if (!parsing.isParsing || parsing.error !== null) {
-        logger.error(
-          `Parsing ${csvFileFullPath} failed , error: ${parsing.error}`
-        );
+        logger.error(`Parsing ${csvFileFullPath} failed , error: ${parsing.error}`);
         throw new Error(parsing.error);
       }
 
@@ -269,11 +202,7 @@ export class BinanceDataSetting {
   symbol;
   backward_days;
   klinesIntervals;
-  constructor(
-    symbol,
-    backward_days,
-    klinesIntervals = BinanceDataSettingsIntervals.all
-  ) {
+  constructor(symbol, backward_days, klinesIntervals = BinanceDataSettingsIntervals.all) {
     this.symbol = symbol;
     this.backward_days = backward_days;
     this.klinesIntervals = klinesIntervals;
@@ -281,7 +210,7 @@ export class BinanceDataSetting {
 }
 
 export class BinanceDataSettingsIntervals {
-  static m12 = "12h";
+  static h12 = "12h";
   static m15 = "15m";
   static d1 = "1d";
   static h1 = "1h";
@@ -295,12 +224,11 @@ export class BinanceDataSettingsIntervals {
   static h6 = "6h";
   static h8 = "8h";
   static all = [
-    BinanceDataSettingsIntervals.m12,
+    BinanceDataSettingsIntervals.h12,
     BinanceDataSettingsIntervals.m15,
     BinanceDataSettingsIntervals.d1,
     BinanceDataSettingsIntervals.h1,
     BinanceDataSettingsIntervals.m1,
-    BinanceDataSettingsIntervals.s1,
     BinanceDataSettingsIntervals.h2,
     BinanceDataSettingsIntervals.m30,
     BinanceDataSettingsIntervals.m3,
@@ -309,4 +237,37 @@ export class BinanceDataSettingsIntervals {
     BinanceDataSettingsIntervals.h6,
     BinanceDataSettingsIntervals.h8,
   ];
+
+  static getKlineIntervalCount(interval) {
+    switch (interval) {
+      case BinanceDataSettingsIntervals.s1:
+        return 86400;
+      case BinanceDataSettingsIntervals.m1:
+        return 1440;
+      case BinanceDataSettingsIntervals.m3:
+        return 480;
+      case BinanceDataSettingsIntervals.m5:
+        return 288;
+      case BinanceDataSettingsIntervals.m15:
+        return 96;
+      case BinanceDataSettingsIntervals.m30:
+        return 48;
+      case BinanceDataSettingsIntervals.h1:
+        return 24;
+      case BinanceDataSettingsIntervals.h2:
+        return 12;
+      case BinanceDataSettingsIntervals.h4:
+        return 6;
+      case BinanceDataSettingsIntervals.h6:
+        return 4;
+      case BinanceDataSettingsIntervals.h8:
+        return 3;
+      case BinanceDataSettingsIntervals.h12:
+        return 2;
+      case BinanceDataSettingsIntervals.d1:
+        return 1;
+      default:
+        throw new Error(`Interval ${interval} is not supported`);
+    }
+  }
 }
