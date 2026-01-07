@@ -56,7 +56,7 @@ export default class CryptoBacktester extends EventEmitter {
     this.trigger("ready", [this.dataset]);
   }
 
-  async start(callback = () => {}) {
+  async data(callback = () => {}) {
     if (this.ready) {
       callback(this.dataset);
       return;

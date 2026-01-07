@@ -4,7 +4,7 @@ export function parseKlineStream({ t, T, i, o, c, h, l, v, n, x, V, Q, q }) {
   return {
     time: formatTimestamp(t),
     interval: i,
-    closed : x,
+    closed: x,
     data: {
       time: formatTimestamp(t),
       open: o,
@@ -42,7 +42,6 @@ export function parseKlines(rows) {
   return klines;
 }
 
-
 export function parseKlinesSaved(klinesPromises) {
   const klines = {};
 
@@ -52,5 +51,13 @@ export function parseKlinesSaved(klinesPromises) {
     });
   }
 
-  return klines;
+  const newklines = {};
+  Object.entries(klines)
+    .sort((a, b) => {
+      return a[0] - b[0];
+    })
+    .forEach(([time, kline]) => {
+      newklines[time] = kline;
+    });
+  return newklines;
 }

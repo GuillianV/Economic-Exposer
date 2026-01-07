@@ -3,6 +3,7 @@ import express from "express";
 import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./modules/binance/downloader.js";
 import CryptoBacktester from "./modules/binance/index.js";
 import util from "util";
+import Strategy from "./modules/binance/strategy.js";
 
 const app = express();
 const port = 3000;
@@ -14,10 +15,19 @@ app.use(express.static("public"));
 const dataSettings = [new BinanceDataSetting("btcusdc", 730, BinanceDataSettingsIntervals.all)];
 const backtester = new CryptoBacktester(dataSettings);
 
+backtester.data((entries) => {
+  const strategy = new Strategy(entries);
+
+  for (let i = 0; i < 10; i++) {
+
+  strategy.tick();
+  }
+});
+
 app.get("/api/:symbol/:interval/:timestamp", (req, res) => {
   const { symbol, interval, timestamp } = req.params;
 
-  backtester.start((entries) => {
+  backtester.data((entries) => {
     if (entries[symbol] == null || entries[symbol][interval] == null || entries[symbol][interval][timestamp] == null) {
       res.status(404).json({ error: "Not found" });
       return;
@@ -30,7 +40,7 @@ app.get("/api/:symbol/:interval/:timestamp", (req, res) => {
 app.get("/api/:symbol/:interval", (req, res) => {
   const { symbol, interval } = req.params;
 
-  backtester.start((entries) => {
+  backtester.data((entries) => {
     if (entries[symbol] == null || entries[symbol][interval] == null) {
       res.status(404).json({ error: "Not found" });
       return;
