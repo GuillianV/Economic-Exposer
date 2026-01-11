@@ -36,7 +36,9 @@ export function timestampParser(timestamp) {
       seconds,
       milliseconds,
       timezoneOffset,
-      "yyyy-MM-dd": `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`,
+      "yyyy-MM-dd": `${year}-${month.toString().padStart(2, "0")}-${day
+        .toString()
+        .padStart(2, "0")}`,
     },
     utc: {
       year: yearUtc,
@@ -47,7 +49,9 @@ export function timestampParser(timestamp) {
       seconds: secondsUtc,
       milliseconds: millisecondsUtc,
       timezoneOffset: timezoneOffsetUtc,
-      "yyyy-MM-dd": `${yearUtc}-${monthUtc.toString().padStart(2, "0")}-${dayUtc.toString().padStart(2, "0")}`,
+      "yyyy-MM-dd": `${yearUtc}-${monthUtc.toString().padStart(2, "0")}-${dayUtc
+        .toString()
+        .padStart(2, "0")}`,
     },
   };
 }
@@ -55,7 +59,39 @@ export function timestampParser(timestamp) {
 export function formatTimestamp(timestamp) {
   if (typeof timestamp !== "string") timestamp = timestamp.toString();
   const timestampLength = timestamp.length;
-  if (timestampLength == 16) timestamp = timestamp.slice(0,13);
+  if (timestampLength == 16) timestamp = timestamp.slice(0, 13);
   if (timestampLength == 10) timestamp = timestamp.padEnd(13, "0");
   return parseInt(timestamp);
+}
+
+export function intervalToSeconds(interval) {
+  switch (interval) {
+    case "1m":
+      return 60;
+    case "3m":
+      return 180;
+    case "5m":
+      return 300;
+    case "15m":
+      return 900;
+    case "30m":
+      return 1800;
+    case "1h":
+      return 3600;
+    case "2h":
+      return 7200;
+    case "4h":
+      return 14400;
+    case "6h":
+      return 21600;
+    case "8h":
+      return 28800;
+    case "12h":
+      return 43200;
+    case "1d":
+      return 86400;
+
+    default:
+      throw new Error(`Interval ${interval} is not supported`);
+  }
 }

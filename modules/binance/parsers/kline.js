@@ -24,7 +24,20 @@ export function parseKlineStream({ t, T, i, o, c, h, l, v, n, x, V, Q, q }) {
 export function parseKlines(rows) {
   const klines = {};
   rows.forEach((row) => {
-    const [time, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBaseVolume, takerBuyQuoteVolume, ignore] = row;
+    const [
+      time,
+      open,
+      high,
+      low,
+      close,
+      volume,
+      closeTime,
+      quoteVolume,
+      trades,
+      takerBuyBaseVolume,
+      takerBuyQuoteVolume,
+      ignore,
+    ] = row;
 
     klines[formatTimestamp(time)] = {
       open,
@@ -60,4 +73,20 @@ export function parseKlinesSaved(klinesPromises) {
       newklines[time] = kline;
     });
   return newklines;
+}
+
+export function parseSimpleKline(klineRaw, timestamp) {
+  return {
+    time: formatTimestamp(timestamp),
+    open: parseFloat(klineRaw.open),
+    high: parseFloat(klineRaw.high),
+    low: parseFloat(klineRaw.low),
+    close: parseFloat(klineRaw.close),
+    volume: parseFloat(klineRaw.volume),
+    closeTime: klineRaw.closeTime,
+    quoteVolume: parseFloat(klineRaw.quoteVolume),
+    trades: parseInt(klineRaw.trades),
+    takerBuyBaseVolume: parseFloat(klineRaw.takerBuyBaseVolume),
+    takerBuyQuoteVolume: parseFloat(klineRaw.takerBuyQuoteVolume),
+  };
 }

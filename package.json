@@ -4,17 +4,21 @@
   "description": "Trading market backtesting",
   "main": "server.js",
   "scripts": {
-    "dev": "node server.js"
+    "tailwind": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/style.css --watch",
+    "dev": "nodemon server.js --watch '*.js'"
   },
   "type": "module",
   "author": "GuillianV",
   "license": "ISC",
   "dependencies": {
+    "@tailwindcss/cli": "^4.1.18",
     "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "extract-zip": "^2.0.1",
     "pino": "^10.1.0",
-    "pino-pretty": "^13.1.3"
+    "pino-pretty": "^13.1.3",
+    "tailwindcss": "^4.1.18",
+    "ws": "^8.19.0"
   }
 }

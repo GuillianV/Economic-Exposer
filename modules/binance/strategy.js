@@ -1,45 +1,82 @@
+import { intervalToSeconds } from "../utils.js";
+import { parseSimpleKline } from "./parsers/kline.js";
 import Trade, { TradeFlatOptions } from "./trade.js";
+import util from "util";
 
 export default class Strategy {
   datas = {};
 
-  constructor(entries) {
-    this.entries = entries;
-    this.targetEntries = entries["btcusdc"]["1m"];
+  constructor(
+    entriesObjects,
+    options = {
+      chain: "btcusdc",
+      interval: "1m",
+      startingTick: 60 * 24,
+    }
+  ) {
+    this.options = options;
+    this.entriesObjects = entriesObjects;
+    this.targetEntriesObjects =
+      this.entriesObjects[options.chain][options.interval];
+    this.targetEntriesArray = Object.entries(this.targetEntriesObjects);
 
-    const entriesTest = Object.entries(this.targetEntries);
+    this.actualTick = parseInt(
+      this.targetEntriesArray[
+        this.targetEntriesArray.length - options.startingTick
+      ][0]
+    );
+    this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
+    this.lastTick = this.actualTick - this.intervalMilliseconds;
+    this.oldTicks = [];
 
-    //On prends les 20 derniers klines
-    this.actualTick = parseInt(entriesTest[entriesTest.length - 20][0]);
-
+    //Trades
     this.trades = [];
     this.hasTrade = false;
     this.tickCounter = 0;
   }
 
   tick() {
-    const nextTick = this.actualTick;
+    const lastKline = parseSimpleKline(
+      this.targetEntriesObjects[this.lastTick],
+      this.lastTick
+    );
+    const kline = parseSimpleKline(
+      this.targetEntriesObjects[this.actualTick],
+      this.actualTick
+    );
 
-    const kline = this.targetEntries[nextTick];
-    if (kline == null) {
-      console.log("No kline for tick", nextTick);
-      return;
-    }
+    this.oldTicks.push(this.actualTick);
 
+    //Updating trades
     this.trades.forEach((trade) => {
-      const result = trade.update( kline);
-   
+      const result = trade.update(kline);
+
       if (result != null) {
         console.log(result);
       }
     });
 
+    //Update strategy datas
+    // this.updateCongestionZones(prevKline, prevTick, kline, nextTick);
+
+    //Trigger trades
     if (!this.hasTrade && this.tickCounter == 0) {
       this.hasTrade = true;
-      this.trades.push(new Trade(new TradeFlatOptions(kline.open,  50,  -50)));
+      this.trades.push(
+        new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50))
+      );
     }
 
     this.tickCounter++;
-    this.actualTick = nextTick + 60000;
+    this.lastTick = this.actualTick;
+    this.actualTick += this.intervalMilliseconds;
+  }
+
+  retrieve() {
+    return {
+      klines: this.oldTicks.map((tick) => this.targetEntriesObjects[tick]),
+      datas: this.datas,
+      trades: this.trades.map((trade) => trade.result()),
+    };
   }
 }
