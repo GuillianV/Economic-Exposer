@@ -128,6 +128,7 @@ function onTick({ id, tick }, ws) {
 wss.on("connection", (ws) => {
   ws.on("message", (message) => {
     onMessage(message, (type, data) => {
+      
       switch (type) {
         case "start":
           onStart(data, ws);
