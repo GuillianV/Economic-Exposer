@@ -6,6 +6,31 @@ class UI extends EventEmitter {
     this.sizes = sizes;
     this.initCanvas();
     this.initTouch();
+    this.initTickingMenu();
+
+  }
+
+
+  initTickingMenu() {
+
+    this.tick1 = document.querySelector("#tick1");
+    this.tick2 = document.querySelector("#tick5");
+    this.tick3 = document.querySelector("#tick10");
+    this.tick4 = document.querySelector("#tick1000");
+
+    this.tick1.addEventListener("click", () => {
+      this.trigger("tick", [1]);
+    });
+    this.tick2.addEventListener("click", () => {
+      this.trigger("tick", [5]);
+    });
+    this.tick3.addEventListener("click", () => {
+      this.trigger("tick", [10]);
+    });
+    this.tick4.addEventListener("click", () => {
+      this.trigger("tick", [1000]);
+    });
+
   }
 
   onWheel(callback = () => {}) {

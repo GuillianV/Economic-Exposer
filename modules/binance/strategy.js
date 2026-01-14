@@ -16,15 +16,10 @@ export default class Strategy {
   ) {
     this.options = options;
     this.entriesObjects = entriesObjects;
-    this.targetEntriesObjects =
-      this.entriesObjects[options.chain][options.interval];
+    this.targetEntriesObjects = this.entriesObjects[options.chain][options.interval];
     this.targetEntriesArray = Object.entries(this.targetEntriesObjects);
 
-    this.actualTick = parseInt(
-      this.targetEntriesArray[
-        this.targetEntriesArray.length - options.startingTick
-      ][0]
-    );
+    this.actualTick = parseInt(this.targetEntriesArray[this.targetEntriesArray.length - options.startingTick][0]);
     this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
     this.lastTick = this.actualTick - this.intervalMilliseconds;
     this.oldTicks = [];
@@ -36,14 +31,8 @@ export default class Strategy {
   }
 
   tick() {
-    const lastKline = parseSimpleKline(
-      this.targetEntriesObjects[this.lastTick],
-      this.lastTick
-    );
-    const kline = parseSimpleKline(
-      this.targetEntriesObjects[this.actualTick],
-      this.actualTick
-    );
+    const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
+    const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
     this.oldTicks.push(this.actualTick);
 
@@ -56,15 +45,10 @@ export default class Strategy {
       }
     });
 
-    //Update strategy datas
-    // this.updateCongestionZones(prevKline, prevTick, kline, nextTick);
 
-    //Trigger trades
     if (!this.hasTrade && this.tickCounter == 0) {
       this.hasTrade = true;
-      this.trades.push(
-        new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50))
-      );
+      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50)));
     }
 
     this.tickCounter++;
@@ -74,7 +58,9 @@ export default class Strategy {
 
   retrieve() {
     return {
-      klines: this.oldTicks.map((tick) => this.targetEntriesObjects[tick]),
+      klines: this.oldTicks.map((tick) => {
+        return { ...this.targetEntriesObjects[tick], time: tick };
+      }),
       datas: this.datas,
       trades: this.trades.map((trade) => trade.result()),
     };
