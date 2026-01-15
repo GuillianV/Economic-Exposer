@@ -16,21 +16,22 @@ window.addEventListener("DOMContentLoaded", () => {
       tick: number,
     });
   });
-  
+
   ui.onWheel((type, delta) => {
+    const selectedKlinesOptions = { candlesOffsetValue: 0, candlesnumberValue: 0, heightOffsetValue: 0 };
     switch (type) {
       case "shift":
-        window.selectedKlinesOptions.heightOffset += delta * 10;
+        selectedKlinesOptions.heightOffsetValue = delta;
         break;
       case "alt":
-        window.selectedKlinesOptions.candlesnumber += delta * 1;
+        selectedKlinesOptions.candlesnumberValue = delta;
         break;
       default:
-        window.selectedKlinesOptions.candlesOffset += delta * 1;
+        selectedKlinesOptions.candlesOffsetValue = delta;
         break;
     }
 
-    klines.onOptionChange(window.selectedKlinesOptions);
+    klines.onOptionChange(selectedKlinesOptions);
   });
 
   ws.send({
@@ -39,10 +40,10 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   ws.on("start", (data) => {
-    klines.onUpdate(data.klines);
+    klines.onUpdate(data.klines, data.datas, data.trades);
   });
 
   ws.on("tick", (data) => {
-    klines.onUpdate(data.klines);
+    klines.onUpdate(data.klines, data.datas, data.trades);
   });
 });

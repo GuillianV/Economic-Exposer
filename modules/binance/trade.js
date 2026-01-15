@@ -19,8 +19,7 @@ export default class Trade {
     }
 
     this.priceChange = kline.close - this.startPrice;
-    this.priceChangePercent =
-      (this.startPrice + this.priceChange) / this.startPrice;
+    this.priceChangePercent = (this.startPrice + this.priceChange) / this.startPrice;
 
     if (this.type === TradesTypes.flat) {
       if (this.priceChange > this.takeProfit) {
@@ -45,6 +44,9 @@ export default class Trade {
       triggered: this.triggered,
       startTick: this.startTick,
       endTick: this.endTick,
+      startPrice: this.startPrice,
+      takeProfit: this.takeProfit,
+      stopLoss: this.stopLoss,
       priceChange: this.priceChange,
       priceChangePercent: this.priceChangePercent,
     };
@@ -52,10 +54,13 @@ export default class Trade {
 
   trigger(type, kline) {
     this.triggered = true;
+    this.endTick = kline.time;
     this.type = type;
     return {
       type: type,
       startTick: this.startTick,
+      takeProfit: this.takeProfit,
+      stopLoss: this.stopLoss,
       endTick: kline.time,
       priceChange: this.priceChange,
       priceChangePercent: this.priceChangePercent,
