@@ -22,6 +22,8 @@ export default class Strategy {
     this.actualTick = parseInt(this.targetEntriesArray[this.targetEntriesArray.length - options.startingTick][0]);
     this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
     this.lastTick = this.actualTick - this.intervalMilliseconds;
+    this.finalTick = this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
+    this.ended = false;
     this.oldTicks = [];
 
     //Trades
@@ -31,6 +33,11 @@ export default class Strategy {
   }
 
   tick() {
+    if (this.finalTick == this.actualTick || this.ended) {
+      this.ended = true;
+      return;
+    }
+
     const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
@@ -41,10 +48,9 @@ export default class Strategy {
       const result = trade.update(kline);
 
       if (result != null) {
-        console.log(result);
+        // console.log(result);
       }
     });
-
 
     if (!this.hasTrade && this.tickCounter == 0) {
       this.hasTrade = true;
