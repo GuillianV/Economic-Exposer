@@ -48,7 +48,7 @@ export default class Strategy {
 
     if (!this.hasTrade && this.tickCounter == 0) {
       this.hasTrade = true;
-      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50)));
+      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 500, -500)));
     }
 
     this.tickCounter++;

@@ -113,16 +113,19 @@ class Klines {
   }
 
   _drawTrades() {
-    //Drawnig trades
-    const trades = this.trades.filter((trade) => this.timeline[trade.startTick] != null);
-    trades.forEach((trade) => {
+    this.trades.forEach((trade) => {
       const end = this.timeline[trade.endTick];
       const start = this.timeline[trade.startTick];
-      const x = start.x;
+
+      let x = 0;
+      if (start != null) {
+        x = start.x;
+      }
       let width = x + this.ui.width;
       if (end != null) {
         width = end.x + end.width;
       }
+      
       const startPrice = trade.startPrice;
       const tpPrice = startPrice + trade.takeProfit;
       const slPrice = startPrice + trade.stopLoss;
