@@ -46,4 +46,8 @@ window.addEventListener("DOMContentLoaded", () => {
   ws.on("tick", (data) => {
     klines.onUpdate(data.klines, data.datas, data.trades);
   });
+
+  ws.on("end", (data) => {
+    console.log("Ended");
+  })
 });

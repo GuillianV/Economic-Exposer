@@ -110,12 +110,19 @@ class Klines {
     });
 
     this._drawTrades();
+    this._drawSupportsResistances();
   }
 
   _drawTrades() {
+    const timelineKeys = Object.keys(this.timeline);
+
     this.trades.forEach((trade) => {
       const end = this.timeline[trade.endTick];
       const start = this.timeline[trade.startTick];
+
+      if (start == null && end == null && (trade.endTick < timelineKeys[0] || trade.startTick > timelineKeys[timelineKeys.length - 1])) {
+        return;
+      }
 
       let x = 0;
       if (start != null) {
@@ -125,7 +132,7 @@ class Klines {
       if (end != null) {
         width = end.x + end.width;
       }
-      
+
       const startPrice = trade.startPrice;
       const tpPrice = startPrice + trade.takeProfit;
       const slPrice = startPrice + trade.stopLoss;
@@ -144,6 +151,26 @@ class Klines {
 
       this.ui.drawRect(x, tpY, width, tpHeight, "#00ff0066");
       this.ui.drawRect(x, slY, width, slHeight, "#ff000066");
+    });
+  }
+
+  _drawSupportsResistances() {
+    const supports = this.datas.supports;
+    const supportsKeys = Object.keys(supports);
+    const timelineKeys = Object.keys(this.timeline);
+
+    supportsKeys.forEach((time) => {
+      const support = supports[time];
+      const candle = this.timeline[time];
+
+      if (candle == null) {
+        return;
+      }
+
+      const x = candle.x;
+      const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+
+      this.ui.drawRect(x, y, this.ui.width, 1, "#00ff00");
     });
   }
 }
