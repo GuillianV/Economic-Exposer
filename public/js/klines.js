@@ -190,7 +190,6 @@ class Klines {
       const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
 
       const force = support.force[5];
-      console.log(force);
       this.ui.drawRect(x, y, this.ui.width, -force - 1, "#ff0000");
     });
   }
