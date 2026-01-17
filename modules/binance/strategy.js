@@ -5,8 +5,8 @@ import util from "util";
 
 export default class Strategy {
   datas = {
-    supports: {},
-    resistances: {},
+    localLows: {},
+    localHighs: {},
   };
 
   constructor(
@@ -15,7 +15,7 @@ export default class Strategy {
       chain: "btcusdc",
       interval: "1m",
       startingTick: 60 * 24,
-    }
+    },
   ) {
     this.options = options;
     this.entriesObjects = entriesObjects;
@@ -25,6 +25,7 @@ export default class Strategy {
     this.actualTick = parseInt(this.targetEntriesArray[this.targetEntriesArray.length - options.startingTick][0]);
     this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
     this.lastTick = this.actualTick - this.intervalMilliseconds;
+    this.thirdTick = this.lastTick - this.intervalMilliseconds;
     this.finalTick = this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
     this.ended = false;
     this.oldTicks = [];
@@ -45,11 +46,11 @@ export default class Strategy {
       this.onEndCb();
       return;
     }
-
+    const thirdKline = parseSimpleKline(this.targetEntriesObjects[this.thirdTick], this.thirdTick);
     const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
-    this.detectSupportsResistances(kline, lastKline);
+    this.detectLocalLowsHighs(kline, lastKline, thirdKline);
 
     //Updating trades
     this.trades.forEach((trade) => {
@@ -62,51 +63,75 @@ export default class Strategy {
 
     if (!this.hasTrade && this.tickCounter == 0) {
       this.hasTrade = true;
-      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 500, -500)));
+      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50)));
     }
 
     this.tickCounter++;
     this.oldTicks.push(this.actualTick);
+    this.thirdTick = this.lastTick;
     this.lastTick = this.actualTick;
     this.actualTick += this.intervalMilliseconds;
   }
 
-  detectSupportsResistances(actualKline, lastKline) {
-    const supports = this.datas.supports;
-    const supportsEntries = Object.keys(supports);
-    const resistances = this.datas.resistances;
-    const resistancesEntries = Object.keys(resistances);
+  detectLocalLowsHighs(actualKline, lastKline, thirdKline) {
+    const localLows = this.datas.localLows;
+    const localLowsValues = Object.values(localLows);
+    const thresholds = [5, 15, 50];
+    const localHighs = this.datas.localHighs;
+    const localHighsValues = Object.values(localHighs);
 
-    if (supportsEntries.length == 0) {
-      supports[actualKline.time] = {
-        value: actualKline.close,
+    const actualGreen = actualKline.open < actualKline.close;
+    const lastGreen = lastKline.open < lastKline.close;
+    const thirdGreen = thirdKline.open < thirdKline.close;
+
+    if ((!actualGreen || !lastGreen || !thirdGreen) && lastKline.low < actualKline.low && thirdKline.low > lastKline.low) {
+      const lastLocalLow = {
+        value: lastKline.low,
+        time: lastKline.time,
+        force: {},
       };
+      for (let t = 0; t < thresholds.length; t++) {
+        lastLocalLow.force[thresholds[t]] = 0;
+      }
+      localLows[lastKline.time] = lastLocalLow;
+      for (let j = 0; j < thresholds.length; j++) {
+        const threshold = thresholds[j];
+        const nearestLows = localLowsValues.filter((ll) => {
+          return ll.value - threshold < lastLocalLow.value && ll.value + threshold > lastLocalLow.value;
+        });
+
+        if (nearestLows != null) {
+          nearestLows.forEach((ll) => {
+            lastLocalLow.force[threshold] += 1;
+            ll.force[threshold] += 1;
+          });
+        }
+      }
     }
 
-    const indexLastSupport = supportsEntries.indexOf(lastKline.time.toString());
-    if (indexLastSupport != -1) {
-      const key = supportsEntries[indexLastSupport];
-      const lastSupport = supports[key];
-
-      if (lastSupport.value > actualKline.close) {
-        supports[actualKline.time] = {
-          value: actualKline.close,
-        };
-
-        delete supports[key];
-      }
-    } else {
-      if (actualKline.close > lastKline.close && lastKline.open > lastKline.close) {
-        supports[lastKline.time] = {
-          value: lastKline.close,
-        };
-      }
-    }
-
-    if (resistancesEntries.length == 0) {
-      resistances[actualKline.time] = {
-        value: actualKline.close,
+    if ((actualGreen || lastGreen || thirdGreen) && lastKline.high > actualKline.high && thirdKline.high < lastKline.high) {
+      const lastLocalHigh = {
+        value: lastKline.high,
+        time: lastKline.time,
+        force: {},
       };
+      for (let t = 0; t < thresholds.length; t++) {
+        lastLocalHigh.force[thresholds[t]] = 0;
+      }
+      localHighs[lastKline.time] = lastLocalHigh;
+      for (let j = 0; j < thresholds.length; j++) {
+        const threshold = thresholds[j];
+        const nearestHighs = localHighsValues.filter((ll) => {
+          return ll.value - threshold < lastLocalHigh.value && ll.value + threshold > lastLocalHigh.value;
+        });
+
+        if (nearestHighs != null) {
+          nearestHighs.forEach((ll) => {
+            lastLocalHigh.force[threshold] += 1;
+            ll.force[threshold] += 1;
+          });
+        }
+      }
     }
   }
 

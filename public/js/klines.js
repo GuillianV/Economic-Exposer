@@ -155,7 +155,7 @@ class Klines {
   }
 
   _drawSupportsResistances() {
-    const supports = this.datas.supports;
+    const supports = this.datas.localLows;
     const supportsKeys = Object.keys(supports);
     const timelineKeys = Object.keys(this.timeline);
 
@@ -170,7 +170,28 @@ class Klines {
       const x = candle.x;
       const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
 
-      this.ui.drawRect(x, y, this.ui.width, 1, "#00ff00");
+      const force = support.force[5];
+      console.log(force);
+      this.ui.drawRect(x, y, this.ui.width, force + 1, "#00ff00");
+    });
+
+    const resistances = this.datas.localHighs;
+    const resistancesKeys = Object.keys(resistances);
+
+    resistancesKeys.forEach((time) => {
+      const support = resistances[time];
+      const candle = this.timeline[time];
+
+      if (candle == null) {
+        return;
+      }
+
+      const x = candle.x;
+      const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+
+      const force = support.force[5];
+      console.log(force);
+      this.ui.drawRect(x, y, this.ui.width, -force - 1, "#ff0000");
     });
   }
 }

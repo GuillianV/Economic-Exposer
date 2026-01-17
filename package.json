@@ -5,8 +5,10 @@
   "main": "server.js",
   "scripts": {
     "tailwind": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/style.css --watch",
-    "dev": "nodemon server.js "
+    "dev": "nodemon server.js --ignore data --ignore logs --ignore public",
+    "start": "node server.js"
   },
+  
   "type": "module",
   "author": "GuillianV",
   "license": "ISC",
