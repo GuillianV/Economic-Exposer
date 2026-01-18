@@ -10,7 +10,7 @@ class Klines {
         step: 1,
       },
       candlesnumber: {
-        value: 10,
+        value: 60,
         min: 1,
         step: 1,
       },
@@ -110,6 +110,7 @@ class Klines {
     });
 
     this._drawTrades();
+    // this._drawHigsLows();
     this._drawSupportsResistances();
   }
 
@@ -154,10 +155,9 @@ class Klines {
     });
   }
 
-  _drawSupportsResistances() {
+  _drawHigsLows() {
     const supports = this.datas.localLows;
     const supportsKeys = Object.keys(supports);
-    const timelineKeys = Object.keys(this.timeline);
 
     supportsKeys.forEach((time) => {
       const support = supports[time];
@@ -172,7 +172,7 @@ class Klines {
 
       const force = support.force[5];
       console.log(force);
-      this.ui.drawRect(x, y, this.ui.width, force + 1, "#00ff00");
+      this.ui.drawRect(x, y, this.ui.width, force + 1, "green");
     });
 
     const resistances = this.datas.localHighs;
@@ -190,7 +190,23 @@ class Klines {
       const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
 
       const force = support.force[5];
-      this.ui.drawRect(x, y, this.ui.width, -force - 1, "#ff0000");
+      this.ui.drawRect(x, y, this.ui.width, -force - 1, "red");
+    });
+  }
+
+  _drawSupportsResistances() {
+    const supports = this.datas.supports;
+    supports.forEach((support) => {
+      const x = 0;
+      const y = this.ui.height - ((support - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      this.ui.drawRect(x, y, this.ui.width, 1, "green");
+    });
+
+    const resistances = this.datas.resistances;
+    resistances.forEach((resistance) => {
+      const x = 0;
+      const y = this.ui.height - ((resistance - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      this.ui.drawRect(x, y, this.ui.width, 1, "red");
     });
   }
 }

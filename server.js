@@ -13,7 +13,10 @@ dotenv.config();
 
 app.use(express.static("public"));
 
-const dataSettings = [new BinanceDataSetting("btcusdc", 30, BinanceDataSettingsIntervals.all)];
+const rewindsDays = 1;
+const startingTicks = 60 * 24 * rewindsDays - 3;
+
+const dataSettings = [new BinanceDataSetting("btcusdc", rewindsDays, BinanceDataSettingsIntervals.all)];
 const backtester = new CryptoBacktester(dataSettings);
 
 app.get("/api/:symbol/:interval/:timestamp", (req, res) => {
@@ -49,7 +52,7 @@ app.get("/api/intervals", (req, res) => {
         interval,
         count: BinanceDataSettingsIntervals.getKlineIntervalCount(interval),
       };
-    })
+    }),
   );
 });
 
@@ -87,8 +90,8 @@ function onStart({ id }, ws) {
     const options = {
       chain: "btcusdc",
       interval: "1m",
-      startingTick: 60 * 24,
-      initialTicks: 60, 
+      startingTick: startingTicks,
+      initialTicks: 60,
     };
     const strategy = new Strategy(entries, options);
     for (let i = 0; i < options.initialTicks; i++) {

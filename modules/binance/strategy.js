@@ -2,11 +2,14 @@ import { intervalToSeconds } from "../utils.js";
 import { parseSimpleKline } from "./parsers/kline.js";
 import Trade, { TradeFlatOptions } from "./trade.js";
 import util from "util";
+import { kmeans } from "ml-kmeans";
 
 export default class Strategy {
   datas = {
     localLows: {},
     localHighs: {},
+    supports: [],
+    resistances: [],
   };
 
   constructor(
@@ -50,8 +53,8 @@ export default class Strategy {
     const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
-    this.detectLocalLowsHighs(kline, lastKline, thirdKline);
-
+    this.detectLocalHighsLows(kline, lastKline, thirdKline);
+    this.generateSupportsResitances();
     //Updating trades
     this.trades.forEach((trade) => {
       const result = trade.update(kline);
@@ -73,7 +76,7 @@ export default class Strategy {
     this.actualTick += this.intervalMilliseconds;
   }
 
-  detectLocalLowsHighs(actualKline, lastKline, thirdKline) {
+  detectLocalHighsLows(actualKline, lastKline, thirdKline) {
     const localLows = this.datas.localLows;
     const localLowsValues = Object.values(localLows);
     const thresholds = [5, 15, 50];
@@ -84,16 +87,20 @@ export default class Strategy {
     const lastGreen = lastKline.open < lastKline.close;
     const thirdGreen = thirdKline.open < thirdKline.close;
 
-    if ((!actualGreen || !lastGreen || !thirdGreen) && lastKline.low < actualKline.low && thirdKline.low > lastKline.low) {
-      const lastLocalLow = {
-        value: lastKline.low,
+    function generateLastLocal(value) {
+      const lastLocal = {
+        value,
         time: lastKline.time,
         force: {},
       };
       for (let t = 0; t < thresholds.length; t++) {
-        lastLocalLow.force[thresholds[t]] = 0;
+        lastLocal.force[thresholds[t]] = 0;
       }
-      localLows[lastKline.time] = lastLocalLow;
+      return lastLocal;
+    }
+
+    if ((!actualGreen || !lastGreen || !thirdGreen) && lastKline.low < actualKline.low && thirdKline.low > lastKline.low) {
+      const lastLocalLow = generateLastLocal(lastKline.close);
       for (let j = 0; j < thresholds.length; j++) {
         const threshold = thresholds[j];
         const nearestLows = localLowsValues.filter((ll) => {
@@ -107,18 +114,12 @@ export default class Strategy {
           });
         }
       }
+      localLows[lastKline.time] = lastLocalLow;
     }
 
     if ((actualGreen || lastGreen || thirdGreen) && lastKline.high > actualKline.high && thirdKline.high < lastKline.high) {
-      const lastLocalHigh = {
-        value: lastKline.high,
-        time: lastKline.time,
-        force: {},
-      };
-      for (let t = 0; t < thresholds.length; t++) {
-        lastLocalHigh.force[thresholds[t]] = 0;
-      }
-      localHighs[lastKline.time] = lastLocalHigh;
+      const lastLocalHigh = generateLastLocal(lastKline.close);
+
       for (let j = 0; j < thresholds.length; j++) {
         const threshold = thresholds[j];
         const nearestHighs = localHighsValues.filter((ll) => {
@@ -132,7 +133,77 @@ export default class Strategy {
           });
         }
       }
+      localHighs[lastKline.time] = lastLocalHigh;
     }
+  }
+
+  generateSupportsResitances(seed = 42) {
+    const localLows = this.datas.localLows;
+    const localLowsEntries = Object.entries(localLows);
+    const localHighs = this.datas.localHighs;
+    const localHighsEntries = Object.entries(localHighs);
+    const clusters = Math.min(parseInt(localLowsEntries.length / 10) + 1, 100);
+    if (localLowsEntries.length < clusters || localHighsEntries.length < clusters) {
+      return;
+    }
+
+    const llPrices = Object.values(localLows).map((item) => item.value);
+    const llClusters = kmeans(
+      llPrices.map((price) => [price]),
+      clusters,
+      {
+        seed,
+      },
+    );
+
+    const lhPrices = Object.values(localHighs).map((item) => item.value);
+    const lhClusters = kmeans(
+      lhPrices.map((price) => [price]),
+      clusters,
+      {
+        seed,
+      },
+    );
+
+    this.datas.supports = llClusters.centroids.map((centroid) => centroid[0]);
+    this.datas.resistances = lhClusters.centroids.map((centroid) => centroid[0]);
+    // // Fonction pour regrouper les données par cluster
+    // function groupDataByCluster(data, clusters) {
+    //   const result = {};
+    //   Object.keys(data).forEach((key, index) => {
+    //     const clusterId = clusters.clusters[index];
+    //     if (!result[clusterId]) {
+    //       result[clusterId] = [];
+    //     }
+    //     result[clusterId].push({
+    //       time: data[key].time,
+    //       value: data[key].value,
+    //       force: data[key].force,
+    //     });
+    //   });
+    //   return result;
+    // }
+
+    // // Regrouper les données par cluster
+    // const clusteredData = groupDataByCluster(localLows, clusters);
+    // console.log("Données regroupées par cluster:", clusteredData);
+
+    // const localclusters = {};
+    // localLowsEntries.forEach(([time, support]) => {
+    //   Object.keys(support.force).forEach((threshold) => {
+    //     if (localclusters[threshold] == null) {
+    //       localclusters[threshold] = {};
+    //     }
+
+    //     const force = support.force[threshold];
+    //     if (localclusters[threshold][force] == null) {
+    //       localclusters[threshold][force] = {};
+    //     }
+    //     localclusters[threshold][force][support.time] = support.value;
+    //   });
+    // });
+
+    // console.log(localclusters);
   }
 
   onEnd(cb) {
