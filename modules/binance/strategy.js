@@ -2,7 +2,6 @@ import { intervalToSeconds } from "../utils.js";
 import { parseSimpleKline } from "./parsers/kline.js";
 import Trade, { TradeFlatOptions } from "./trade.js";
 import util from "util";
-import { kmeans } from "ml-kmeans";
 
 export default class Strategy {
   datas = {
@@ -53,8 +52,10 @@ export default class Strategy {
     const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
-    this.detectLocalHighsLows(kline, lastKline, thirdKline);
-    this.generateSupportsResitances();
+    const forcePriceValue = 50;
+    const filterSameLinesValue = 0;
+    this.detectLocalHighsLows(kline, lastKline, thirdKline, forcePriceValue);
+    this.generateSupportsResitances(forcePriceValue, filterSameLinesValue);
     //Updating trades
     this.trades.forEach((trade) => {
       const result = trade.update(kline);
@@ -76,10 +77,10 @@ export default class Strategy {
     this.actualTick += this.intervalMilliseconds;
   }
 
-  detectLocalHighsLows(actualKline, lastKline, thirdKline) {
+  detectLocalHighsLows(actualKline, lastKline, thirdKline, force = 50) {
     const localLows = this.datas.localLows;
     const localLowsValues = Object.values(localLows);
-    const thresholds = [5, 15, 50];
+    const thresholds = [force];
     const localHighs = this.datas.localHighs;
     const localHighsValues = Object.values(localHighs);
 
@@ -94,7 +95,7 @@ export default class Strategy {
         force: {},
       };
       for (let t = 0; t < thresholds.length; t++) {
-        lastLocal.force[thresholds[t]] = 0;
+        lastLocal.force[thresholds[t]] = [];
       }
       return lastLocal;
     }
@@ -109,8 +110,8 @@ export default class Strategy {
 
         if (nearestLows != null) {
           nearestLows.forEach((ll) => {
-            lastLocalLow.force[threshold] += 1;
-            ll.force[threshold] += 1;
+            lastLocalLow.force[threshold].push(ll.time);
+            ll.force[threshold].push(lastLocalLow.time);
           });
         }
       }
@@ -128,82 +129,93 @@ export default class Strategy {
 
         if (nearestHighs != null) {
           nearestHighs.forEach((ll) => {
-            lastLocalHigh.force[threshold] += 1;
-            ll.force[threshold] += 1;
+            lastLocalHigh.force[threshold].push(ll.time);
+            ll.force[threshold].push(lastLocalHigh.time);
           });
         }
       }
       localHighs[lastKline.time] = lastLocalHigh;
     }
+
   }
 
-  generateSupportsResitances(seed = 42) {
+  generateSupportsResitances(forceValue = 50, filterSameLinesValue = 5) {
+
     const localLows = this.datas.localLows;
-    const localLowsEntries = Object.entries(localLows);
+    const localLowsEntries = Object.values(localLows);
     const localHighs = this.datas.localHighs;
-    const localHighsEntries = Object.entries(localHighs);
-    const clusters = Math.min(parseInt(localLowsEntries.length / 10) + 1, 100);
-    if (localLowsEntries.length < clusters || localHighsEntries.length < clusters) {
-      return;
+    const localHighsEntries = Object.values(localHighs);
+
+    const localExtremes = [
+      ...localLowsEntries.map((entry) => {
+        entry.type = "low";
+        return entry;
+      }),
+      ...localHighsEntries.map((entry) => {
+        entry.type = "high";
+        return entry;
+      }),
+    ];
+
+    const localGroups = localExtremes.reduce((acc, item) => {
+      const group = item.force[forceValue].length == 0 ? "uniques" : "multiples";
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(item);
+      return acc;
+    }, {});
+
+    const uniques = Object.values(localGroups.uniques ?? {});
+    const multiples = Object.values(localGroups.multiples ?? {});
+
+    const cluster = {};
+
+    multiples.forEach((extreme, index) => {
+      if (extreme.used) {
+        return;
+      }
+
+      cluster[`${index}_${extreme.type}`] = [extreme.value];
+      const times = extreme.force[forceValue];
+      times.forEach((time) => {
+        const multipleFound = multiples.find((multiple) => multiple.time == time && multiple.type == extreme.type);
+        if (multipleFound != null) {
+          multipleFound.used = true;
+          cluster[`${index}_${extreme.type}`].push(multipleFound.value);
+        }
+      });
+    });
+
+    const clusterDatas = {
+      supports: [],
+      resistances: [],
+    };
+
+    uniques.forEach((unique) => {
+      clusterDatas[unique.type == "low" ? "supports" : "resistances"].push(unique.value);
+    });
+
+    Object.entries(cluster).forEach(([key, values]) => {
+      clusterDatas[key.includes("_low") ? "supports" : "resistances"].push(values.reduce((acc, cur) => acc + cur, 0) / values.length);
+    });
+
+    if (filterSameLinesValue != 0) {
+      const identicals = {
+        supports: [],
+        resistances: [],
+      };
+      clusterDatas.supports.forEach((support, index) => {
+        const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
+        if (isResistance) {
+          identicals.supports.push(support);
+          identicals.resistances.push(isResistance);
+        }
+      });
+      clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
+      clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
     }
+    this.datas.supports = clusterDatas.supports;
+    this.datas.resistances = clusterDatas.resistances;
 
-    const llPrices = Object.values(localLows).map((item) => item.value);
-    const llClusters = kmeans(
-      llPrices.map((price) => [price]),
-      clusters,
-      {
-        seed,
-      },
-    );
-
-    const lhPrices = Object.values(localHighs).map((item) => item.value);
-    const lhClusters = kmeans(
-      lhPrices.map((price) => [price]),
-      clusters,
-      {
-        seed,
-      },
-    );
-
-    this.datas.supports = llClusters.centroids.map((centroid) => centroid[0]);
-    this.datas.resistances = lhClusters.centroids.map((centroid) => centroid[0]);
-    // // Fonction pour regrouper les données par cluster
-    // function groupDataByCluster(data, clusters) {
-    //   const result = {};
-    //   Object.keys(data).forEach((key, index) => {
-    //     const clusterId = clusters.clusters[index];
-    //     if (!result[clusterId]) {
-    //       result[clusterId] = [];
-    //     }
-    //     result[clusterId].push({
-    //       time: data[key].time,
-    //       value: data[key].value,
-    //       force: data[key].force,
-    //     });
-    //   });
-    //   return result;
-    // }
-
-    // // Regrouper les données par cluster
-    // const clusteredData = groupDataByCluster(localLows, clusters);
-    // console.log("Données regroupées par cluster:", clusteredData);
-
-    // const localclusters = {};
-    // localLowsEntries.forEach(([time, support]) => {
-    //   Object.keys(support.force).forEach((threshold) => {
-    //     if (localclusters[threshold] == null) {
-    //       localclusters[threshold] = {};
-    //     }
-
-    //     const force = support.force[threshold];
-    //     if (localclusters[threshold][force] == null) {
-    //       localclusters[threshold][force] = {};
-    //     }
-    //     localclusters[threshold][force][support.time] = support.value;
-    //   });
-    // });
-
-    // console.log(localclusters);
   }
 
   onEnd(cb) {
