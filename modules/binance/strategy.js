@@ -1,4 +1,5 @@
 import { intervalToSeconds } from "../utils.js";
+import MoneyManager from "./money-manager.js";
 import { parseSimpleKline } from "./parsers/kline.js";
 import Trade, { TradeFlatOptions } from "./trade.js";
 import util from "util";
@@ -10,6 +11,7 @@ export default class Strategy {
     supports: [],
     resistances: [],
   };
+  moneyManager;
 
   constructor(
     entriesObjects,
@@ -32,9 +34,11 @@ export default class Strategy {
     this.ended = false;
     this.oldTicks = [];
 
+    //Money Manager
+    this.moneyManager = new MoneyManager(1000);
+
     //Trades
     this.trades = [];
-    this.hasTrade = false;
     this.tickCounter = 0;
   }
 
@@ -53,21 +57,23 @@ export default class Strategy {
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
     const forcePriceValue = 50;
-    const filterSameLinesValue = 0;
+    const filterSameLinesValue = 5;
     this.detectLocalHighsLows(kline, lastKline, thirdKline, forcePriceValue);
     this.generateSupportsResitances(forcePriceValue, filterSameLinesValue);
+
     //Updating trades
     this.trades.forEach((trade) => {
       const result = trade.update(kline);
 
       if (result != null) {
-        // console.log(result);
+        this.moneyManager.assignTradeResult(result);
       }
     });
 
-    if (!this.hasTrade && this.tickCounter == 0) {
-      this.hasTrade = true;
-      this.trades.push(new Trade(new TradeFlatOptions(this.actualTick, kline.open, 50, -50)));
+    const trade = this.generateTradeConditions(kline, lastKline);
+    if (trade) {
+      this.trades.push(trade);
+      this.moneyManager.assignTradeStart(trade.result());
     }
 
     this.tickCounter++;
@@ -136,11 +142,9 @@ export default class Strategy {
       }
       localHighs[lastKline.time] = lastLocalHigh;
     }
-
   }
 
   generateSupportsResitances(forceValue = 50, filterSameLinesValue = 5) {
-
     const localLows = this.datas.localLows;
     const localLowsEntries = Object.values(localLows);
     const localHighs = this.datas.localHighs;
@@ -215,7 +219,18 @@ export default class Strategy {
     }
     this.datas.supports = clusterDatas.supports;
     this.datas.resistances = clusterDatas.resistances;
+  }
 
+  generateTradeConditions(actualKline, lastKline) {
+    const { supports, resistances } = this.datas;
+    const lastGreen = lastKline.open < lastKline.close;
+    const actualGreen = actualKline.open < actualKline.close;
+    // if (lastGreen && resistances.find((resistance) => resistance > lastKline.open && resistance < lastKline.close) && !actualGreen) {
+    //   // return new Trade(new TradeFlatOptions(this.actualTick, actualKline.open, 100, -100, 100));
+    // }
+    if (!lastGreen && supports.find((support) => support < lastKline.open && support > lastKline.close) && actualGreen && this.moneyManager.canStartTrade()) {
+      return new Trade(new TradeFlatOptions(this.actualTick, actualKline.open, this.moneyManager.availableCapital(), 200, -100));
+    }
   }
 
   onEnd(cb) {

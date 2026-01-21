@@ -1,4 +1,4 @@
-import { timestampParser } from "../utils.js";
+import { timestampParser, uuid } from "../utils.js";
 
 export default class Trade {
   priceChange = 0;
@@ -10,29 +10,34 @@ export default class Trade {
     this.startPrice = parseFloat(tradeOption.startPrice);
     this.takeProfit = tradeOption.takeProfit;
     this.stopLoss = tradeOption.stopLoss;
+    this.capitalToBuy = tradeOption.capitalToBuy;
+    this.tradeType = tradeOption.tradeType;
     this.type = tradeOption.type;
+    this.tradeResult = null;
+    this.id = uuid();
   }
 
   update(kline) {
     if (this.triggered) {
       return;
     }
-
+    const isTpNegative = this.takeProfit < 0;
     this.priceChange = kline.close - this.startPrice;
-    this.priceChangePercent = (this.startPrice + this.priceChange) / this.startPrice;
+    const overflow = (this.priceChange > 0 ? kline.high : kline.low) - kline.close;
+    this.priceChangePercent = (this.startPrice + this.priceChange + overflow) / this.startPrice;
 
-    if (this.type === TradesTypes.flat) {
-      if (this.priceChange > this.takeProfit) {
+    if (this.tradeType === TradesTypes.flat) {
+      if ((!isTpNegative && this.priceChange + overflow > this.takeProfit) || (isTpNegative && this.priceChange + overflow < this.takeProfit)) {
         return this.trigger("takeProfit", kline);
       }
-      if (this.priceChange < this.stopLoss) {
+      if ((!isTpNegative && this.priceChange + overflow < this.stopLoss) || (isTpNegative && this.priceChange + overflow > this.stopLoss)) {
         return this.trigger("stopLoss", kline);
       }
-    } else if (this.type === TradesTypes.percent) {
-      if (this.priceChangePercent > this.takeProfit) {
+    } else if (this.tradeType === TradesTypes.percent) {
+      if ((!isTpNegative && this.priceChangePercent > this.takeProfit) || (isTpNegative && this.priceChangePercent < this.takeProfit)) {
         return this.trigger("takeProfit", kline);
       }
-      if (this.priceChangePercent < this.stopLoss) {
+      if ((!isTpNegative && this.priceChangePercent < this.stopLoss) || (isTpNegative && this.priceChangePercent > this.stopLoss)) {
         return this.trigger("stopLoss", kline);
       }
     }
@@ -40,10 +45,14 @@ export default class Trade {
 
   result() {
     return {
+      id : this.id,
+      tradeType: this.tradeType,
+      tradeResult: this.tradeResult,
       type: this.type,
       triggered: this.triggered,
       startTick: this.startTick,
       endTick: this.endTick,
+      capitalToBuy: this.capitalToBuy,
       startPrice: this.startPrice,
       takeProfit: this.takeProfit,
       stopLoss: this.stopLoss,
@@ -52,19 +61,11 @@ export default class Trade {
     };
   }
 
-  trigger(type, kline) {
+  trigger(tradeResult, kline) {
     this.triggered = true;
     this.endTick = kline.time;
-    this.type = type;
-    return {
-      type: type,
-      startTick: this.startTick,
-      takeProfit: this.takeProfit,
-      stopLoss: this.stopLoss,
-      endTick: kline.time,
-      priceChange: this.priceChange,
-      priceChangePercent: this.priceChangePercent,
-    };
+    this.tradeResult = tradeResult;
+    return this.result();
   }
 }
 
@@ -74,12 +75,14 @@ export class TradesTypes {
 }
 
 export class TradeFlatOptions {
-  constructor(startTick, startPrice, takeProfit, stopLoss) {
+  constructor(startTick, startPrice, capitalToBuy, takeProfit, stopLoss) {
     this.startTick = startTick;
+    this.capitalToBuy = capitalToBuy;
     this.startPrice = startPrice;
     this.takeProfit = takeProfit;
     this.stopLoss = stopLoss;
-    this.type = TradesTypes.flat;
+    this.tradeType = TradesTypes.flat;
+    this.type = takeProfit > 0 ? "buy" : "sell";
   }
 }
 
@@ -89,6 +92,7 @@ export class TradePercentOptions {
     this.startPrice = startPrice;
     this.takeProfit = takeProfit;
     this.stopLoss = stopLoss;
-    this.type = TradesTypes.percent;
+    this.tradeType = TradesTypes.percent;
+    this.type = takeProfit > 0 ? "buy" : "sell";
   }
 }

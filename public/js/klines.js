@@ -129,10 +129,12 @@ class Klines {
       if (start != null) {
         x = start.x;
       }
+      
       let width = x + this.ui.width;
       if (end != null) {
-        width = end.x + end.width;
+        width = end.x + end.width - x;
       }
+
 
       const startPrice = trade.startPrice;
       const tpPrice = startPrice + trade.takeProfit;
@@ -150,8 +152,8 @@ class Klines {
       const slY = this.ui.height - (spClamped / this.clamped_highest_price) * this.ui.height;
       const slHeight = (slDiffClamped / this.clamped_highest_price) * this.ui.height;
 
-      this.ui.drawRect(x, tpY, width, tpHeight, "#00ff0066");
-      this.ui.drawRect(x, slY, width, slHeight, "#ff000066");
+      this.ui.drawRect(x, tpY, width, tpHeight, "#00ff0044");
+      this.ui.drawRect(x, slY, width, slHeight, "#ff000044");
     });
   }
 
