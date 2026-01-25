@@ -3,7 +3,7 @@ export default class MoneyManager {
   quoteCapital = 0;
   baseCapital = 0;
 
-  binanceFees = 0.001;
+  binanceFees = 0.07125;
   trades = {};
 
   constructor(baseCapital) {
