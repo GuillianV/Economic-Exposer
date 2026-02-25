@@ -13,7 +13,7 @@ dotenv.config();
 
 app.use(express.static("public"));
 
-const rewindsDays = 30;
+const rewindsDays = 3;
 const startingTicks = 60 * 24 * rewindsDays - 3;
 
 const dataSettings = [new BinanceDataSetting("btcusdc", rewindsDays, BinanceDataSettingsIntervals.all)];

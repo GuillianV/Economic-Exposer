@@ -26,6 +26,20 @@ class Klines {
     this.klinesEntries = [];
     this.datas = {};
     this.trades = [];
+    this.indicators = {
+      _drawTrades: false,
+      _drawHigsLows: false,
+      _drawSupportsResistances: false,
+    };
+  }
+
+  getIndicators() {
+    return this.indicators;
+  }
+
+  enableDrawingIndicators(indicators) {
+    this.indicators = indicators;
+    this._draw();
   }
 
   onOptionChange({ candlesOffsetValue, candlesnumberValue, heightOffsetValue }) {
@@ -109,9 +123,15 @@ class Klines {
       this.ui.drawRect(positions.meche.x1, positions.meche.y1, positions.meche.x2, positions.meche.y2, ctxColor);
     });
 
-    this._drawTrades();
-    // this._drawHigsLows();
-    this._drawSupportsResistances();
+    if (this.indicators._drawTrades) {
+      this._drawTrades();
+    }
+    if (this.indicators._drawHigsLows) {
+      this._drawHigsLows();
+    }
+    if (this.indicators._drawSupportsResistances) {
+      this._drawSupportsResistances();
+    }
   }
 
   _drawTrades() {
@@ -129,12 +149,11 @@ class Klines {
       if (start != null) {
         x = start.x;
       }
-      
+
       let width = x + this.ui.width;
       if (end != null) {
         width = end.x + end.width - x;
       }
-
 
       const startPrice = trade.startPrice;
       const tpPrice = startPrice + trade.takeProfit;
@@ -172,9 +191,7 @@ class Klines {
       const x = candle.x;
       const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
 
-      const force = support.force[5];
-      console.log(force);
-      this.ui.drawRect(x, y, this.ui.width, force + 1, "green");
+      this.ui.drawRect(x, y, this.ui.width, 1, "green");
     });
 
     const resistances = this.datas.localHighs;
@@ -191,8 +208,7 @@ class Klines {
       const x = candle.x;
       const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
 
-      const force = support.force[5];
-      this.ui.drawRect(x, y, this.ui.width, -force - 1, "red");
+      this.ui.drawRect(x, y, this.ui.width, 1, "red");
     });
   }
 

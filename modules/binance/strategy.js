@@ -56,25 +56,25 @@ export default class Strategy {
     const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
     const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
 
-    const forcePriceValue = 50;
+    const forcePriceValue = 20;
     const filterSameLinesValue = 5;
     this.detectLocalHighsLows(kline, lastKline, thirdKline, forcePriceValue);
     this.generateSupportsResitances(forcePriceValue, filterSameLinesValue);
 
     //Updating trades
-    this.trades.forEach((trade) => {
-      const result = trade.update(kline);
+    // this.trades.forEach((trade) => {
+    //   const result = trade.update(kline);
 
-      if (result != null) {
-        this.moneyManager.assignTradeResult(result);
-      }
-    });
+    //   if (result != null) {
+    //     this.moneyManager.assignTradeResult(result);
+    //   }
+    // });
 
-    const trade = this.generateTradeConditions(kline, lastKline);
-    if (trade) {
-      this.trades.push(trade);
-      this.moneyManager.assignTradeStart(trade.result());
-    }
+    // const trade = this.generateTradeConditions(kline, lastKline);
+    // if (trade) {
+    //   this.trades.push(trade);
+    //   this.moneyManager.assignTradeStart(trade.result());
+    // }
 
     this.tickCounter++;
     this.oldTicks.push(this.actualTick);
@@ -202,21 +202,23 @@ export default class Strategy {
       clusterDatas[key.includes("_low") ? "supports" : "resistances"].push(values.reduce((acc, cur) => acc + cur, 0) / values.length);
     });
 
-    if (filterSameLinesValue != 0) {
-      const identicals = {
-        supports: [],
-        resistances: [],
-      };
-      clusterDatas.supports.forEach((support, index) => {
-        const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
-        if (isResistance) {
-          identicals.supports.push(support);
-          identicals.resistances.push(isResistance);
-        }
-      });
-      clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
-      clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
-    }
+    console.log(clusterDatas);
+
+    // if (filterSameLinesValue != 0) {
+    //   const identicals = {
+    //     supports: [],
+    //     resistances: [],
+    //   };
+    //   clusterDatas.supports.forEach((support, index) => {
+    //     const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
+    //     if (isResistance) {
+    //       identicals.supports.push(support);
+    //       identicals.resistances.push(isResistance);
+    //     }
+    //   });
+    //   clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
+    //   clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
+    // }
     this.datas.supports = clusterDatas.supports;
     this.datas.resistances = clusterDatas.resistances;
   }

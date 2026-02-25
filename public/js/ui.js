@@ -6,31 +6,91 @@ class UI extends EventEmitter {
     this.sizes = sizes;
     this.initCanvas();
     this.initTouch();
+    this.initTabParentsButtons();
     this.initTickingMenu();
-
   }
 
+  lateInit(indicators) {
+    this.indicators = indicators;
+    this.initIndicators();
+  }
+
+  initTabParentsButtons() {
+    this.tabParentsButtons = document.querySelectorAll(".tab-parent-btn");
+    this.tabParentsButtonsHandlers = {};
+    this.tabParentsButtons.forEach((tabParentButton) => {
+      this.tabParentsButtonsHandlers[tabParentButton.id] = [];
+      tabParentButton.addEventListener("click", (event) => {
+        this.tabParentsButtons.forEach((tabParentButton) => {
+          if (tabParentButton.id != event.target.id) {
+            tabParentButton.classList.remove("tab-parent-enabled");
+          }
+        });
+        tabParentButton.classList.add("tab-parent-enabled");
+
+        Object.values(this.tabParentsButtonsHandlers).forEach((handlers) => {
+          handlers.forEach((handler) => {
+            handler();
+          });
+        });
+      });
+    });
+  }
 
   initTickingMenu() {
+    this.tickContainer = document.querySelector("#tickContainer");
+    this.tickContainer.classList.add("tab-hidden");
 
-    this.tick1 = document.querySelector("#tick1");
-    this.tick2 = document.querySelector("#tick5");
-    this.tick3 = document.querySelector("#tick10");
-    this.tick4 = document.querySelector("#tick1000");
-
-    this.tick1.addEventListener("click", () => {
-      this.trigger("tick", [1]);
-    });
-    this.tick2.addEventListener("click", () => {
-      this.trigger("tick", [5]);
-    });
-    this.tick3.addEventListener("click", () => {
-      this.trigger("tick", [10]);
-    });
-    this.tick4.addEventListener("click", () => {
-      this.trigger("tick", [1000]);
+    this.tabParentsButtonsHandlers["tab-parent-btn-ticks"].push(() => {
+      const parentEnabled = Array.from(this.tabParentsButtons)
+        .find((tabParentButton) => tabParentButton.id == "tab-parent-btn-ticks")
+        .classList.contains("tab-parent-enabled");
+      if (parentEnabled) {
+        this.tickContainer.classList.remove("tab-hidden");
+      } else {
+        this.tickContainer.classList.add("tab-hidden");
+      }
     });
 
+    const ticks = [1, 5, 10, 1000];
+    ticks.forEach((tick, index) => {
+      const tickButtonSample = ` <button id="tick${tick}" class="${index != 0 ? "ml-2" : ""} glass rounded-md p-2 border-2 border-blue-950">${tick}</button>`;
+      this.tickContainer.insertAdjacentHTML("beforeend", tickButtonSample);
+      const tickButton = document.querySelector(`#tick${tick}`);
+      tickButton.addEventListener("click", () => {
+        this.trigger("tick", [tick]);
+      });
+    });
+  }
+
+  initIndicators() {
+    if (this.indicators == null) {
+      return;
+    }
+    this.indicatorsContainer = document.querySelector("#indicatorsContainer");
+    this.indicatorsContainer.classList.add("tab-hidden");
+
+    this.tabParentsButtonsHandlers["tab-parent-btn-indicator"].push(() => {
+      const parentEnabled = Array.from(this.tabParentsButtons)
+        .find((tabParentButton) => tabParentButton.id == "tab-parent-btn-indicator")
+        .classList.contains("tab-parent-enabled");
+      if (parentEnabled) {
+        this.indicatorsContainer.classList.remove("tab-hidden");
+      } else {
+        this.indicatorsContainer.classList.add("tab-hidden");
+      }
+    });
+
+    Object.keys(this.indicators).forEach((indicator, index) => {
+      const indicatorButtonSample = ` <button id="${indicator}" class="${index != 0 ? "ml-2" : ""} glass rounded-md p-2 border-2 border-blue-950">${indicator.replaceAll("_draw", "")}</button>`;
+      this.indicatorsContainer.insertAdjacentHTML("beforeend", indicatorButtonSample);
+      const indicatorButton = document.querySelector(`#${indicator}`);
+      indicatorButton.addEventListener("click", () => {
+        indicatorButton.classList.toggle("tab-child-enabled");
+
+        this.trigger("indicator", [indicator, indicatorButton.classList.contains("tab-child-enabled")]);
+      });
+    });
   }
 
   onWheel(callback = () => {}) {

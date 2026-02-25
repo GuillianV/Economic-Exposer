@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,31 +7,14 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body class="bg-slate-800 text-slate-200 h-full">
-    <div
-      class="flex absolute top-0 left-1/2 -translate-x-1/2 p-2 m-2 glass text-blue-950 rounded-md flex-col"
-    >
+    <div class="flex absolute top-0 left-1/2 -translate-x-1/2 p-2 m-2 glass text-blue-950 rounded-md flex-col">
       <div class="p-2">
-        <button class="glass rounded-md p-2 border-2 border-blue-950">
-          Ticks
-        </button>
+        <button id="tab-parent-btn-ticks" class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950">Ticks</button>
+        <button id="tab-parent-btn-indicator" class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950">Indicators</button>
       </div>
-      <div class="flex justify-center p-2">
-        <button
-          id="tick1"
-          class="glass rounded-md p-2 border-2 border-blue-950"
-        >
-          1
-        </button>
-        <button  id="tick5" class="glass rounded-md ml-2 p-2 border-2 border-blue-950">
-          5
-        </button>
-        <button  id="tick10" class="glass rounded-md ml-2 p-2 border-2 border-blue-950">
-          10
-        </button>
-        <button  id="tick1000" class="glass rounded-md ml-2 p-2 border-2 border-blue-950">
-          1000
-        </button>
-      </div>
+      <div class="flex justify-center p-2" id="tickContainer"></div>
+
+      <div class="flex justify-center p-2" id="indicatorsContainer"></div>
     </div>
 
     <canvas class="w-full h-screen" id="klines"></canvas>
@@ -60,5 +43,17 @@
   }
   button.glass:hover {
     background: rgba(255, 255, 255, 0.3);
+  }
+
+  .tab-hidden {
+    display: none;
+  }
+
+  .tab-parent-enabled {
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .tab-child-enabled {
+    background: rgba(255, 255, 255, 0.5);
   }
 </style>

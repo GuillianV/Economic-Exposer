@@ -8,6 +8,13 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   const klines = new Klines(ui, window.selectedKlinesOptions);
+  ui.lateInit(klines.getIndicators());
+
+  ui.on("indicator", (indicator, enabled) => {
+    const indicators = klines.getIndicators();
+    indicators[indicator] = enabled;
+    klines.enableDrawingIndicators(indicators);
+  });
 
   ui.on("tick", (number) => {
     ws.send({
@@ -49,5 +56,5 @@ window.addEventListener("DOMContentLoaded", () => {
 
   ws.on("end", (data) => {
     console.log("Ended");
-  })
+  });
 });
