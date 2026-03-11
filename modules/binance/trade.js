@@ -21,16 +21,23 @@ export default class Trade {
     }
     const isTpNegative = this.takeProfit < 0;
     this.priceChange = kline.close - this.startPrice;
-    const overflow = (this.priceChange > 0 ? kline.high : kline.low) - kline.close;
-    this.priceChangePercent = (this.startPrice + this.priceChange + overflow) / this.startPrice;
-
-      if ((!isTpNegative && this.priceChange + overflow > this.takeProfit) || (isTpNegative && this.priceChange + overflow < this.takeProfit)) {
-        return this.trigger("takeProfit", kline);
-      }
-      if ((!isTpNegative && this.priceChange + overflow < this.stopLoss) || (isTpNegative && this.priceChange + overflow > this.stopLoss)) {
-        return this.trigger("stopLoss", kline);
-      }
-  
+    const overflow =
+      (this.priceChange > 0 ? kline.high : kline.low) - kline.close;
+    this.priceChangePercent =
+      (this.startPrice + this.priceChange + overflow) / this.startPrice;
+    this.overflow = overflow;
+    if (
+      (!isTpNegative && this.priceChange + overflow > this.takeProfit) ||
+      (isTpNegative && this.priceChange + overflow < this.takeProfit)
+    ) {
+      return this.trigger("takeProfit", kline);
+    }
+    if (
+      (!isTpNegative && this.priceChange + overflow < this.stopLoss) ||
+      (isTpNegative && this.priceChange + overflow > this.stopLoss)
+    ) {
+      return this.trigger("stopLoss", kline);
+    }
   }
 
   result() {
@@ -44,7 +51,7 @@ export default class Trade {
       startPrice: this.startPrice,
       takeProfit: this.takeProfit,
       stopLoss: this.stopLoss,
-      priceChange: this.priceChange,
+      priceChange: this.priceChange + this.overflow,
       priceChangePercent: this.priceChangePercent,
     };
   }

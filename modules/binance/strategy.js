@@ -23,19 +23,25 @@ export default class Strategy {
   ) {
     this.options = options;
     this.entriesObjects = entriesObjects;
-    this.targetEntriesObjects = this.entriesObjects[options.chain][options.interval];
+    this.targetEntriesObjects =
+      this.entriesObjects[options.chain][options.interval];
     this.targetEntriesArray = Object.entries(this.targetEntriesObjects);
     this.onEndCb = () => {};
-    this.actualTick = parseInt(this.targetEntriesArray[this.targetEntriesArray.length - options.startingTick][0]);
+    this.actualTick = parseInt(
+      this.targetEntriesArray[
+        this.targetEntriesArray.length - options.startingTick
+      ][0],
+    );
     this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
     this.lastTick = this.actualTick - this.intervalMilliseconds;
     this.thirdTick = this.lastTick - this.intervalMilliseconds;
-    this.finalTick = this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
+    this.finalTick =
+      this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
     this.ended = false;
     this.oldTicks = [];
 
     //Money Manager
-    this.moneyManager = new MoneyManager(100, RR[1]);
+    this.moneyManager = new MoneyManager(300, RR[3]);
 
     //Trades
     this.trades = [];
@@ -52,9 +58,18 @@ export default class Strategy {
       this.onEndCb();
       return;
     }
-    const thirdKline = parseSimpleKline(this.targetEntriesObjects[this.thirdTick], this.thirdTick);
-    const lastKline = parseSimpleKline(this.targetEntriesObjects[this.lastTick], this.lastTick);
-    const kline = parseSimpleKline(this.targetEntriesObjects[this.actualTick], this.actualTick);
+    const thirdKline = parseSimpleKline(
+      this.targetEntriesObjects[this.thirdTick],
+      this.thirdTick,
+    );
+    const lastKline = parseSimpleKline(
+      this.targetEntriesObjects[this.lastTick],
+      this.lastTick,
+    );
+    const kline = parseSimpleKline(
+      this.targetEntriesObjects[this.actualTick],
+      this.actualTick,
+    );
 
     const forcePriceValue = 20;
     const filterSameLinesValue = 5;
@@ -67,6 +82,7 @@ export default class Strategy {
 
       if (result != null) {
         this.moneyManager.assignTradeResult(result);
+        console.log(this.moneyManager.getWinrate());
       }
     });
 
@@ -106,12 +122,19 @@ export default class Strategy {
       return lastLocal;
     }
 
-    if ((!actualGreen || !lastGreen || !thirdGreen) && lastKline.low < actualKline.low && thirdKline.low > lastKline.low) {
+    if (
+      (!actualGreen || !lastGreen || !thirdGreen) &&
+      lastKline.low < actualKline.low &&
+      thirdKline.low > lastKline.low
+    ) {
       const lastLocalLow = generateLastLocal(lastKline.close);
       for (let j = 0; j < thresholds.length; j++) {
         const threshold = thresholds[j];
         const nearestLows = localLowsValues.filter((ll) => {
-          return ll.value - threshold < lastLocalLow.value && ll.value + threshold > lastLocalLow.value;
+          return (
+            ll.value - threshold < lastLocalLow.value &&
+            ll.value + threshold > lastLocalLow.value
+          );
         });
 
         if (nearestLows != null) {
@@ -124,13 +147,20 @@ export default class Strategy {
       localLows[lastKline.time] = lastLocalLow;
     }
 
-    if ((actualGreen || lastGreen || thirdGreen) && lastKline.high > actualKline.high && thirdKline.high < lastKline.high) {
+    if (
+      (actualGreen || lastGreen || thirdGreen) &&
+      lastKline.high > actualKline.high &&
+      thirdKline.high < lastKline.high
+    ) {
       const lastLocalHigh = generateLastLocal(lastKline.close);
 
       for (let j = 0; j < thresholds.length; j++) {
         const threshold = thresholds[j];
         const nearestHighs = localHighsValues.filter((ll) => {
-          return ll.value - threshold < lastLocalHigh.value && ll.value + threshold > lastLocalHigh.value;
+          return (
+            ll.value - threshold < lastLocalHigh.value &&
+            ll.value + threshold > lastLocalHigh.value
+          );
         });
 
         if (nearestHighs != null) {
@@ -162,7 +192,8 @@ export default class Strategy {
     ];
 
     const localGroups = localExtremes.reduce((acc, item) => {
-      const group = item.force[forceValue].length == 0 ? "uniques" : "multiples";
+      const group =
+        item.force[forceValue].length == 0 ? "uniques" : "multiples";
       if (!acc[group]) acc[group] = [];
       acc[group].push(item);
       return acc;
@@ -181,7 +212,9 @@ export default class Strategy {
       cluster[`${index}_${extreme.type}`] = [extreme.value];
       const times = extreme.force[forceValue];
       times.forEach((time) => {
-        const multipleFound = multiples.find((multiple) => multiple.time == time && multiple.type == extreme.type);
+        const multipleFound = multiples.find(
+          (multiple) => multiple.time == time && multiple.type == extreme.type,
+        );
         if (multipleFound != null) {
           multipleFound.used = true;
           cluster[`${index}_${extreme.type}`].push(multipleFound.value);
@@ -195,11 +228,15 @@ export default class Strategy {
     };
 
     uniques.forEach((unique) => {
-      clusterDatas[unique.type == "low" ? "supports" : "resistances"].push(unique.value);
+      clusterDatas[unique.type == "low" ? "supports" : "resistances"].push(
+        unique.value,
+      );
     });
 
     Object.entries(cluster).forEach(([key, values]) => {
-      clusterDatas[key.includes("_low") ? "supports" : "resistances"].push(values.reduce((acc, cur) => acc + cur, 0) / values.length);
+      clusterDatas[key.includes("_low") ? "supports" : "resistances"].push(
+        values.reduce((acc, cur) => acc + cur, 0) / values.length,
+      );
     });
 
     if (filterSameLinesValue != 0) {
@@ -208,14 +245,24 @@ export default class Strategy {
         resistances: [],
       };
       clusterDatas.supports.forEach((support, index) => {
-        const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
+        const isResistance = clusterDatas.resistances.find(
+          (resistance) =>
+            (resistance > support &&
+              resistance - filterSameLinesValue < support) ||
+            (resistance < support &&
+              resistance + filterSameLinesValue > support),
+        );
         if (isResistance) {
           identicals.supports.push(support);
           identicals.resistances.push(isResistance);
         }
       });
-      clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
-      clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
+      clusterDatas.supports = clusterDatas.supports.filter(
+        (support) => !identicals.supports.includes(support),
+      );
+      clusterDatas.resistances = clusterDatas.resistances.filter(
+        (resistance) => !identicals.resistances.includes(resistance),
+      );
     }
     this.datas.supports = clusterDatas.supports;
     this.datas.resistances = clusterDatas.resistances;
@@ -230,14 +277,38 @@ export default class Strategy {
       return;
     }
 
-    if (lastGreen && resistances.find((resistance) => resistance > lastKline.open && resistance < lastKline.close) && !actualGreen) {
-      return this.moneyManager.generateTrade(this.actualTick, actualKline.open, {
-        stopLoss: 300,
-      });
-    } else if (!lastGreen && supports.find((support) => support < lastKline.open && support > lastKline.close) && actualGreen && this.moneyManager.canStartTrade()) {
-      return this.moneyManager.generateTrade(this.actualTick, actualKline.open, {
-        takeProfit: 300,
-      });
+    if (
+      lastGreen &&
+      resistances.find(
+        (resistance) =>
+          resistance > lastKline.open && resistance < lastKline.close,
+      ) &&
+      !actualGreen
+    ) {
+      return this.moneyManager.generateTrade(
+        this.actualTick,
+        actualKline.open,
+        {
+          stopLoss: 200,
+          lot: 0.5,
+        },
+      );
+    } else if (
+      !lastGreen &&
+      supports.find(
+        (support) => support < lastKline.open && support > lastKline.close,
+      ) &&
+      actualGreen &&
+      this.moneyManager.canStartTrade()
+    ) {
+      return this.moneyManager.generateTrade(
+        this.actualTick,
+        actualKline.open,
+        {
+          takeProfit: 200,
+          lot: 0.5,
+        },
+      );
     }
   }
 

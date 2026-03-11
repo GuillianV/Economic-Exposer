@@ -22,11 +22,28 @@ export default class MoneyManager {
     return this.currecyCapital;
   }
 
+  getWinrate() {
+    const values = Object.values(this.trades);
+
+    const tps = values.filter(
+      (value) => value.tradeResult == "takeProfit",
+    ).length;
+    const alls = values.filter((value) => value.triggered == true).length;
+
+
+    return {
+      winners : tps,
+      alls : alls,
+      losers : alls - tps,
+      winrate : tps / alls
+    }
+  }
+
   assignTradeStart(tradeResult) {
     const quoteCapital = this._applyFees(tradeResult.capitalToBuy);
     this.currecyCapital -= tradeResult.capitalToBuy;
     this.quoteCapital += quoteCapital;
-    this.trades[tradeResult.id] = quoteCapital;
+    this.trades[tradeResult.id] = { ...tradeResult, quoteCapital };
   }
 
   _applyFees(amount) {
@@ -34,14 +51,25 @@ export default class MoneyManager {
   }
 
   assignTradeResult(tradeResult) {
-    const quoteCapital = this.trades[tradeResult.id];
-    const variationPricePercent = tradeResult.takeProfit > 0 ? tradeResult.priceChangePercent : 1 + 1 - tradeResult.priceChangePercent;
-    const quoteCapitalAfterTrade = quoteCapital * variationPricePercent;
-    console.log(quoteCapitalAfterTrade);
-    const quoteCapitalAfterFees = this._applyFees(quoteCapitalAfterTrade);
-    this.currecyCapital += quoteCapitalAfterFees;
+    const quoteCapital = this.trades[tradeResult.id].quoteCapital;
+    tradeResult.priceChangePercent =
+      tradeResult.takeProfit > 0
+        ? tradeResult.priceChangePercent
+        : 1 + 1 - tradeResult.priceChangePercent;
+    const baseCapitalAfterTrade = quoteCapital * tradeResult.priceChangePercent;
+    const baseCapitalAfterTradeFees = this._applyFees(baseCapitalAfterTrade );
+    this.currecyCapital += baseCapitalAfterTradeFees;
     this.quoteCapital -= quoteCapital;
-    delete this.trades[tradeResult.id];
+    this.trades[tradeResult.id] = {
+      ...this.trades[tradeResult.id],
+      ...tradeResult,
+      baseCapitalAfterTrade,
+      baseCapitalAfterTradeFees,
+    };
+
+    console.log( this.trades[tradeResult.id] );
+    console.log(this.currecyCapital)
+    console.log(this.quoteCapital)
   }
 
   retrieve() {
@@ -53,13 +81,16 @@ export default class MoneyManager {
   generateTrade(startTick, startPrice, rroptions) {
     let takeProfit = 0;
     let stopLoss = 0;
+    let lot = rroptions.lot;
 
     if (rroptions.takeProfit != null) {
       takeProfit = rroptions.takeProfit;
       stopLoss = -(rroptions.takeProfit / this.rr.rr);
+    
     } else if (rroptions.stopLoss != null) {
       stopLoss = rroptions.stopLoss;
-      takeProfit = -(rroptions.stopLoss / this.rr.rr);
+      takeProfit = -(rroptions.stopLoss * this.rr.rr);
+      lot = lot / this.rr.rr
     }
 
     const options = {
@@ -67,7 +98,8 @@ export default class MoneyManager {
       startPrice: startPrice,
       takeProfit: takeProfit,
       stopLoss: stopLoss,
-      capitalToBuy: this.availableCapital(),
+      capitalToBuy: this.availableCapital() * lot,
+      lot
     };
 
     const trade = new Trade(options);
