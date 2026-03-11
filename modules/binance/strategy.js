@@ -1,7 +1,7 @@
 import { intervalToSeconds } from "../utils.js";
-import MoneyManager from "./money-manager.js";
+import MoneyManager, { RR } from "./money-manager.js";
 import { parseSimpleKline } from "./parsers/kline.js";
-import Trade, { TradeFlatOptions } from "./trade.js";
+import Trade from "./trade.js";
 import util from "util";
 
 export default class Strategy {
@@ -35,7 +35,7 @@ export default class Strategy {
     this.oldTicks = [];
 
     //Money Manager
-    this.moneyManager = new MoneyManager(1000);
+    this.moneyManager = new MoneyManager(100, RR[1]);
 
     //Trades
     this.trades = [];
@@ -62,19 +62,19 @@ export default class Strategy {
     this.generateSupportsResitances(forcePriceValue, filterSameLinesValue);
 
     //Updating trades
-    // this.trades.forEach((trade) => {
-    //   const result = trade.update(kline);
+    this.trades.forEach((trade) => {
+      const result = trade.update(kline);
 
-    //   if (result != null) {
-    //     this.moneyManager.assignTradeResult(result);
-    //   }
-    // });
+      if (result != null) {
+        this.moneyManager.assignTradeResult(result);
+      }
+    });
 
-    // const trade = this.generateTradeConditions(kline, lastKline);
-    // if (trade) {
-    //   this.trades.push(trade);
-    //   this.moneyManager.assignTradeStart(trade.result());
-    // }
+    const trade = this.generateTradeConditions(kline, lastKline);
+    if (trade) {
+      this.trades.push(trade);
+      this.moneyManager.assignTradeStart(trade.result());
+    }
 
     this.tickCounter++;
     this.oldTicks.push(this.actualTick);
@@ -202,23 +202,21 @@ export default class Strategy {
       clusterDatas[key.includes("_low") ? "supports" : "resistances"].push(values.reduce((acc, cur) => acc + cur, 0) / values.length);
     });
 
-    console.log(clusterDatas);
-
-    // if (filterSameLinesValue != 0) {
-    //   const identicals = {
-    //     supports: [],
-    //     resistances: [],
-    //   };
-    //   clusterDatas.supports.forEach((support, index) => {
-    //     const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
-    //     if (isResistance) {
-    //       identicals.supports.push(support);
-    //       identicals.resistances.push(isResistance);
-    //     }
-    //   });
-    //   clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
-    //   clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
-    // }
+    if (filterSameLinesValue != 0) {
+      const identicals = {
+        supports: [],
+        resistances: [],
+      };
+      clusterDatas.supports.forEach((support, index) => {
+        const isResistance = clusterDatas.resistances.find((resistance) => (resistance > support && resistance - filterSameLinesValue < support) || (resistance < support && resistance + filterSameLinesValue > support));
+        if (isResistance) {
+          identicals.supports.push(support);
+          identicals.resistances.push(isResistance);
+        }
+      });
+      clusterDatas.supports = clusterDatas.supports.filter((support) => !identicals.supports.includes(support));
+      clusterDatas.resistances = clusterDatas.resistances.filter((resistance) => !identicals.resistances.includes(resistance));
+    }
     this.datas.supports = clusterDatas.supports;
     this.datas.resistances = clusterDatas.resistances;
   }
@@ -227,11 +225,19 @@ export default class Strategy {
     const { supports, resistances } = this.datas;
     const lastGreen = lastKline.open < lastKline.close;
     const actualGreen = actualKline.open < actualKline.close;
-    // if (lastGreen && resistances.find((resistance) => resistance > lastKline.open && resistance < lastKline.close) && !actualGreen) {
-    //   // return new Trade(new TradeFlatOptions(this.actualTick, actualKline.open, 100, -100, 100));
-    // }
-    if (!lastGreen && supports.find((support) => support < lastKline.open && support > lastKline.close) && actualGreen && this.moneyManager.canStartTrade()) {
-      return new Trade(new TradeFlatOptions(this.actualTick, actualKline.open, this.moneyManager.availableCapital(), 200, -100));
+
+    if (this.trades.find((trade) => !trade.triggered)) {
+      return;
+    }
+
+    if (lastGreen && resistances.find((resistance) => resistance > lastKline.open && resistance < lastKline.close) && !actualGreen) {
+      return this.moneyManager.generateTrade(this.actualTick, actualKline.open, {
+        stopLoss: 300,
+      });
+    } else if (!lastGreen && supports.find((support) => support < lastKline.open && support > lastKline.close) && actualGreen && this.moneyManager.canStartTrade()) {
+      return this.moneyManager.generateTrade(this.actualTick, actualKline.open, {
+        takeProfit: 300,
+      });
     }
   }
 
