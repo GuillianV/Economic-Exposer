@@ -11,6 +11,7 @@ export default class Trade {
     this.takeProfit = tradeOption.takeProfit;
     this.stopLoss = tradeOption.stopLoss;
     this.capitalToBuy = tradeOption.capitalToBuy;
+    this.lot = tradeOption.lot;
     this.tradeResult = null;
     this.id = uuid();
   }
@@ -53,6 +54,7 @@ export default class Trade {
       stopLoss: this.stopLoss,
       priceChange: this.priceChange + this.overflow,
       priceChangePercent: this.priceChangePercent,
+      lot: this.lot,
     };
   }
 
