@@ -1,8 +1,8 @@
 import Trade from "./trade.js";
 
 /**
- * Gestionnaire de capital, frais et statistiques de trades
- * Adapté à ton setup : 100 € de capital + VIP 0 + paiement en BNB
+ * Gestionnaire de capital, frais de trading ET frais d’emprunt horaires (Margin Isolated)
+ * Adapté à ton setup : 100 € + VIP 0 + BNB (frais trading 0,075 % + intérêt USDT horaire)
  */
 export default class MoneyManager {
   /**
@@ -11,22 +11,27 @@ export default class MoneyManager {
   currencyCapital = 0;
 
   /**
+   * Capital engagé dans les positions ouvertes
+   */
+  quoteCapital = 0;
+
+  /**
    * Capital de départ (pour stats)
    */
   baseCapital = 0;
 
   /**
-   * Frais Binance (round-trip)
-   * → 0.075 % avec BNB activé (VIP 0) comme dans tes trades
+   * Frais de trading round-trip (avec BNB)
    */
-  binanceFees = 0.00075;
+  binanceTradingFeeRate = 0.00075;
 
-  /** Binance Location per Hours fees
-   * → 0.0000035788 % avec BNB activé (VIP 0) comme dans tes trades
-   */
-  binanceLocationPerHoursFees = 0.0000035788;
   /**
-   * Historique des trades (clé = id)
+   * Taux d’intérêt horaire d’emprunt USDT (Margin Isolated)
+   */
+  binanceHourlyBorrowRate = 0.0000035788;
+
+  /**
+   * Historique complet des trades (clé = id)
    */
   trades = {};
 
@@ -38,6 +43,7 @@ export default class MoneyManager {
   constructor(baseCapital, rr) {
     this.baseCapital = baseCapital;
     this.currencyCapital = baseCapital;
+    this.quoteCapital = 0;
     this.rr = rr;
   }
 
@@ -49,104 +55,133 @@ export default class MoneyManager {
   }
 
   /**
-   * Capital disponible pour un nouveau trade
+   * Capital disponible immédiatement
    */
   availableCapital() {
     return this.currencyCapital;
   }
 
+  // ====================== MÉTHODES PRIVÉES DE CALCUL ======================
+
   /**
-   * Applique les frais Binance (factorisé)
+   * Retourne uniquement le montant des frais de trading
    */
-  #applyFees(amount) {
-    return amount - amount * (1 - this.binanceFees);
-  }
-
-  #applyLocationPerHoursFees(amount, hours) {
-    return amount - amount * (1 - this.binanceLocationPerHoursFees * hours);
+  #calculateTradingFee(amount) {
+    return amount * this.binanceTradingFeeRate;
   }
 
   /**
-   * Statistiques de performance
-   * (winrate sécurisé, pas de NaN si aucun trade)
+   * Retourne uniquement le coût des intérêts d’emprunt
+   * (appliqué sur la valeur de la position après trade)
+   */
+  #calculateBorrowInterest(grossAmount, hours) {
+    return grossAmount * this.binanceHourlyBorrowRate * hours;
+  }
+
+  // ====================== ASSIGNATION DES TRADES ======================
+
+  /**
+   * Enregistre l’ouverture d’un trade (achat + frais d’entrée)
+   */
+  assignTradeStart(trade) {
+    const entryFee = this.#calculateTradingFee(trade.capitalToBuy);
+    const quoteAfterFees = trade.capitalToBuy - entryFee;
+
+    // On retire tout le capital investi du wallet
+    this.currencyCapital -= trade.capitalToBuy;
+    // On ajoute le montant net reçu en position
+    this.quoteCapital += quoteAfterFees;
+
+    this.trades[trade.id] = {
+      ...trade,
+      quoteCapital: quoteAfterFees,
+      fees: [entryFee], // frais d’entrée
+    };
+  }
+
+  /**
+   * Enregistre la fermeture d’un trade (vente + frais de sortie + intérêts)
+   */
+  assignTradeResult(closedTrade) {
+    const openTrade = this.trades[closedTrade.id];
+    if (!openTrade) return;
+
+    const { quoteCapital: borrowedNet, fees: existingFees } = openTrade;
+
+    // === 1. Calcul du % de variation (logique originale conservée) ===
+    const priceChangePercent =
+      closedTrade.takeProfit > 0
+        ? closedTrade.priceChangePercent
+        : 2 - closedTrade.priceChangePercent;
+
+    // === 2. Valeur brute après mouvement de prix ===
+    const grossValueAfterPriceMove = borrowedNet * priceChangePercent;
+
+    // === 3. Durée du trade en heures ===
+    const tradeDurationHours =
+      (closedTrade.endTick - closedTrade.startTick) / 1000 / 60 / 60;
+
+    // === 4. Frais de sortie + intérêts d’emprunt ===
+    const exitTradingFee = this.#calculateTradingFee(grossValueAfterPriceMove);
+    const borrowInterest = this.#calculateBorrowInterest(
+      grossValueAfterPriceMove,
+      tradeDurationHours,
+    );
+
+    // === 5. Capital net qui revient dans le wallet ===
+    const finalNetCapital =
+      grossValueAfterPriceMove - exitTradingFee - borrowInterest;
+
+    // Mise à jour du capital global
+    this.currencyCapital += finalNetCapital;
+    this.quoteCapital -= borrowedNet;
+
+    // === 6. Mise à jour complète du trade dans l’historique ===
+    const allFees = [...existingFees, exitTradingFee, borrowInterest];
+    const totalFees = allFees.reduce((sum, fee) => sum + fee, 0);
+
+    this.trades[closedTrade.id] = {
+      ...openTrade,
+      ...closedTrade,
+      priceChangePercent,
+      baseCapitalAfterTrade: grossValueAfterPriceMove,
+      baseCapitalAfterTradeFees: finalNetCapital,
+      fees: allFees,
+      totalFees,
+      rawEarnedCapital: finalNetCapital + totalFees - closedTrade.capitalToBuy,
+      finalEarnedCapital: finalNetCapital - closedTrade.capitalToBuy,
+    };
+
+    console.log(this.trades[closedTrade.id]);
+  }
+
+  // ====================== STATS & GÉNÉRATION ======================
+
+  /**
+   * Statistiques de performance (winrate + winrate requis théorique)
    */
   getWinrate() {
-    const tradeResults = Object.values(this.trades);
-    const winners = tradeResults.filter(
+    const allTrades = Object.values(this.trades);
+    const winners = allTrades.filter(
       (t) => t.tradeResult === "takeProfit",
     ).length;
-    const total = tradeResults.filter((t) => t.triggered === true).length;
+    const totalClosed = allTrades.filter((t) => t.triggered === true).length;
 
     return {
       winners,
-      total,
-      losers: total - winners,
-      winrate: total > 0 ? winners / total : 0,
+      total: totalClosed,
+      losers: totalClosed - winners,
+      winrate: totalClosed > 0 ? winners / totalClosed : 0,
       winratePercent:
-        total > 0 ? `${((winners / total) * 100).toFixed(1)}%` : "0%",
-      requiredWinrate: `${this.rr.winrate * 100}.0%`,
+        totalClosed > 0
+          ? `${((winners / totalClosed) * 100).toFixed(1)}%`
+          : "0%",
+      requiredWinrate: `${(this.rr.winrate * 100).toFixed(1)}%`,
     };
   }
 
   /**
-   * Enregistre le départ d’un trade (achat + frais)
-   */
-  assignTradeStart(tradeResult) {
-    const startingFees = this.#applyFees(tradeResult.capitalToBuy);
-    const quoteAfterFees = tradeResult.capitalToBuy - startingFees;
-    this.currencyCapital -= tradeResult.capitalToBuy;
-
-    this.trades[tradeResult.id] = {
-      tradeResult,
-      quoteCapital: quoteAfterFees,
-      fees: [startingFees],
-    };
-  }
-
-  /**
-   * Enregistre le résultat d’un trade fermé (vente + frais)
-   * Logique originale conservée (y compris le calcul pour les shorts/loss)
-   */
-  assignTradeResult(finalTradeResult) {
-    const { quoteCapital, tradeResult, fees } =
-      this.trades[finalTradeResult.id];
-    // Calcul du % de variation (hack original pour les pertes/shorts)
-    const priceChangePercent =
-      finalTradeResult.takeProfit > 0
-        ? finalTradeResult.priceChangePercent
-        : 2 - finalTradeResult.priceChangePercent;
-
-    const tradeTimeHours =
-      (finalTradeResult.endTick - finalTradeResult.startTick) / 1000 / 60 / 60;
-
-    const baseAfterTrade = quoteCapital * priceChangePercent;
-    const feesAfterTrade = this.#applyFees(baseAfterTrade);
-    const locationFeesAfterTrade = this.#applyLocationPerHoursFees(
-      baseAfterTrade,
-      tradeTimeHours,
-    );
-
-    this.currencyCapital +=
-      baseAfterTrade - locationFeesAfterTrade - feesAfterTrade;
-
-    fees.push(feesAfterTrade);
-    fees.push(locationFeesAfterTrade);
-
-    // Mise à jour complète du trade
-    this.trades[tradeResult.id] = {
-      tradeResult: finalTradeResult,
-      fees,
-      quoteCapital,
-      priceChangePercent,
-      baseCapitalAfterTrade: baseAfterTrade,
-      baseCapitalAfterTradeFees:
-        baseAfterTrade - feesAfterTrade - locationFeesAfterTrade,
-    };
-    console.log(this.trades[tradeResult.id]);
-  }
-
-  /**
-   * Génère un nouvel objet Trade avec SL/TP selon le RR
+   * Génère un nouvel objet Trade avec SL/TP calculés selon le RR
    */
   generateTrade(startTick, startPrice, rroptions) {
     let takeProfit = 0;
@@ -154,11 +189,11 @@ export default class MoneyManager {
     let lot = rroptions.lot ?? 0.5;
 
     if (rroptions.takeProfit != null) {
-      // Trade Long
+      // Long
       takeProfit = rroptions.takeProfit;
       stopLoss = -(rroptions.takeProfit / this.rr.rr);
     } else if (rroptions.stopLoss != null) {
-      // Trade Short
+      // Short
       stopLoss = rroptions.stopLoss;
       takeProfit = -(rroptions.stopLoss * this.rr.rr);
       lot = lot / this.rr.rr;
@@ -177,7 +212,7 @@ export default class MoneyManager {
   }
 
   /**
-   * Récupère l’état pour le backtest / export
+   * Récupère l’état complet pour le backtest/export
    */
   retrieve() {
     return {
@@ -192,7 +227,6 @@ export default class MoneyManager {
 
 /**
  * Ratios Risk/Reward prêts à l’emploi
- * Utilisation : RR[3] → { winrate: 0.25, rr: 3 }
  */
 export const RR = {
   0.33: { winrate: 0.75, rr: 0.33 },
