@@ -1,9 +1,5 @@
 import Trade from "./trade.js";
 
-/**
- * Gestionnaire de capital, frais de trading ET frais d’emprunt horaires (Margin Isolated)
- * Adapté à ton setup : 100 € + VIP 0 + BNB (frais trading 0,075 % + intérêt USDT horaire)
- */
 export default class MoneyManager {
   /**
    * Capital disponible en devise de base (USDT / €)
@@ -40,6 +36,21 @@ export default class MoneyManager {
    */
   rr;
 
+  /**
+   * Suivi des moyennes pour le calcul du winrate requis
+   * (gardé exactement comme avant, même nom "median" même si c’est une moyenne)
+   */
+  averagePositions = {
+    medianRisk: [],
+    medianDuration: [],
+    medianPosition: [],
+  };
+
+  /**
+   * Winrate moyen (non utilisé actuellement, conservé pour compatibilité)
+   */
+  averageWinrate = 0;
+
   constructor(baseCapital, rr) {
     this.baseCapital = baseCapital;
     this.currencyCapital = baseCapital;
@@ -47,21 +58,13 @@ export default class MoneyManager {
     this.rr = rr;
   }
 
-  /**
-   * Peut-on ouvrir un nouveau trade ?
-   */
   canStartTrade() {
     return this.currencyCapital > 0;
   }
 
-  /**
-   * Capital disponible immédiatement
-   */
   availableCapital() {
     return this.currencyCapital;
   }
-
-  // ====================== MÉTHODES PRIVÉES DE CALCUL ======================
 
   /**
    * Retourne uniquement le montant des frais de trading
@@ -72,94 +75,38 @@ export default class MoneyManager {
 
   /**
    * Retourne uniquement le coût des intérêts d’emprunt
-   * (appliqué sur la valeur de la position après trade)
    */
   #calculateBorrowInterest(grossAmount, hours) {
     return grossAmount * this.binanceHourlyBorrowRate * hours;
   }
 
-  // ====================== ASSIGNATION DES TRADES ======================
-
   /**
-   * Enregistre l’ouverture d’un trade (achat + frais d’entrée)
+   * Met à jour les tableaux de suivi (exactement comme avant)
    */
-  assignTradeStart(trade) {
-    const entryFee = this.#calculateTradingFee(trade.capitalToBuy);
-    const quoteAfterFees = trade.capitalToBuy - entryFee;
-
-    // On retire tout le capital investi du wallet
-    this.currencyCapital -= trade.capitalToBuy;
-    // On ajoute le montant net reçu en position
-    this.quoteCapital += quoteAfterFees;
-
-    this.trades[trade.id] = {
-      ...trade,
-      quoteCapital: quoteAfterFees,
-      fees: [entryFee], // frais d’entrée
-    };
+  #updateAveragePositions(tradeDurationHours, riskAmount, position) {
+    this.averagePositions.medianDuration.push(tradeDurationHours);
+    this.averagePositions.medianRisk.push(riskAmount);
+    this.averagePositions.medianPosition.push(position);
   }
 
   /**
-   * Enregistre la fermeture d’un trade (vente + frais de sortie + intérêts)
+   * Calcule les moyennes utilisées dans getWinrate (modulaire et précis)
    */
-  assignTradeResult(closedTrade) {
-    const openTrade = this.trades[closedTrade.id];
-    if (!openTrade) return;
+  #getAverageStats() {
+    const pos = this.averagePositions.medianPosition;
+    const risk = this.averagePositions.medianRisk;
+    const dur = this.averagePositions.medianDuration;
 
-    const { quoteCapital: borrowedNet, fees: existingFees } = openTrade;
-
-    // === 1. Calcul du % de variation (logique originale conservée) ===
-    const priceChangePercent =
-      closedTrade.takeProfit > 0
-        ? closedTrade.priceChangePercent
-        : 2 - closedTrade.priceChangePercent;
-
-    // === 2. Valeur brute après mouvement de prix ===
-    const grossValueAfterPriceMove = borrowedNet * priceChangePercent;
-
-    // === 3. Durée du trade en heures ===
-    const tradeDurationHours =
-      (closedTrade.endTick - closedTrade.startTick) / 1000 / 60 / 60;
-
-    // === 4. Frais de sortie + intérêts d’emprunt ===
-    const exitTradingFee = this.#calculateTradingFee(grossValueAfterPriceMove);
-    const borrowInterest = this.#calculateBorrowInterest(
-      grossValueAfterPriceMove,
-      tradeDurationHours,
-    );
-
-    // === 5. Capital net qui revient dans le wallet ===
-    const finalNetCapital =
-      grossValueAfterPriceMove - exitTradingFee - borrowInterest;
-
-    // Mise à jour du capital global
-    this.currencyCapital += finalNetCapital;
-    this.quoteCapital -= borrowedNet;
-
-    // === 6. Mise à jour complète du trade dans l’historique ===
-    const allFees = [...existingFees, exitTradingFee, borrowInterest];
-    const totalFees = allFees.reduce((sum, fee) => sum + fee, 0);
-
-    this.trades[closedTrade.id] = {
-      ...openTrade,
-      ...closedTrade,
-      priceChangePercent,
-      baseCapitalAfterTrade: grossValueAfterPriceMove,
-      baseCapitalAfterTradeFees: finalNetCapital,
-      fees: allFees,
-      totalFees,
-      rawEarnedCapital: finalNetCapital + totalFees - closedTrade.capitalToBuy,
-      finalEarnedCapital: finalNetCapital - closedTrade.capitalToBuy,
+    return {
+      averagePosition:
+        pos.length > 0 ? pos.reduce((sum, v) => sum + v, 0) / pos.length : 0,
+      averageRisk:
+        risk.length > 0 ? risk.reduce((sum, v) => sum + v, 0) / risk.length : 0,
+      averageDuration:
+        dur.length > 0 ? dur.reduce((sum, v) => sum + v, 0) / dur.length : 0,
     };
-
-    console.log(this.trades[closedTrade.id]);
   }
 
-  // ====================== STATS & GÉNÉRATION ======================
-
-  /**
-   * Statistiques de performance (winrate + winrate requis théorique)
-   */
   getWinrate() {
     const allTrades = Object.values(this.trades);
     const winners = allTrades.filter(
@@ -167,33 +114,64 @@ export default class MoneyManager {
     ).length;
     const totalClosed = allTrades.filter((t) => t.triggered === true).length;
 
+    // Récupération des moyennes via module privé (résultat identique)
+    const requiredWinrate = this.#getAverageStats();
+
+    // Calcul exact du requiredWinrateRaw (identique à l’original)
+    const requiredWinrateRaw = this.getRequiredWinrateForRR(
+      this.rr.rr,
+      requiredWinrate.averagePosition,
+      requiredWinrate.averageRisk,
+      requiredWinrate.averageDuration,
+    );
+
     return {
       winners,
       total: totalClosed,
       losers: totalClosed - winners,
       winrate: totalClosed > 0 ? winners / totalClosed : 0,
+      requiredWinrate: requiredWinrateRaw,
       winratePercent:
         totalClosed > 0
           ? `${((winners / totalClosed) * 100).toFixed(1)}%`
           : "0%",
-      requiredWinrate: `${(this.rr.winrate * 100).toFixed(1)}%`,
+      requiredWinratePercent: `${(requiredWinrateRaw * 100).toFixed(1)}%`,
     };
   }
 
   /**
-   * Génère un nouvel objet Trade avec SL/TP calculés selon le RR
+   * Calcule le winrate minimum requis pour un RR donné
+   * Position et riskAmount sont obligatoires en pratique (appelé avec les moyennes)
    */
+  getRequiredWinrateForRR(
+    targetRR = 1,
+    position = 0,
+    riskAmount = 0,
+    avgDurationHours = 2,
+  ) {
+    // Calcul exact identique à l’original
+    const tradingFees = 2 * this.#calculateTradingFee(position);
+    const borrowInterest = this.#calculateBorrowInterest(
+      position,
+      avgDurationHours,
+    );
+    const totalFeesF = tradingFees + borrowInterest;
+
+    const F_over_R = totalFeesF / riskAmount;
+
+    const requiredWinrate = (1 + F_over_R) / (1 + targetRR);
+    return parseFloat(requiredWinrate.toFixed(4));
+  }
+
   generateTrade(startTick, startPrice, rroptions) {
     let takeProfit = 0;
     let stopLoss = 0;
     let lot = rroptions.lot ?? 0.5;
 
     if (rroptions.takeProfit != null) {
-      // Long
       takeProfit = rroptions.takeProfit;
       stopLoss = -(rroptions.takeProfit / this.rr.rr);
     } else if (rroptions.stopLoss != null) {
-      // Short
       stopLoss = rroptions.stopLoss;
       takeProfit = -(rroptions.stopLoss * this.rr.rr);
       lot = lot / this.rr.rr;
@@ -211,9 +189,88 @@ export default class MoneyManager {
     return new Trade(options);
   }
 
-  /**
-   * Récupère l’état complet pour le backtest/export
-   */
+  assignTradeStart(trade) {
+    const entryFee = this.#calculateTradingFee(trade.capitalToBuy);
+    const quoteAfterFees = trade.capitalToBuy - entryFee;
+
+    this.currencyCapital -= trade.capitalToBuy;
+    this.quoteCapital += quoteAfterFees;
+
+    this.trades[trade.id] = {
+      ...trade,
+      quoteCapital: quoteAfterFees,
+      fees: [entryFee],
+    };
+  }
+
+  assignTradeResult(closedTrade) {
+    const openTrade = this.trades[closedTrade.id];
+    if (!openTrade) return;
+
+    const { quoteCapital: borrowedNet, fees: existingFees } = openTrade;
+
+    // === 1. Calcul du % de variation (exactement comme avant) ===
+    const priceChangePercent =
+      closedTrade.takeProfit > 0
+        ? closedTrade.priceChangePercent
+        : 2 - closedTrade.priceChangePercent;
+
+    // === 2. Valeur brute après mouvement ===
+    const grossValueAfterPriceMove = borrowedNet * priceChangePercent;
+
+    // === 3. Durée en heures ===
+    const tradeDurationHours =
+      (closedTrade.endTick - closedTrade.startTick) / 1000 / 60 / 60;
+
+    // === 4. Frais de sortie + intérêts ===
+    const exitTradingFee = this.#calculateTradingFee(grossValueAfterPriceMove);
+    const borrowInterest = this.#calculateBorrowInterest(
+      grossValueAfterPriceMove,
+      tradeDurationHours,
+    );
+
+    // === 5. Capital net qui revient ===
+    const finalNetCapital =
+      grossValueAfterPriceMove - exitTradingFee - borrowInterest;
+
+    // Mise à jour capital global
+    this.currencyCapital += finalNetCapital;
+    this.quoteCapital -= borrowedNet;
+
+    // === 6. Mise à jour du trade dans l’historique (exact) ===
+    const allFees = [...existingFees, exitTradingFee, borrowInterest];
+    const totalFees = allFees.reduce((sum, fee) => sum + fee, 0);
+
+    this.trades[closedTrade.id] = {
+      ...openTrade,
+      ...closedTrade,
+      priceChangePercent,
+      baseCapitalAfterTrade: grossValueAfterPriceMove,
+      baseCapitalAfterTradeFees: finalNetCapital,
+      fees: allFees,
+      totalFees,
+      rawEarnedCapital: finalNetCapital + totalFees - closedTrade.capitalToBuy,
+      finalEarnedCapital: finalNetCapital - closedTrade.capitalToBuy,
+    };
+
+    // === Calcul du risque absolu (exactement comme avant) ===
+    let absolutePriceChangePercent = priceChangePercent;
+    if (priceChangePercent > 1) {
+      absolutePriceChangePercent = 2 - priceChangePercent;
+    }
+
+    const riskAmount =
+      closedTrade.capitalToBuy -
+      closedTrade.capitalToBuy * absolutePriceChangePercent;
+
+    // Mise à jour des stats via module privé (comportement identique)
+    this.#updateAveragePositions(
+      tradeDurationHours,
+      riskAmount,
+      closedTrade.capitalToBuy,
+    );
+  }
+
   retrieve() {
     return {
       baseCapital: this.baseCapital,
@@ -225,9 +282,6 @@ export default class MoneyManager {
   }
 }
 
-/**
- * Ratios Risk/Reward prêts à l’emploi
- */
 export const RR = {
   0.33: { winrate: 0.75, rr: 0.33 },
   0.5: { winrate: 0.67, rr: 0.5 },

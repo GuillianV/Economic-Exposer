@@ -52,7 +52,7 @@ class UI extends EventEmitter {
       }
     });
 
-    const ticks = [1, 5, 10, 1000];
+    const ticks = [1, 5, 10, 1000, 10000 , 100000];
     ticks.forEach((tick, index) => {
       const tickButtonSample = ` <button id="tick${tick}" class="${index != 0 ? "ml-2" : ""} glass rounded-md p-2 border-2 border-blue-950">${tick}</button>`;
       this.tickContainer.insertAdjacentHTML("beforeend", tickButtonSample);

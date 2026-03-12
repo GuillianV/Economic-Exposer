@@ -4,6 +4,7 @@ export default class Trade {
   priceChange = 0;
   priceChangePercent = 0;
   triggered = false;
+  forceClosed = false;
 
   constructor(tradeOption) {
     this.startTick = tradeOption.startTick;
@@ -39,6 +40,18 @@ export default class Trade {
     ) {
       return this.trigger("stopLoss", kline);
     }
+  }
+
+  close(kline) {
+    this.forceClosed = true;
+
+    this.priceChange = kline.close - this.startPrice;
+    this.overflow =
+      (this.priceChange > 0 ? kline.high : kline.low) - kline.close;
+    this.priceChangePercent =
+      (this.startPrice + this.priceChange + this.overflow) / this.startPrice;
+
+    return this.trigger("close", kline);
   }
 
   result() {

@@ -55,6 +55,6 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   ws.on("end", (data) => {
-    console.log("Ended");
+    console.log("Ended", data);
   });
 });

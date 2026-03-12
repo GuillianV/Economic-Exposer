@@ -40,7 +40,7 @@ export default class Strategy {
       chain: "btcusdc",
       interval: "1m",
       startingTick: 60 * 24,
-    }
+    },
   ) {
     this.options = options;
     this.entriesObjects = entriesObjects;
@@ -52,7 +52,9 @@ export default class Strategy {
 
     // Configuration de départ
     this.actualTick = parseInt(
-      this.targetEntriesArray[this.targetEntriesArray.length - options.startingTick][0]
+      this.targetEntriesArray[
+        this.targetEntriesArray.length - options.startingTick
+      ][0],
     );
 
     this.intervalMilliseconds = intervalToSeconds(options.interval) * 1000;
@@ -61,7 +63,8 @@ export default class Strategy {
     this.lastTick = this.actualTick - this.intervalMilliseconds;
     this.thirdTick = this.lastTick - this.intervalMilliseconds;
 
-    this.finalTick = this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
+    this.finalTick =
+      this.targetEntriesArray[this.targetEntriesArray.length - 1][0];
 
     this.ended = false;
     this.onEndCb = () => {};
@@ -79,8 +82,14 @@ export default class Strategy {
   tick() {
     if (this.ended) return;
 
-    if (this.finalTick === this.actualTick) {
+    const currentKline = parseSimpleKline(
+      this.targetEntriesObjects[this.actualTick],
+      this.actualTick,
+    );
+
+    if (this.finalTick == this.actualTick) {
       this.ended = true;
+      this.#closeOpenTrades(currentKline);
       this.onEndCb();
       return;
     }
@@ -88,28 +97,28 @@ export default class Strategy {
     // Récupération des 3 bougies nécessaires
     const thirdKline = parseSimpleKline(
       this.targetEntriesObjects[this.thirdTick],
-      this.thirdTick
+      this.thirdTick,
     );
     const lastKline = parseSimpleKline(
       this.targetEntriesObjects[this.lastTick],
-      this.lastTick
-    );
-    const currentKline = parseSimpleKline(
-      this.targetEntriesObjects[this.actualTick],
-      this.actualTick
+      this.lastTick,
     );
 
     // Détection des pivots locaux (force = 20 comme avant)
     this.#detectLocalHighsAndLows(currentKline, lastKline, thirdKline, 20);
 
     // Génération des supports/résistances (filtre identiques = 5)
-    this.#generateSupportsAndResistances(20, 5);
+    //  this.#generateSupportsAndResistances(20, 5);
 
     // Mise à jour des trades ouverts
     this.#updateOpenTrades(currentKline);
 
     // Vérification d'un nouveau signal d'entrée
-    const newTrade = this.#checkEntryConditions(currentKline, lastKline);
+    const newTrade = this.#checkEntryConditions(
+      currentKline,
+      lastKline,
+      thirdKline,
+    );
     if (newTrade) {
       this.trades.push(newTrade);
       this.moneyManager.assignTradeStart(newTrade.result());
@@ -152,8 +161,7 @@ export default class Strategy {
 
       thresholds.forEach((threshold) => {
         const nearbyLows = Object.values(this.datas.localLows).filter(
-          (existing) =>
-            Math.abs(existing.value - localLow.value) < threshold
+          (existing) => Math.abs(existing.value - localLow.value) < threshold,
         );
 
         nearbyLows.forEach((existing) => {
@@ -175,8 +183,7 @@ export default class Strategy {
 
       thresholds.forEach((threshold) => {
         const nearbyHighs = Object.values(this.datas.localHighs).filter(
-          (existing) =>
-            Math.abs(existing.value - localHigh.value) < threshold
+          (existing) => Math.abs(existing.value - localHigh.value) < threshold,
         );
 
         nearbyHighs.forEach((existing) => {
@@ -195,13 +202,20 @@ export default class Strategy {
    */
   #generateSupportsAndResistances(forceValue = 50, filterSameLinesValue = 5) {
     const allExtremes = [
-      ...Object.values(this.datas.localLows).map((low) => ({ ...low, type: "low" })),
-      ...Object.values(this.datas.localHighs).map((high) => ({ ...high, type: "high" })),
+      ...Object.values(this.datas.localLows).map((low) => ({
+        ...low,
+        type: "low",
+      })),
+      ...Object.values(this.datas.localHighs).map((high) => ({
+        ...high,
+        type: "high",
+      })),
     ];
 
     // Séparation uniques / multiples
     const groups = allExtremes.reduce((acc, extreme) => {
-      const key = extreme.force[forceValue].length === 0 ? "uniques" : "multiples";
+      const key =
+        extreme.force[forceValue].length === 0 ? "uniques" : "multiples";
       acc[key] ??= [];
       acc[key].push(extreme);
       return acc;
@@ -220,7 +234,7 @@ export default class Strategy {
 
       extreme.force[forceValue].forEach((time) => {
         const match = multiples.find(
-          (m) => m.time === time && m.type === extreme.type
+          (m) => m.time === time && m.type === extreme.type,
         );
         if (match) {
           match.used = true;
@@ -250,8 +264,7 @@ export default class Strategy {
 
       levels.supports.forEach((support) => {
         const conflictingResistance = levels.resistances.find(
-          (resistance) =>
-            Math.abs(resistance - support) < filterSameLinesValue
+          (resistance) => Math.abs(resistance - support) < filterSameLinesValue,
         );
         if (conflictingResistance) {
           toRemove.supports.push(support);
@@ -259,8 +272,12 @@ export default class Strategy {
         }
       });
 
-      levels.supports = levels.supports.filter((s) => !toRemove.supports.includes(s));
-      levels.resistances = levels.resistances.filter((r) => !toRemove.resistances.includes(r));
+      levels.supports = levels.supports.filter(
+        (s) => !toRemove.supports.includes(s),
+      );
+      levels.resistances = levels.resistances.filter(
+        (r) => !toRemove.resistances.includes(r),
+      );
     }
 
     this.datas.supports = levels.supports;
@@ -275,50 +292,77 @@ export default class Strategy {
       const result = trade.update(currentKline);
       if (result != null) {
         this.moneyManager.assignTradeResult(result);
-        console.log(this.moneyManager.getWinrate());
-        console.log(this.moneyManager.currencyCapital);
       }
     });
+  }
+
+  #closeOpenTrades(currentKline) {
+    this.trades
+      .filter((trade) => !trade.triggered)
+      .forEach((trade) => {
+        const result = trade.close(currentKline);
+        if (result != null) {
+          this.moneyManager.assignTradeResult(result);
+        }
+      });
   }
 
   /**
    * Vérifie les conditions d'entrée (logique inchangée)
    */
-  #checkEntryConditions(currentKline, lastKline) {
-    const { supports, resistances } = this.datas;
-    const lastGreen = lastKline.open < lastKline.close;
-    const currentGreen = currentKline.open < currentKline.close;
+  #checkEntryConditions(currentKline, lastKline, thirdKline) {
+    const { localHighs, localLows } = this.datas;
 
+    const thirdGreen = thirdKline.open < thirdKline.close;
+    const ThirdSize = Math.abs(thirdKline.open - thirdKline.close);
+    const lastGreen = lastKline.open < lastKline.close;
+    const LastSize = Math.abs(lastKline.open - lastKline.close);
+    const currentGreen = currentKline.open < currentKline.close;
+    const CurrentSize = Math.abs(currentKline.open - currentKline.close);
+
+    const localLow = localLows[thirdKline.time - this.intervalMilliseconds];
+    const localHigh = localHighs[thirdKline.time - this.intervalMilliseconds];
     // Un seul trade ouvert autorisé
     if (this.trades.some((t) => !t.triggered)) return null;
 
     // === Signal Short (résistance cassée à la baisse) ===
     if (
+      localLow &&
+      thirdGreen &&
       lastGreen &&
-      resistances.some(
-        (r) => r > lastKline.open && r < lastKline.close
-      ) &&
-      !currentGreen
+      currentGreen &&
+      LastSize > ThirdSize &&
+      CurrentSize > LastSize &&
+      this.moneyManager.canStartTrade()
     ) {
-      return this.moneyManager.generateTrade(this.actualTick, currentKline.open, {
-        stopLoss: 200,
-        lot: 0.5,
-      });
+      return this.moneyManager.generateTrade(
+        this.actualTick + this.intervalMilliseconds,
+        currentKline.close,
+        {
+          stopLoss: localLow.value - currentKline.close - 20,
+          lot: 0.8,
+        },
+      );
     }
 
     // === Signal Long (support cassé à la hausse) ===
     if (
+      localHigh &&
+      !thirdGreen &&
       !lastGreen &&
-      supports.some(
-        (s) => s < lastKline.open && s > lastKline.close
-      ) &&
-      currentGreen &&
+      !currentGreen &&
+      LastSize > ThirdSize &&
+      CurrentSize > LastSize &&
       this.moneyManager.canStartTrade()
     ) {
-      return this.moneyManager.generateTrade(this.actualTick, currentKline.open, {
-        takeProfit: 200,
-        lot: 0.5,
-      });
+      return this.moneyManager.generateTrade(
+        this.actualTick + this.intervalMilliseconds,
+        currentKline.close,
+        {
+          stopLoss: localHigh.value - currentKline.close + 20,
+          lot: 0.8,
+        },
+      );
     }
 
     return null;
@@ -339,6 +383,7 @@ export default class Strategy {
       })),
       datas: this.datas,
       trades: this.trades.map((trade) => trade.result()),
+      moneyManager: this.moneyManager.retrieve(),
     };
   }
 }

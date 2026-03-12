@@ -1,7 +1,10 @@
 import dotenv from "dotenv";
 import express from "express";
 import { WebSocketServer } from "ws";
-import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./modules/binance/downloader.js";
+import {
+  BinanceDataSetting,
+  BinanceDataSettingsIntervals,
+} from "./modules/binance/downloader.js";
 import CryptoBacktester from "./modules/binance/index.js";
 import Strategy from "./modules/binance/strategy.js";
 const __dirname = import.meta.dirname;
@@ -13,17 +16,30 @@ dotenv.config();
 
 app.use(express.static("public"));
 
-const rewindsDays = 3;
+const rewindsDays = 6;
 const startingTicks = 60 * 24 * rewindsDays - 3;
 
-const dataSettings = [new BinanceDataSetting("btcusdc", rewindsDays, BinanceDataSettingsIntervals.all)];
+const dataSettings = [
+  new BinanceDataSetting(
+    "btcusdc",
+    rewindsDays,
+    BinanceDataSettingsIntervals.all,
+  ),
+];
 const backtester = new CryptoBacktester(dataSettings);
 
+backtester.on("ready", (entries) => {
+  console.log("Backtester ready");
+});
 app.get("/api/:symbol/:interval/:timestamp", (req, res) => {
   const { symbol, interval, timestamp } = req.params;
 
   backtester.data((entries) => {
-    if (entries[symbol] == null || entries[symbol][interval] == null || entries[symbol][interval][timestamp] == null) {
+    if (
+      entries[symbol] == null ||
+      entries[symbol][interval] == null ||
+      entries[symbol][interval][timestamp] == null
+    ) {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -118,7 +134,9 @@ function onTick({ id, tick }, ws) {
     strategies[id].strategy.tick();
   }
 
-  ws.send(JSON.stringify({ type: "tick", data: strategies[id].strategy.retrieve() }));
+  ws.send(
+    JSON.stringify({ type: "tick", data: strategies[id].strategy.retrieve() }),
+  );
 }
 
 wss.on("connection", (ws) => {

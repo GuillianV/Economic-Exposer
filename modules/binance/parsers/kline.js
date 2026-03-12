@@ -76,6 +76,7 @@ export function parseKlinesSaved(klinesPromises) {
 }
 
 export function parseSimpleKline(klineRaw, timestamp) {
+
   return {
     time: formatTimestamp(timestamp),
     open: parseFloat(klineRaw.open),
