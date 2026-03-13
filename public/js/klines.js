@@ -25,9 +25,8 @@ class Klines {
     this.klines = {};
     this.klinesEntries = [];
     this.datas = {};
-    this.trades = [];
+    this.trades = {};
     this.indicators = {
-      _drawTrades: false,
       _drawHigsLows: false,
       _drawSupportsResistances: false,
     };
@@ -42,34 +41,89 @@ class Klines {
     this._draw();
   }
 
-  onOptionChange({ candlesOffsetValue, candlesnumberValue, heightOffsetValue }) {
+  enableDrawingTrades(strategyName, enabled) {
+    this.trades[strategyName].draw = enabled;
+    this._draw();
+  }
+
+  onOptionChange({
+    candlesOffsetValue,
+    candlesnumberValue,
+    heightOffsetValue,
+  }) {
     const candlesOffsetOptions = this.options.candlesOffset;
-    candlesOffsetOptions.value = Math.max(candlesOffsetOptions.min, Math.min(candlesOffsetOptions.value + candlesOffsetValue * candlesOffsetOptions.step, this.klinesEntries.length - 1));
+    candlesOffsetOptions.value = Math.max(
+      candlesOffsetOptions.min,
+      Math.min(
+        candlesOffsetOptions.value +
+          candlesOffsetValue * candlesOffsetOptions.step,
+        this.klinesEntries.length - 1,
+      ),
+    );
 
     const candlesnumberOptions = this.options.candlesnumber;
-    candlesnumberOptions.value = Math.max(candlesnumberOptions.min, Math.min(candlesnumberOptions.value + candlesnumberValue * candlesnumberOptions.step, this.klinesEntries.length - candlesOffsetOptions.value));
+    candlesnumberOptions.value = Math.max(
+      candlesnumberOptions.min,
+      Math.min(
+        candlesnumberOptions.value +
+          candlesnumberValue * candlesnumberOptions.step,
+        this.klinesEntries.length - candlesOffsetOptions.value,
+      ),
+    );
 
     const heightOffsetOptions = this.options.heightOffset;
-    heightOffsetOptions.value = Math.max(heightOffsetOptions.min, Math.min(heightOffsetOptions.value + heightOffsetValue * heightOffsetOptions.step, heightOffsetOptions.max));
+    heightOffsetOptions.value = Math.max(
+      heightOffsetOptions.min,
+      Math.min(
+        heightOffsetOptions.value +
+          heightOffsetValue * heightOffsetOptions.step,
+        heightOffsetOptions.max,
+      ),
+    );
 
     this._draw();
   }
 
-  onUpdate(klines, datas, trades) {
+  onUpdate(klines, datas) {
     this.klines = klines;
     this.klinesEntries = Object.entries(klines);
     this.datas = datas;
-    this.trades = trades;
     this._draw();
+  }
+
+  onTrades(strategies) {
+    for (const strategy of strategies) {
+      const { name, trades } = strategy;
+
+      if (this.trades[name] == null) {
+        this.trades[name] = {
+          draw: false,
+        };
+      }
+
+      this.trades[name] = {
+        draw: this.trades[name].draw,
+        trades,
+      };
+    }
   }
 
   _draw() {
     this.ui.clearCanvas();
-    const klines_entries = this.klinesEntries.slice(this.options.candlesOffset.value, this.options.candlesOffset.value + this.options.candlesnumber.value);
+    const klines_entries = this.klinesEntries.slice(
+      this.options.candlesOffset.value,
+      this.options.candlesOffset.value + this.options.candlesnumber.value,
+    );
     const klines_entries_length = klines_entries.length;
-    const klines_lowest_price = Math.min(...klines_entries.map(([time, kline]) => parseFloat(kline.low))) - this.options.heightOffset.value;
+    const klines_lowest_price =
+      Math.min(
+        ...klines_entries.map(([time, kline]) => parseFloat(kline.low)),
+      ) - this.options.heightOffset.value;
     this.klines_lowest_price = klines_lowest_price;
-    const klines_highest_price = Math.max(...klines_entries.map(([time, kline]) => parseFloat(kline.high))) + this.options.heightOffset.value;
+    const klines_highest_price =
+      Math.max(
+        ...klines_entries.map(([time, kline]) => parseFloat(kline.high)),
+      ) + this.options.heightOffset.value;
 
     const clamped_highest_price = klines_highest_price - klines_lowest_price;
     this.clamped_highest_price = clamped_highest_price;
@@ -92,13 +146,17 @@ class Klines {
       const positions = {
         bougie: {
           x1: candle_width * index,
-          y1: this.ui.height - (klineClamped.open / clamped_highest_price) * this.ui.height,
+          y1:
+            this.ui.height -
+            (klineClamped.open / clamped_highest_price) * this.ui.height,
           x2: candle_width,
           y2: (klineDeltas.bougie / clamped_highest_price) * this.ui.height,
         },
         meche: {
           x1: candle_width * index + candle_width / 2,
-          y1: this.ui.height - (klineClamped.high / clamped_highest_price) * this.ui.height,
+          y1:
+            this.ui.height -
+            (klineClamped.high / clamped_highest_price) * this.ui.height,
           x2: 1,
           y2: (klineDeltas.meche / clamped_highest_price) * this.ui.height,
         },
@@ -119,29 +177,50 @@ class Klines {
         timeline: kline.time,
       };
 
-      this.ui.drawRect(positions.bougie.x1, positions.bougie.y1, positions.bougie.x2, positions.bougie.y2, ctxColor);
-      this.ui.drawRect(positions.meche.x1, positions.meche.y1, positions.meche.x2, positions.meche.y2, ctxColor);
+      this.ui.drawRect(
+        positions.bougie.x1,
+        positions.bougie.y1,
+        positions.bougie.x2,
+        positions.bougie.y2,
+        ctxColor,
+      );
+      this.ui.drawRect(
+        positions.meche.x1,
+        positions.meche.y1,
+        positions.meche.x2,
+        positions.meche.y2,
+        ctxColor,
+      );
     });
 
-    if (this.indicators._drawTrades) {
-      this._drawTrades();
-    }
     if (this.indicators._drawHigsLows) {
       this._drawHigsLows();
     }
     if (this.indicators._drawSupportsResistances) {
       this._drawSupportsResistances();
     }
+
+    this._drawTrades();
   }
 
   _drawTrades() {
     const timelineKeys = Object.keys(this.timeline);
 
-    this.trades.forEach((trade) => {
+    const allTrades = Object.values(this.trades)
+      .filter((tradeInfos) => tradeInfos.draw)
+      .map((tradeInfos) => tradeInfos.trades)
+      .flat();
+
+    allTrades.forEach((trade) => {
       const end = this.timeline[trade.endTick];
       const start = this.timeline[trade.startTick];
 
-      if (start == null && end == null && (trade.endTick < timelineKeys[0] || trade.startTick > timelineKeys[timelineKeys.length - 1])) {
+      if (
+        start == null &&
+        end == null &&
+        (trade.endTick < timelineKeys[0] ||
+          trade.startTick > timelineKeys[timelineKeys.length - 1])
+      ) {
         return;
       }
 
@@ -166,10 +245,16 @@ class Klines {
       const tpDiffClamped = tpClamped - spClamped;
       const slDiffClamped = spClamped - slClamped;
 
-      const tpY = this.ui.height - (tpClamped / this.clamped_highest_price) * this.ui.height;
-      const tpHeight = (tpDiffClamped / this.clamped_highest_price) * this.ui.height;
-      const slY = this.ui.height - (spClamped / this.clamped_highest_price) * this.ui.height;
-      const slHeight = (slDiffClamped / this.clamped_highest_price) * this.ui.height;
+      const tpY =
+        this.ui.height -
+        (tpClamped / this.clamped_highest_price) * this.ui.height;
+      const tpHeight =
+        (tpDiffClamped / this.clamped_highest_price) * this.ui.height;
+      const slY =
+        this.ui.height -
+        (spClamped / this.clamped_highest_price) * this.ui.height;
+      const slHeight =
+        (slDiffClamped / this.clamped_highest_price) * this.ui.height;
 
       this.ui.drawRect(x, tpY, width, tpHeight, "#00ff0044");
       this.ui.drawRect(x, slY, width, slHeight, "#ff000044");
@@ -189,7 +274,11 @@ class Klines {
       }
 
       const x = candle.x;
-      const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      const y =
+        this.ui.height -
+        ((support.value - this.klines_lowest_price) /
+          this.clamped_highest_price) *
+          this.ui.height;
 
       this.ui.drawRect(x, y, this.ui.width, 1, "green");
     });
@@ -206,7 +295,11 @@ class Klines {
       }
 
       const x = candle.x;
-      const y = this.ui.height - ((support.value - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      const y =
+        this.ui.height -
+        ((support.value - this.klines_lowest_price) /
+          this.clamped_highest_price) *
+          this.ui.height;
 
       this.ui.drawRect(x, y, this.ui.width, 1, "red");
     });
@@ -216,14 +309,20 @@ class Klines {
     const supports = this.datas.supports;
     supports.forEach((support) => {
       const x = 0;
-      const y = this.ui.height - ((support - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      const y =
+        this.ui.height -
+        ((support - this.klines_lowest_price) / this.clamped_highest_price) *
+          this.ui.height;
       this.ui.drawRect(x, y, this.ui.width, 1, "green");
     });
 
     const resistances = this.datas.resistances;
     resistances.forEach((resistance) => {
       const x = 0;
-      const y = this.ui.height - ((resistance - this.klines_lowest_price) / this.clamped_highest_price) * this.ui.height;
+      const y =
+        this.ui.height -
+        ((resistance - this.klines_lowest_price) / this.clamped_highest_price) *
+          this.ui.height;
       this.ui.drawRect(x, y, this.ui.width, 1, "red");
     });
   }

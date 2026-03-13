@@ -15,12 +15,7 @@ export class Strategies {
     });
   }
 
-  startupTrades(
-    datas,
-    targetEntriesArray,
-    actualTick,
-    intervalMilliseconds,
-  ) {
+  startupTrades(datas, targetEntriesArray, actualTick, intervalMilliseconds) {
     this.strategies.forEach((strategy) => {
       strategy.startupTrade(
         datas,
@@ -39,9 +34,10 @@ export class Strategies {
 }
 
 export default class Strategy {
-  constructor(moneyManager, condition) {
+  constructor(moneyManager, condition, name) {
     this.moneyManager = moneyManager;
     this.condition = condition;
+    this.name = name;
     this.trades = [];
   }
 
@@ -93,6 +89,8 @@ export default class Strategy {
   retrieve() {
     return {
       moneyManager: this.moneyManager.retrieve(),
+      name: this.name,
+      trades: this.trades.map((trade) => trade.result()),
     };
   }
 }

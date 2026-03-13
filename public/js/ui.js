@@ -8,11 +8,81 @@ class UI extends EventEmitter {
     this.initTouch();
     this.initTabParentsButtons();
     this.initTickingMenu();
+    this.initStrategyResultContainer();
   }
 
   lateInit(indicators) {
     this.indicators = indicators;
     this.initIndicators();
+  }
+
+  initStrategyResultContainer() {
+    this.strategyResultContainer = document.querySelector(
+      "#strategyResultContainer",
+    );
+  }
+
+  initStrategyDetailsContainer(name) {
+    const strategyResultContainer = document.createElement("div");
+    strategyResultContainer.classList.add("flex", "flex-col", "p-4");
+    strategyResultContainer.innerHTML = `
+      <div class="p-4 border-2 rounded-md glass relative">
+
+        <div class="absolute top-0 right-0 p-2">
+          <button id="${name}strategyTrades" class="glass text-black rounded-md p-2 border-2 border-blue-950">
+            Trades
+          </button>
+        </div>
+        <h1 class="text-xl">${name}</h1>
+        <div class="flex flex-col">
+          <div class="p-4">
+            <h2 class="text-lg">Winrates</h2>
+            <div class="flex flex-col">
+              <h3 class="text-md">Required Winrate</h3>
+              <div id="${name}requiredWinrate" class="flex justify-center p-4">
+              </div>
+              <h3 class="text-md">Actual Winrate</h3>
+              <div id="${name}actualWinrate" class="flex justify-center p-4">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.strategyResultContainer.appendChild(strategyResultContainer);
+    const strategyTradesButton = document.querySelector(
+      `#${name}strategyTrades`,
+    );
+    strategyTradesButton.addEventListener("click", () => {
+      strategyTradesButton.classList.toggle("tab-child-enabled");
+      const enabled =
+        strategyTradesButton.classList.contains("tab-child-enabled");
+      this.trigger("button", ["strategy", "trades", name, {enabled}]);
+    });
+  }
+
+  onButtonClick(callback = () => {}) {
+    this.on("button", (category, subcategory, id, data) => {
+      callback(category, subcategory, id, data);
+    });
+  }
+
+  updateStrategyDetailsContainer(
+    name,
+    winratePercent,
+    requiredWinratePercent,
+    color,
+  ) {
+    const strategyResultContainer = document.querySelector(
+      `#${name}requiredWinrate`,
+    );
+    const strategyResultContainer2 = document.querySelector(
+      `#${name}actualWinrate`,
+    );
+
+    strategyResultContainer.innerHTML = `${requiredWinratePercent}`;
+    strategyResultContainer2.innerHTML = `${winratePercent}`;
+    strategyResultContainer2.style.color = color;
   }
 
   initTabParentsButtons() {

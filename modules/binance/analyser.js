@@ -61,7 +61,7 @@ export default class Analyser {
     this.onEndCb = () => {};
 
     this.strategies = new Strategies([
-      new Strategy(new MoneyManager(1000, RR[3]), tripleStar),
+      new Strategy(new MoneyManager(1000, RR[3]), tripleStar, "tripleStar"),
     ]);
   }
 
@@ -81,7 +81,6 @@ export default class Analyser {
     if (this.finalTick == this.actualTick) {
       this.ended = true;
       this.strategies.closeOpenTrades(this.datas);
-      // this.#closeOpenTrades(currentKline);
       this.onEndCb();
       return;
     }
@@ -100,17 +99,16 @@ export default class Analyser {
 
     this.datas.thirdKline = thirdKline;
 
-    // Détection des pivots locaux (force = 20 comme avant)
     this.#detectLocalHighsAndLows(currentKline, secondKline, thirdKline, 20);
 
+    //Strategy part
     this.strategies.updateOpenTrades(
       this.datas,
       this.targetEntriesObjects,
       this.actualTick,
       this.intervalMilliseconds,
     );
-    // Vérification d'un nouveau signal d'entrée
-    this.strategies.checkEntryConditions(
+    this.strategies.startupTrades(
       this.datas,
       this.targetEntriesObjects,
       this.actualTick,

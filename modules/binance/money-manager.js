@@ -277,6 +277,7 @@ export default class MoneyManager {
       currencyCapital: this.currencyCapital,
       quoteCapital: this.quoteCapital,
       totalTrades: Object.keys(this.tradesResults).length,
+      tradesResults : this.tradesResults,
       winrate: this.getWinrate(),
     };
   }

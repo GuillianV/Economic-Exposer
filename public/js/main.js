@@ -7,6 +7,7 @@ window.addEventListener("DOMContentLoaded", () => {
     height: window.innerHeight,
   });
 
+  const strategies = new Strategies(ui);
   const klines = new Klines(ui);
   ui.lateInit(klines.getIndicators());
 
@@ -30,7 +31,7 @@ window.addEventListener("DOMContentLoaded", () => {
       candlesnumberValue: 0,
       heightOffsetValue: 0,
     };
-  
+
     switch (type) {
       case "shift":
         selectedKlinesOptions.heightOffsetValue = delta;
@@ -47,20 +48,35 @@ window.addEventListener("DOMContentLoaded", () => {
     klines.onOptionChange(selectedKlinesOptions);
   });
 
+  ui.onButtonClick((category, subcategory, id, data) => {
+    if (category == "strategy" && subcategory == "trades") {
+      klines.enableDrawingTrades(id, data.enabled);
+    }
+  });
+
   ws.send({
     message: "start",
     id,
   });
 
   ws.on("start", (data) => {
-    klines.onUpdate(data.klines, data.datas, data.trades);
+
+    klines.onTrades(data.strategies);
+    klines.onUpdate(data.klines, data.datas);
+    strategies.upsert(data.strategies);
   });
 
   ws.on("tick", (data) => {
-    klines.onUpdate(data.klines, data.datas, data.trades);
+
+    klines.onTrades(data.strategies);
+    klines.onUpdate(data.klines, data.datas);
+    strategies.upsert(data.strategies);
   });
 
   ws.on("end", (data) => {
-    console.log("Ended", data);
+
+    klines.onTrades(data.strategies);
+    klines.onUpdate(data.klines, data.datas);
+    strategies.upsert(data.strategies);
   });
 });
