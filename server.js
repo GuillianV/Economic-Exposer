@@ -6,7 +6,7 @@ import {
   BinanceDataSettingsIntervals,
 } from "./modules/binance/downloader.js";
 import CryptoBacktester from "./modules/binance/index.js";
-import Strategy from "./modules/binance/strategy.js";
+import Analyser from "./modules/binance/analyser.js";
 const __dirname = import.meta.dirname;
 
 const app = express();
@@ -109,7 +109,7 @@ function onStart({ id }, ws) {
       startingTick: startingTicks,
       initialTicks: 60,
     };
-    const strategy = new Strategy(entries, options);
+    const strategy = new Analyser(entries, options);
     for (let i = 0; i < options.initialTicks; i++) {
       strategy.tick();
     }

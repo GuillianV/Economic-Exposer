@@ -1,5 +1,5 @@
 class Klines {
-  constructor(ui, selectedKlinesOptions) {
+  constructor(ui) {
     this.ui = ui;
     this.timeline = {};
 

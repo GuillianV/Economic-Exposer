@@ -7,10 +7,22 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body class="bg-slate-800 text-slate-200 h-full">
-    <div class="flex absolute top-0 left-1/2 -translate-x-1/2 p-2 m-2 glass text-blue-950 rounded-md flex-col">
+    <div
+      class="flex absolute top-0 left-1/2 -translate-x-1/2 p-2 m-2 glass text-blue-950 rounded-md flex-col"
+    >
       <div class="p-2">
-        <button id="tab-parent-btn-ticks" class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950">Ticks</button>
-        <button id="tab-parent-btn-indicator" class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950">Indicators</button>
+        <button
+          id="tab-parent-btn-ticks"
+          class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950"
+        >
+          Ticks
+        </button>
+        <button
+          id="tab-parent-btn-indicator"
+          class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950"
+        >
+          Indicators
+        </button>
       </div>
       <div class="flex justify-center p-2" id="tickContainer"></div>
 
@@ -18,6 +30,12 @@
     </div>
 
     <canvas class="w-full h-screen" id="klines"></canvas>
+
+    <div class="flex w-full h-screen border-t-2 border-slate-200">
+
+      
+
+    </div>
     <script src="/js/utils.js"></script>
     <script src="/js/event-emmiter.js"></script>
     <script src="/js/ui.js"></script>

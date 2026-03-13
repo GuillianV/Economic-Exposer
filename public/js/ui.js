@@ -52,7 +52,7 @@ class UI extends EventEmitter {
       }
     });
 
-    const ticks = [1, 5, 10, 1000, 10000 , 100000];
+    const ticks = [1, 5, 10, 1000, 10000, 100000];
     ticks.forEach((tick, index) => {
       const tickButtonSample = ` <button id="tick${tick}" class="${index != 0 ? "ml-2" : ""} glass rounded-md p-2 border-2 border-blue-950">${tick}</button>`;
       this.tickContainer.insertAdjacentHTML("beforeend", tickButtonSample);
@@ -72,7 +72,9 @@ class UI extends EventEmitter {
 
     this.tabParentsButtonsHandlers["tab-parent-btn-indicator"].push(() => {
       const parentEnabled = Array.from(this.tabParentsButtons)
-        .find((tabParentButton) => tabParentButton.id == "tab-parent-btn-indicator")
+        .find(
+          (tabParentButton) => tabParentButton.id == "tab-parent-btn-indicator",
+        )
         .classList.contains("tab-parent-enabled");
       if (parentEnabled) {
         this.indicatorsContainer.classList.remove("tab-hidden");
@@ -83,12 +85,18 @@ class UI extends EventEmitter {
 
     Object.keys(this.indicators).forEach((indicator, index) => {
       const indicatorButtonSample = ` <button id="${indicator}" class="${index != 0 ? "ml-2" : ""} glass rounded-md p-2 border-2 border-blue-950">${indicator.replaceAll("_draw", "")}</button>`;
-      this.indicatorsContainer.insertAdjacentHTML("beforeend", indicatorButtonSample);
+      this.indicatorsContainer.insertAdjacentHTML(
+        "beforeend",
+        indicatorButtonSample,
+      );
       const indicatorButton = document.querySelector(`#${indicator}`);
       indicatorButton.addEventListener("click", () => {
         indicatorButton.classList.toggle("tab-child-enabled");
 
-        this.trigger("indicator", [indicator, indicatorButton.classList.contains("tab-child-enabled")]);
+        this.trigger("indicator", [
+          indicator,
+          indicatorButton.classList.contains("tab-child-enabled"),
+        ]);
       });
     });
   }
@@ -108,6 +116,7 @@ class UI extends EventEmitter {
   initTouch() {
     this.isShiftPressed = false;
     this.isAltPressed = false;
+    this.isControlPressed = false;
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Shift") {
@@ -115,6 +124,9 @@ class UI extends EventEmitter {
       }
       if (event.key === "Alt") {
         this.isAltPressed = true;
+      }
+      if (event.key === "Control") {
+        this.isControlPressed = true;
       }
     });
 
@@ -124,6 +136,9 @@ class UI extends EventEmitter {
       }
       if (event.key === "Alt") {
         this.isAltPressed = false;
+      }
+      if (event.key === "Control") {
+        this.isControlPressed = false;
       }
     });
   }
@@ -151,6 +166,10 @@ class UI extends EventEmitter {
         this._disableScroll(event);
       } else if (this.isAltPressed) {
         this.trigger("wheel", ["alt", delta]);
+
+        this._disableScroll(event);
+      } else if (this.isControlPressed) {
+        this.trigger("wheel", ["control", delta]);
 
         this._disableScroll(event);
       } else {

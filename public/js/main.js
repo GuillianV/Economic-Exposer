@@ -7,7 +7,7 @@ window.addEventListener("DOMContentLoaded", () => {
     height: window.innerHeight,
   });
 
-  const klines = new Klines(ui, window.selectedKlinesOptions);
+  const klines = new Klines(ui);
   ui.lateInit(klines.getIndicators());
 
   ui.on("indicator", (indicator, enabled) => {
@@ -25,7 +25,12 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   ui.onWheel((type, delta) => {
-    const selectedKlinesOptions = { candlesOffsetValue: 0, candlesnumberValue: 0, heightOffsetValue: 0 };
+    const selectedKlinesOptions = {
+      candlesOffsetValue: 0,
+      candlesnumberValue: 0,
+      heightOffsetValue: 0,
+    };
+  
     switch (type) {
       case "shift":
         selectedKlinesOptions.heightOffsetValue = delta;
@@ -33,8 +38,9 @@ window.addEventListener("DOMContentLoaded", () => {
       case "alt":
         selectedKlinesOptions.candlesnumberValue = delta;
         break;
-      default:
+      case "control":
         selectedKlinesOptions.candlesOffsetValue = delta;
+      default:
         break;
     }
 

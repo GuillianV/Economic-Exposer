@@ -27,9 +27,9 @@ export default class MoneyManager {
   binanceHourlyBorrowRate = 0.0000035788;
 
   /**
-   * Historique complet des trades (clé = id)
+   * Historique complet des tradesResults (clé = id)
    */
-  trades = {};
+  tradesResults = {};
 
   /**
    * Ratio Risk/Reward choisi (ex: RR[3])
@@ -108,7 +108,7 @@ export default class MoneyManager {
   }
 
   getWinrate() {
-    const allTrades = Object.values(this.trades);
+    const allTrades = Object.values(this.tradesResults);
     const winners = allTrades.filter(
       (t) => t.tradeResult === "takeProfit",
     ).length;
@@ -196,7 +196,7 @@ export default class MoneyManager {
     this.currencyCapital -= trade.capitalToBuy;
     this.quoteCapital += quoteAfterFees;
 
-    this.trades[trade.id] = {
+    this.tradesResults[trade.id] = {
       ...trade,
       quoteCapital: quoteAfterFees,
       fees: [entryFee],
@@ -204,7 +204,7 @@ export default class MoneyManager {
   }
 
   assignTradeResult(closedTrade) {
-    const openTrade = this.trades[closedTrade.id];
+    const openTrade = this.tradesResults[closedTrade.id];
     if (!openTrade) return;
 
     const { quoteCapital: borrowedNet, fees: existingFees } = openTrade;
@@ -241,7 +241,7 @@ export default class MoneyManager {
     const allFees = [...existingFees, exitTradingFee, borrowInterest];
     const totalFees = allFees.reduce((sum, fee) => sum + fee, 0);
 
-    this.trades[closedTrade.id] = {
+    this.tradesResults[closedTrade.id] = {
       ...openTrade,
       ...closedTrade,
       priceChangePercent,
@@ -276,7 +276,7 @@ export default class MoneyManager {
       baseCapital: this.baseCapital,
       currencyCapital: this.currencyCapital,
       quoteCapital: this.quoteCapital,
-      totalTrades: Object.keys(this.trades).length,
+      totalTrades: Object.keys(this.tradesResults).length,
       winrate: this.getWinrate(),
     };
   }
