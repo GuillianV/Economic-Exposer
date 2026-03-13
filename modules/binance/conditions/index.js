@@ -3,7 +3,6 @@ export function tripleStar(
   targetEntriesArray,
   actualTick,
   intervalMilliseconds,
-  moneyManager,
   trades,
 ) {
   const { localHighs, localLows, currentKline, secondKline, thirdKline } =
@@ -28,17 +27,16 @@ export function tripleStar(
     lastGreen &&
     currentGreen &&
     LastSize > ThirdSize &&
-    CurrentSize > LastSize &&
-    moneyManager.canStartTrade()
+    CurrentSize > LastSize
   ) {
-    return moneyManager.generateTrade(
-      actualTick + intervalMilliseconds,
-      currentKline.close,
-      {
+    return {
+      startTick: actualTick + intervalMilliseconds,
+      startPrice: currentKline.close,
+      options: {
         stopLoss: localLow.value - currentKline.close - 20,
         lot: 0.8,
       },
-    );
+    };
   }
 
   // === Signal Long (support cassé à la hausse) ===
@@ -48,17 +46,16 @@ export function tripleStar(
     !lastGreen &&
     !currentGreen &&
     LastSize > ThirdSize &&
-    CurrentSize > LastSize &&
-    moneyManager.canStartTrade()
+    CurrentSize > LastSize
   ) {
-    return moneyManager.generateTrade(
-      actualTick + intervalMilliseconds,
-      currentKline.close,
-      {
+    return {
+      startTick: actualTick + intervalMilliseconds,
+      startPrice: currentKline.close,
+      options: {
         stopLoss: localHigh.value - currentKline.close + 20,
         lot: 0.8,
       },
-    );
+    };
   }
 
   return null;

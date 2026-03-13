@@ -15,24 +15,19 @@ export class Strategies {
     });
   }
 
-  checkEntryConditions(
+  startupTrades(
     datas,
     targetEntriesArray,
     actualTick,
     intervalMilliseconds,
   ) {
-    return this.strategies.forEach((strategy) => {
-      const condition = strategy.checkEntryConditions(
+    this.strategies.forEach((strategy) => {
+      strategy.startupTrade(
         datas,
         targetEntriesArray,
         actualTick,
         intervalMilliseconds,
       );
-
-      if (condition != null) {
-        strategy.trades.push(condition);
-        strategy.moneyManager.assignTradeStart(condition.result());
-      }
     });
   }
 
@@ -50,20 +45,24 @@ export default class Strategy {
     this.trades = [];
   }
 
-  checkEntryConditions(
-    datas,
-    targetEntriesArray,
-    actualTick,
-    intervalMilliseconds,
-  ) {
-    return this.condition(
+  startupTrade(datas, targetEntriesArray, actualTick, intervalMilliseconds) {
+    const condition = this.condition(
       datas,
       targetEntriesArray,
       actualTick,
       intervalMilliseconds,
-      this.moneyManager,
       this.trades,
     );
+
+    if (condition != null && this.moneyManager.canStartTrade()) {
+      const trade = this.moneyManager.generateTrade(
+        condition.startTick,
+        condition.startPrice,
+        condition.options,
+      );
+      this.trades.push(trade);
+      this.moneyManager.assignTradeStart(trade.result());
+    }
   }
 
   /**
