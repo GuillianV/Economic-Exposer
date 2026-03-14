@@ -61,6 +61,17 @@ export default class Analyser {
     this.onEndCb = () => {};
 
     this.strategies = new Strategies([
+      new Strategy(
+        new MoneyManager(100, RR["0.33"]),
+        tripleStar,
+        "tripleStar-033",
+      ),
+
+      new Strategy(
+        new MoneyManager(100, RR["0.5"]),
+        tripleStar,
+        "tripleStar-05",
+      ),
       new Strategy(new MoneyManager(100, RR[1]), tripleStar, "tripleStar-1"),
       new Strategy(new MoneyManager(100, RR[2]), tripleStar, "tripleStar-2"),
       new Strategy(new MoneyManager(100, RR[3]), tripleStar, "tripleStar-3"),
