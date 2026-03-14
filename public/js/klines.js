@@ -7,12 +7,12 @@ class Klines {
       candlesOffset: {
         value: 0,
         min: 0,
-        step: 1,
+        step: 10,
       },
       candlesnumber: {
         value: 60,
         min: 1,
-        step: 1,
+        step: 10,
       },
       heightOffset: {
         value: 0,

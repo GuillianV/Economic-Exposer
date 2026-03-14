@@ -30,13 +30,14 @@ class Strategies {
       this.ui.initStrategyDetailsContainer(strategyName);
     }
 
-    const { baseCapital, currencyCapital, totalTrades, tradesResults } =
+    const { baseCapital, currencyCapital, totalTrades, tradesResults, riskReward } =
       strategy.moneyManager;
     const { requiredWinrate, winrate } = strategy.moneyManager.winrate;
     const { totalFees, totalRawEarned, totalFinalEarned } = tradesResults;
     const color = totalFinalEarned > 0 ? "green" : "red";
     this.ui.updateStrategyDetailsContainer(
       strategyName,
+      riskReward,
       (winrate * 100).toFixed(2),
       (requiredWinrate * 100).toFixed(2),
       baseCapital,

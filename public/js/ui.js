@@ -24,7 +24,7 @@ class UI extends EventEmitter {
 
   initStrategyDetailsContainer(name) {
     const strategyResultContainer = document.createElement("div");
-    strategyResultContainer.classList.add("flex", "flex-col", "p-4", "w-1/3");
+    strategyResultContainer.classList.add("flex", "flex-col", "p-4", "w-1/3" , "basis-1/3");
     strategyResultContainer.innerHTML = `
       <div class="p-4 border-2 rounded-md glass relative">
 
@@ -38,6 +38,11 @@ class UI extends EventEmitter {
           <div class="p-4">
              <table class="w-full">
               <tbody>
+                 <tr>
+                  <th class="text-start" scope="row">Risk Reward</th>
+                  <td class="text-end text-green-500" id="${name}riskReward"></td>
+                  <td class="text-end text-red-500" >:1</td>
+                </tr>
                 <tr>
                   <th class="text-start" scope="row">Required Winrate</th>
                   <td class="text-end" id="${name}requiredWinrate"></td>
@@ -109,6 +114,7 @@ class UI extends EventEmitter {
 
   updateStrategyDetailsContainer(
     name,
+    riskReward,
     winratePercent,
     requiredWinratePercent,
     baseCapital,
@@ -144,18 +150,19 @@ class UI extends EventEmitter {
     const strategyResultContainer8 = document.querySelector(
       `#${name}earnedCapital`,
     );
+    const strategyResultContainer9 = document.querySelector(
+      `#${name}riskReward`,
+    );
 
     strategyResultContainer.innerHTML = `${requiredWinratePercent}`;
     strategyResultContainer2.innerHTML = `${winratePercent}`;
-
     strategyResultContainer3.innerHTML = `${baseCapital}`;
     strategyResultContainer4.innerHTML = `${currencyCapital}`;
     strategyResultContainer5.innerHTML = `${totalTrades}`;
-
     strategyResultContainer6.innerHTML = `${totalFees}`;
     strategyResultContainer7.innerHTML = `${totalRawEarned}`;
     strategyResultContainer8.innerHTML = `${totalFinalEarned}`;
-
+    strategyResultContainer9.innerHTML = `${riskReward}`;
     strategyResultContainer8.style.color = color;
   }
 

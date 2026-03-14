@@ -139,20 +139,25 @@ export default class MoneyManager {
     };
   }
 
-
   getTradesResults() {
-    
-
-    const totalFees = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.totalFees, 0);
-    const totalRawEarned = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.rawEarnedCapital, 0);
-    const totalFinalEarned = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.finalEarnedCapital, 0);
+    const totalFees = Object.values(this.tradesResults).reduce(
+      (sum, trade) => sum + trade.totalFees,
+      0,
+    );
+    const totalRawEarned = Object.values(this.tradesResults).reduce(
+      (sum, trade) => sum + trade.rawEarnedCapital,
+      0,
+    );
+    const totalFinalEarned = Object.values(this.tradesResults).reduce(
+      (sum, trade) => sum + trade.finalEarnedCapital,
+      0,
+    );
 
     return {
       totalFees,
       totalRawEarned,
       totalFinalEarned,
-    }
-
+    };
   }
 
   /**
@@ -173,7 +178,7 @@ export default class MoneyManager {
     );
     const totalFeesF = tradingFees + borrowInterest;
 
-    const F_over_R = totalFeesF / riskAmount ;
+    const F_over_R = totalFeesF / riskAmount;
 
     let requiredWinrate = (1 + F_over_R) / (1 + targetRR);
     if (isNaN(requiredWinrate)) {
@@ -297,9 +302,10 @@ export default class MoneyManager {
       currencyCapital: this.currencyCapital,
       quoteCapital: this.quoteCapital,
       totalTrades: Object.keys(this.tradesResults).length,
-      tradesList : this.tradesResults,
+      tradesList: this.tradesResults,
       winrate: this.getWinrate(),
       tradesResults: this.getTradesResults(),
+      riskReward: this.rr.rr,
     };
   }
 }
@@ -311,4 +317,6 @@ export const RR = {
   2: { winrate: 0.33, rr: 2 },
   3: { winrate: 0.25, rr: 3 },
   4: { winrate: 0.2, rr: 4 },
+  5: { winrate: 0.17, rr: 5 },
+  6: { winrate: 0.14, rr: 6 },
 };
