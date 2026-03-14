@@ -139,14 +139,30 @@ export default class MoneyManager {
     };
   }
 
+
+  getTradesResults() {
+    
+
+    const totalFees = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.totalFees, 0);
+    const totalRawEarned = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.rawEarnedCapital, 0);
+    const totalFinalEarned = Object.values(this.tradesResults).reduce((sum, trade) => sum + trade.finalEarnedCapital, 0);
+
+    return {
+      totalFees,
+      totalRawEarned,
+      totalFinalEarned,
+    }
+
+  }
+
   /**
    * Calcule le winrate minimum requis pour un RR donné
    * Position et riskAmount sont obligatoires en pratique (appelé avec les moyennes)
    */
   getRequiredWinrateForRR(
     targetRR = 1,
-    position = 0,
-    riskAmount = 0,
+    position = 0.000001,
+    riskAmount = 0.000001,
     avgDurationHours = 2,
   ) {
     // Calcul exact identique à l’original
@@ -157,9 +173,13 @@ export default class MoneyManager {
     );
     const totalFeesF = tradingFees + borrowInterest;
 
-    const F_over_R = totalFeesF / riskAmount;
+    const F_over_R = totalFeesF / riskAmount ;
 
-    const requiredWinrate = (1 + F_over_R) / (1 + targetRR);
+    let requiredWinrate = (1 + F_over_R) / (1 + targetRR);
+    if (isNaN(requiredWinrate)) {
+      requiredWinrate = 0;
+    }
+
     return parseFloat(requiredWinrate.toFixed(4));
   }
 
@@ -277,8 +297,9 @@ export default class MoneyManager {
       currencyCapital: this.currencyCapital,
       quoteCapital: this.quoteCapital,
       totalTrades: Object.keys(this.tradesResults).length,
-      tradesResults : this.tradesResults,
+      tradesList : this.tradesResults,
       winrate: this.getWinrate(),
+      tradesResults: this.getTradesResults(),
     };
   }
 }

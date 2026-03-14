@@ -24,7 +24,7 @@ class UI extends EventEmitter {
 
   initStrategyDetailsContainer(name) {
     const strategyResultContainer = document.createElement("div");
-    strategyResultContainer.classList.add("flex", "flex-col", "p-4");
+    strategyResultContainer.classList.add("flex", "flex-col", "p-4", "w-1/3");
     strategyResultContainer.innerHTML = `
       <div class="p-4 border-2 rounded-md glass relative">
 
@@ -36,15 +36,55 @@ class UI extends EventEmitter {
         <h1 class="text-xl">${name}</h1>
         <div class="flex flex-col">
           <div class="p-4">
-            <h2 class="text-lg">Winrates</h2>
-            <div class="flex flex-col">
-              <h3 class="text-md">Required Winrate</h3>
-              <div id="${name}requiredWinrate" class="flex justify-center p-4">
-              </div>
-              <h3 class="text-md">Actual Winrate</h3>
-              <div id="${name}actualWinrate" class="flex justify-center p-4">
-              </div>
-            </div>
+             <table class="w-full">
+              <tbody>
+                <tr>
+                  <th class="text-start" scope="row">Required Winrate</th>
+                  <td class="text-end" id="${name}requiredWinrate"></td>
+                  <td class="text-end">&nbsp;%</td>
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Actual Winrate</th>
+                  <td class="text-end" id="${name}actualWinrate"></td>
+                  <td class="text-end">&nbsp;%</td>
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Total Trades</th>
+                  <td class="text-end"  id="${name}totalTrades"></td>
+                    <td class="text-end"></td>
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Base Capital</th>
+                  <td class="text-end" id="${name}baseCapital"></td>
+                  <td class="text-end">$</td>
+
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Currency Capital</th>
+                  <td class="text-end" id="${name}currencyCapital"></td>
+                    <td class="text-end">$</td>
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Total Fees</th>
+                  <td class="text-end"  id="${name}totalFeesLosses"></td>
+                  <td class="text-end">$</td>
+
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Earned Capital (no fees)</th>
+                  <td class="text-end"  id="${name}earnedCapitalRaw"></td>
+                  <td class="text-end">$</td>
+
+                </tr>
+                <tr>
+                  <th class="text-start" scope="row">Earned Capital (w/ fees)</th>
+                  <td class="text-end"  id="${name}earnedCapital"></td>
+                  <td class="text-end">$</td>
+
+                </tr>
+              
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -57,7 +97,7 @@ class UI extends EventEmitter {
       strategyTradesButton.classList.toggle("tab-child-enabled");
       const enabled =
         strategyTradesButton.classList.contains("tab-child-enabled");
-      this.trigger("button", ["strategy", "trades", name, {enabled}]);
+      this.trigger("button", ["strategy", "trades", name, { enabled }]);
     });
   }
 
@@ -71,6 +111,12 @@ class UI extends EventEmitter {
     name,
     winratePercent,
     requiredWinratePercent,
+    baseCapital,
+    currencyCapital,
+    totalTrades,
+    totalFees,
+    totalRawEarned,
+    totalFinalEarned,
     color,
   ) {
     const strategyResultContainer = document.querySelector(
@@ -80,9 +126,37 @@ class UI extends EventEmitter {
       `#${name}actualWinrate`,
     );
 
+    const strategyResultContainer3 = document.querySelector(
+      `#${name}baseCapital`,
+    );
+    const strategyResultContainer4 = document.querySelector(
+      `#${name}currencyCapital`,
+    );
+    const strategyResultContainer5 = document.querySelector(
+      `#${name}totalTrades`,
+    );
+    const strategyResultContainer6 = document.querySelector(
+      `#${name}totalFeesLosses`,
+    );
+    const strategyResultContainer7 = document.querySelector(
+      `#${name}earnedCapitalRaw`,
+    );
+    const strategyResultContainer8 = document.querySelector(
+      `#${name}earnedCapital`,
+    );
+
     strategyResultContainer.innerHTML = `${requiredWinratePercent}`;
     strategyResultContainer2.innerHTML = `${winratePercent}`;
-    strategyResultContainer2.style.color = color;
+
+    strategyResultContainer3.innerHTML = `${baseCapital}`;
+    strategyResultContainer4.innerHTML = `${currencyCapital}`;
+    strategyResultContainer5.innerHTML = `${totalTrades}`;
+
+    strategyResultContainer6.innerHTML = `${totalFees}`;
+    strategyResultContainer7.innerHTML = `${totalRawEarned}`;
+    strategyResultContainer8.innerHTML = `${totalFinalEarned}`;
+
+    strategyResultContainer8.style.color = color;
   }
 
   initTabParentsButtons() {

@@ -16,7 +16,7 @@ dotenv.config();
 
 app.use(express.static("public"));
 
-const rewindsDays = 6;
+const rewindsDays = 30;
 const startingTicks = 60 * 24 * rewindsDays - 3;
 
 const dataSettings = [

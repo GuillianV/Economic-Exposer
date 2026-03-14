@@ -9,12 +9,14 @@ class Strategies {
     for (const strategy of strategies) {
       let existing = this.strategies[strategy.name] != null;
       this.strategies[strategy.name] = strategy;
-      this.render(strategy.name , existing);
+      this.render(strategy.name, existing);
     }
   }
 
   retrieve(strategyName) {
-    return strategyName != null ? this.strategies[strategyName] : this.strategies;
+    return strategyName != null
+      ? this.strategies[strategyName]
+      : this.strategies;
   }
 
   render(strategyName, existing) {
@@ -25,11 +27,25 @@ class Strategies {
     }
 
     if (!existing) {
-        this.ui.initStrategyDetailsContainer(strategyName);
+      this.ui.initStrategyDetailsContainer(strategyName);
     }
-    
-    const {requiredWinratePercent , winratePercent , requiredWinrate, winrate} = strategy.moneyManager.winrate
-    const color = winrate > requiredWinrate ? "green" : "red";
-    this.ui.updateStrategyDetailsContainer(strategyName, winratePercent ,requiredWinratePercent, color);
+
+    const { baseCapital, currencyCapital, totalTrades, tradesResults } =
+      strategy.moneyManager;
+    const { requiredWinrate, winrate } = strategy.moneyManager.winrate;
+    const { totalFees, totalRawEarned, totalFinalEarned } = tradesResults;
+    const color = totalFinalEarned > 0 ? "green" : "red";
+    this.ui.updateStrategyDetailsContainer(
+      strategyName,
+      (winrate * 100).toFixed(2),
+      (requiredWinrate * 100).toFixed(2),
+      baseCapital,
+      currencyCapital.toFixed(2),
+      totalTrades,
+      totalFees.toFixed(2),
+      totalRawEarned.toFixed(2),
+      totalFinalEarned.toFixed(2),
+      color,
+    );
   }
 }
