@@ -9,10 +9,22 @@ export default class Analyser {
    * Données internes pour les extrêmes et niveaux
    */
   datas = {
-    localLows: {},
-    localHighs: {},
-    supports: [],
-    resistances: [],
+    // localLows: {},
+    // localHighs: {},
+    // supports: [],
+    // resistances: [],
+    // congestionZones: {},
+    // localExtremes: {},
+    // swingHighs: [], // tableaux des hauts confirmés
+    // swingLows: [], // tableaux des bas confirmés
+    // lastConfirmedHigh: null,
+    // lastConfirmedLow: null,
+    // potentialHigh: null,
+    // potentialLow: null,
+    // impulseStartPrice: null,
+    // impulseStartTime: null,
+    // direction: null, // "up" ou "down"
+    // currentTrend: "neutral", // "bullish" | "bearish" | "neutral"
   };
 
   /**
@@ -62,22 +74,22 @@ export default class Analyser {
 
     this.strategies = new Strategies([
       new Strategy(
-        new MoneyManager(100, RR["0.33"]),
+        new MoneyManager(1000, RR["0.33"]),
         tripleStar,
         "tripleStar-033",
       ),
 
       new Strategy(
-        new MoneyManager(100, RR["0.5"]),
+        new MoneyManager(1000, RR["0.5"]),
         tripleStar,
         "tripleStar-05",
       ),
-      new Strategy(new MoneyManager(100, RR[1]), tripleStar, "tripleStar-1"),
-      new Strategy(new MoneyManager(100, RR[2]), tripleStar, "tripleStar-2"),
-      new Strategy(new MoneyManager(100, RR[3]), tripleStar, "tripleStar-3"),
-      new Strategy(new MoneyManager(100, RR[4]), tripleStar, "tripleStar-4"),
-      new Strategy(new MoneyManager(100, RR[5]), tripleStar, "tripleStar-5"),
-      new Strategy(new MoneyManager(100, RR[6]), tripleStar, "tripleStar-6"),
+      new Strategy(new MoneyManager(10000, RR[1]), tripleStar, "tripleStar-1"),
+      new Strategy(new MoneyManager(10000, RR[2]), tripleStar, "tripleStar-2"),
+      new Strategy(new MoneyManager(10000, RR[3]), tripleStar, "tripleStar-3"),
+      new Strategy(new MoneyManager(10000, RR[4]), tripleStar, "tripleStar-4"),
+      new Strategy(new MoneyManager(10000, RR[5]), tripleStar, "tripleStar-5"),
+      new Strategy(new MoneyManager(10000, RR[6]), tripleStar, "tripleStar-6"),
     ]);
   }
 
@@ -115,7 +127,7 @@ export default class Analyser {
 
     this.datas.thirdKline = thirdKline;
 
-    this.#detectLocalHighsAndLows(currentKline, secondKline, thirdKline, 20);
+    this.updateHighsLows(0.05, 0.05);
 
     //Strategy part
     this.strategies.updateOpenTrades(
@@ -140,155 +152,130 @@ export default class Analyser {
     this.actualTick += this.intervalMilliseconds;
   }
 
-  /**
-   * Détecte les hauts/bas locaux sur la bougie précédente
-   * (logique inchangée, juste plus lisible)
-   */
-  #detectLocalHighsAndLows(currentKline, secondKline, thirdKline, force = 50) {
-    const thresholds = [force];
 
-    const isCurrentGreen = currentKline.open < currentKline.close;
-    const isLastGreen = secondKline.open < secondKline.close;
-    const isThirdGreen = thirdKline.open < thirdKline.close;
+  updateHighsLows(minDepth = 0.15, minTimeRatio = 0.15) {
+    const currentKline = this.datas.currentKline;
+    const secondKline = this.datas.secondKline;
 
-    // Helper pour créer un local extrême
-    const createLocalExtreme = (value, time) => ({
-      value,
-      time,
-      force: Object.fromEntries(thresholds.map((t) => [t, []])),
-    });
+    if (!currentKline || !secondKline) return;
 
-    // === Détection Low ===
-    if (
-      (!isCurrentGreen || !isLastGreen || !isThirdGreen) &&
-      secondKline.low < currentKline.low &&
-      thirdKline.low > secondKline.low
-    ) {
-      const localLow = createLocalExtreme(secondKline.close, secondKline.time);
+    // ===================== INITIALISATION =====================
+    if (!this.datas.localExtremes) {
+      const localExtremes = {
+        lastConfirmedLow: {
+          time: secondKline.time,
+          price: secondKline.low,
+        },
+        lastConfirmedHigh: {
+          time: secondKline.time,
+          price: secondKline.high,
+        },
+        swingHighs: [],
+        swingLows: [],
 
-      thresholds.forEach((threshold) => {
-        const nearbyLows = Object.values(this.datas.localLows).filter(
-          (existing) => Math.abs(existing.value - localLow.value) < threshold,
-        );
+        impulseStartPrice: secondKline.low,
+        impulseStartTime: secondKline.time,
+        currentTrend: "neutral",
+      };
+      localExtremes.direction =
+        currentKline.close > secondKline.close ? "up" : "down";
 
-        nearbyLows.forEach((existing) => {
-          localLow.force[threshold].push(existing.time);
-          existing.force[threshold].push(localLow.time);
-        });
-      });
-
-      this.datas.localLows[secondKline.time] = localLow;
+      this.datas.localExtremes = localExtremes;
+      return;
     }
 
-    // === Détection High ===
-    if (
-      (isCurrentGreen || isLastGreen || isThirdGreen) &&
-      secondKline.high > currentKline.high &&
-      thirdKline.high < secondKline.high
-    ) {
-      const localHigh = createLocalExtreme(secondKline.close, secondKline.time);
+    const localExtremes = this.datas.localExtremes;
 
-      thresholds.forEach((threshold) => {
-        const nearbyHighs = Object.values(this.datas.localHighs).filter(
-          (existing) => Math.abs(existing.value - localHigh.value) < threshold,
-        );
+    if (localExtremes.direction === "up") {
+      // --- Mise à jour du potentiel High ---
+      if (
+        currentKline.high >
+        (localExtremes.potentialHigh?.price ??
+          localExtremes.lastConfirmedHigh.price)
+      ) {
+        localExtremes.potentialHigh = {
+          time: currentKline.time,
+          price: currentKline.high,
+        };
+      }
 
-        nearbyHighs.forEach((existing) => {
-          localHigh.force[threshold].push(existing.time);
-          existing.force[threshold].push(localHigh.time);
-        });
-      });
+      // --- Calcul du retracement ---
+      if (localExtremes.potentialHigh) {
+        const impulseSize =
+          localExtremes.potentialHigh.price - localExtremes.impulseStartPrice;
+        const retraceSize =
+          localExtremes.potentialHigh.price - currentKline.low;
+        const retraceDepth = impulseSize > 0 ? retraceSize / impulseSize : 0;
 
-      this.datas.localHighs[secondKline.time] = localHigh;
-    }
-  }
+        const impulseDuration =
+          currentKline.time - localExtremes.impulseStartTime;
+        const retraceDuration =
+          currentKline.time - localExtremes.potentialHigh.time;
+        const retraceTimeRatio =
+          impulseDuration > 0 ? retraceDuration / impulseDuration : 0;
 
-  /**
-   * Construit les niveaux de supports/résistances à partir des pivots
-   * (logique identique, code nettoyé + noms clairs)
-   */
-  #generateSupportsAndResistances(forceValue = 50, filterSameLinesValue = 5) {
-    const allExtremes = [
-      ...Object.values(this.datas.localLows).map((low) => ({
-        ...low,
-        type: "low",
-      })),
-      ...Object.values(this.datas.localHighs).map((high) => ({
-        ...high,
-        type: "high",
-      })),
-    ];
+        // Validation Dow
+        if (retraceDepth >= minDepth && retraceTimeRatio >= minTimeRatio) {
+          // Swing High confirmé
+          localExtremes.swingHighs.push(localExtremes.potentialHigh);
+          localExtremes.lastConfirmedHigh = localExtremes.potentialHigh;
 
-    // Séparation uniques / multiples
-    const groups = allExtremes.reduce((acc, extreme) => {
-      const key =
-        extreme.force[forceValue].length === 0 ? "uniques" : "multiples";
-      acc[key] ??= [];
-      acc[key].push(extreme);
-      return acc;
-    }, {});
-
-    const uniques = groups.uniques || [];
-    const multiples = groups.multiples || [];
-
-    // Clustering des multiples (moyenne des niveaux connectés)
-    const clusters = {};
-    multiples.forEach((extreme, index) => {
-      if (extreme.used) return;
-
-      const clusterKey = `${index}_${extreme.type}`;
-      clusters[clusterKey] = [extreme.value];
-
-      extreme.force[forceValue].forEach((time) => {
-        const match = multiples.find(
-          (m) => m.time === time && m.type === extreme.type,
-        );
-        if (match) {
-          match.used = true;
-          clusters[clusterKey].push(match.value);
+          // On passe en tendance baissière
+          localExtremes.direction = "down";
+          localExtremes.potentialLow = {
+            time: currentKline.time,
+            price: currentKline.low,
+          };
+          localExtremes.impulseStartPrice = localExtremes.potentialHigh.price;
+          localExtremes.impulseStartTime = localExtremes.potentialHigh.time;
+          localExtremes.potentialHigh = null;
         }
-      });
-    });
+      }
+    } else if (localExtremes.direction === "down") {
+      // --- Mise à jour du potentiel Low ---
+      if (
+        currentKline.low <
+        (localExtremes.potentialLow?.price ??
+          localExtremes.lastConfirmedLow.price)
+      ) {
+        localExtremes.potentialLow = {
+          time: currentKline.time,
+          price: currentKline.low,
+        };
+      }
 
-    // Construction finale
-    const levels = { supports: [], resistances: [] };
+      if (localExtremes.potentialLow) {
+        const impulseSize =
+          localExtremes.impulseStartPrice - localExtremes.potentialLow.price;
+        const retraceSize =
+          currentKline.high - localExtremes.potentialLow.price;
+        const retraceDepth = impulseSize > 0 ? retraceSize / impulseSize : 0;
 
-    // Uniques
-    uniques.forEach((u) => {
-      levels[u.type === "low" ? "supports" : "resistances"].push(u.value);
-    });
+        const impulseDuration =
+          currentKline.time - localExtremes.impulseStartTime;
+        const retraceDuration =
+          currentKline.time - localExtremes.potentialLow.time;
+        const retraceTimeRatio =
+          impulseDuration > 0 ? retraceDuration / impulseDuration : 0;
 
-    // Moyennes des clusters
-    Object.entries(clusters).forEach(([key, values]) => {
-      const average = values.reduce((sum, v) => sum + v, 0) / values.length;
-      const isSupport = key.includes("_low");
-      levels[isSupport ? "supports" : "resistances"].push(average);
-    });
+        if (retraceDepth >= minDepth && retraceTimeRatio >= minTimeRatio) {
+          localExtremes.swingLows.push(localExtremes.potentialLow);
+          localExtremes.lastConfirmedLow = localExtremes.potentialLow;
 
-    // Suppression des niveaux trop proches (support vs resistance)
-    if (filterSameLinesValue !== 0) {
-      const toRemove = { supports: [], resistances: [] };
-
-      levels.supports.forEach((support) => {
-        const conflictingResistance = levels.resistances.find(
-          (resistance) => Math.abs(resistance - support) < filterSameLinesValue,
-        );
-        if (conflictingResistance) {
-          toRemove.supports.push(support);
-          toRemove.resistances.push(conflictingResistance);
+          localExtremes.direction = "up";
+          localExtremes.potentialHigh = {
+            time: currentKline.time,
+            price: currentKline.high,
+          };
+          localExtremes.impulseStartPrice = localExtremes.potentialLow.price;
+          localExtremes.impulseStartTime = localExtremes.potentialLow.time;
+          localExtremes.potentialLow = null;
         }
-      });
-
-      levels.supports = levels.supports.filter(
-        (s) => !toRemove.supports.includes(s),
-      );
-      levels.resistances = levels.resistances.filter(
-        (r) => !toRemove.resistances.includes(r),
-      );
+      }
     }
 
-    this.datas.supports = levels.supports;
-    this.datas.resistances = levels.resistances;
+    localExtremes.currentTrend =
+      localExtremes.direction === "up" ? "bullish" : "bearish";
   }
 
   onEnd(callback) {

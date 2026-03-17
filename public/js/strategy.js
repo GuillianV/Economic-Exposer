@@ -43,9 +43,9 @@ class Strategies {
       baseCapital,
       currencyCapital.toFixed(2),
       totalTrades,
-      totalFees.toFixed(2),
-      totalRawEarned.toFixed(2),
-      totalFinalEarned.toFixed(2),
+      totalFees?.toFixed(2),
+      totalRawEarned?.toFixed(2),
+      totalFinalEarned?.toFixed(2),
       color,
     );
   }

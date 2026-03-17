@@ -262,12 +262,13 @@ class Klines {
   }
 
   _drawHigsLows() {
-    const supports = this.datas.localLows;
+    const supports = this.datas.localExtremes.swingLows;
+    
     const supportsKeys = Object.keys(supports);
-
+    
     supportsKeys.forEach((time) => {
       const support = supports[time];
-      const candle = this.timeline[time];
+      const candle = this.timeline[support.time];
 
       if (candle == null) {
         return;
@@ -276,19 +277,19 @@ class Klines {
       const x = candle.x;
       const y =
         this.ui.height -
-        ((support.value - this.klines_lowest_price) /
+        ((support.price - this.klines_lowest_price) /
           this.clamped_highest_price) *
           this.ui.height;
 
       this.ui.drawRect(x, y, this.ui.width, 1, "green");
     });
 
-    const resistances = this.datas.localHighs;
+    const resistances = this.datas.localExtremes.swingHighs;
     const resistancesKeys = Object.keys(resistances);
 
     resistancesKeys.forEach((time) => {
       const support = resistances[time];
-      const candle = this.timeline[time];
+      const candle = this.timeline[support.time];
 
       if (candle == null) {
         return;
@@ -297,7 +298,7 @@ class Klines {
       const x = candle.x;
       const y =
         this.ui.height -
-        ((support.value - this.klines_lowest_price) /
+        ((support.price - this.klines_lowest_price) /
           this.clamped_highest_price) *
           this.ui.height;
 

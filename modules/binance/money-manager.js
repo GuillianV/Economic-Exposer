@@ -140,15 +140,19 @@ export default class MoneyManager {
   }
 
   getTradesResults() {
-    const totalFees = Object.values(this.tradesResults).reduce(
+    const tradesResultsTriggered = Object.values(this.tradesResults).filter(
+      (trade) => trade.triggered,
+    );
+
+    const totalFees = tradesResultsTriggered.reduce(
       (sum, trade) => sum + trade.totalFees,
       0,
     );
-    const totalRawEarned = Object.values(this.tradesResults).reduce(
+    const totalRawEarned = tradesResultsTriggered.reduce(
       (sum, trade) => sum + trade.rawEarnedCapital,
       0,
     );
-    const totalFinalEarned = Object.values(this.tradesResults).reduce(
+    const totalFinalEarned = tradesResultsTriggered.reduce(
       (sum, trade) => sum + trade.finalEarnedCapital,
       0,
     );
