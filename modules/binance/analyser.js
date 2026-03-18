@@ -9,22 +9,9 @@ export default class Analyser {
    * Données internes pour les extrêmes et niveaux
    */
   datas = {
-    // localLows: {},
-    // localHighs: {},
-    // supports: [],
-    // resistances: [],
-    // congestionZones: {},
-    // localExtremes: {},
-    // swingHighs: [], // tableaux des hauts confirmés
-    // swingLows: [], // tableaux des bas confirmés
-    // lastConfirmedHigh: null,
-    // lastConfirmedLow: null,
-    // potentialHigh: null,
-    // potentialLow: null,
-    // impulseStartPrice: null,
-    // impulseStartTime: null,
-    // direction: null, // "up" ou "down"
-    // currentTrend: "neutral", // "bullish" | "bearish" | "neutral"
+    localExtremes: null,
+    oppositionZones: [],
+    s_r_zones: [],
   };
 
   /**
@@ -127,8 +114,9 @@ export default class Analyser {
 
     this.datas.thirdKline = thirdKline;
 
-    this.updateHighsLows(0.05, 0.05);
+    this.updateHighsLows(0.15, 0.15);
 
+    this.updateSupportsResistances();
     //Strategy part
     this.strategies.updateOpenTrades(
       this.datas,
@@ -151,7 +139,6 @@ export default class Analyser {
     this.secondTick = this.actualTick;
     this.actualTick += this.intervalMilliseconds;
   }
-
 
   updateHighsLows(minDepth = 0.15, minTimeRatio = 0.15) {
     const currentKline = this.datas.currentKline;
@@ -276,6 +263,68 @@ export default class Analyser {
 
     localExtremes.currentTrend =
       localExtremes.direction === "up" ? "bullish" : "bearish";
+  }
+
+  updateSupportsResistances() {
+    if (!this.datas.localExtremes) return;
+
+    const { currentKline } = this.datas;
+    const { swingHighs, swingLows } = this.datas.localExtremes;
+
+    // Initialisation une seule fois
+    if (!this.datas.s_r_zones) {
+      this.datas.s_r_zones = [];
+    }
+    if (!this.datas.processedSwings) {
+      this.datas.processedSwings = { high: 0, low: 0 };
+    }
+
+    const prevHigh = this.datas.processedSwings.high;
+    const prevLow = this.datas.processedSwings.low;
+    const currHigh = swingHighs.length;
+    const currLow = swingLows.length;
+
+    // ===================== AJOUT DES NOUVEAUX SWINGS =====================
+    for (let i = prevHigh; i < currHigh; i++) {
+      const swing = swingHighs[i];
+      this.datas.s_r_zones.push({
+        price: swing.price,
+        type: "resistance",
+        startTime: swing.time,
+        endTime: null,
+      });
+    }
+
+    for (let i = prevLow; i < currLow; i++) {
+      const swing = swingLows[i];
+      this.datas.s_r_zones.push({
+        price: swing.price,
+        type: "support",
+        startTime: swing.time,
+        endTime: null,
+      });
+    }
+
+    this.datas.processedSwings.high = currHigh;
+    this.datas.processedSwings.low = currLow;
+
+    // ===================== DÉTECTION DES CASSURES =====================
+    const activeZones = this.datas.s_r_zones.filter(
+      (zone) => zone.endTime === null,
+    );
+
+    for (const zone of activeZones) {
+      if (zone.type === "resistance" && currentKline.high > zone.price) {
+        // === RESISTANCE CASSÉE → SUPPRESSION IMMÉDIATE ===
+        zone.endTime = currentKline.time;
+      } else if (zone.type === "support" && currentKline.low < zone.price) {
+        // === SUPPORT CASSÉ → SUPPRESSION IMMÉDIATE ===
+        zone.endTime = currentKline.time;
+      }
+    }
+    this.datas.oppositionZones = this.datas.s_r_zones.filter(
+      (zone) => zone.endTime === null,
+    );
   }
 
   onEnd(callback) {

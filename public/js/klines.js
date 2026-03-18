@@ -7,18 +7,18 @@ class Klines {
       candlesOffset: {
         value: 0,
         min: 0,
-        step: 10,
+        step: 20,
       },
       candlesnumber: {
         value: 60,
         min: 1,
-        step: 10,
+        step: 20,
       },
       heightOffset: {
         value: 0,
         min: 0,
         max: 1000,
-        step: 10,
+        step: 20,
       },
     };
 
@@ -263,9 +263,9 @@ class Klines {
 
   _drawHigsLows() {
     const supports = this.datas.localExtremes.swingLows;
-    
+
     const supportsKeys = Object.keys(supports);
-    
+
     supportsKeys.forEach((time) => {
       const support = supports[time];
       const candle = this.timeline[support.time];
@@ -307,24 +307,35 @@ class Klines {
   }
 
   _drawSupportsResistances() {
-    const supports = this.datas.supports;
-    supports.forEach((support) => {
-      const x = 0;
-      const y =
-        this.ui.height -
-        ((support - this.klines_lowest_price) / this.clamped_highest_price) *
-          this.ui.height;
-      this.ui.drawRect(x, y, this.ui.width, 1, "green");
-    });
+    const zones = this.datas.oppositionZones;
+    const timelineKeys = Object.keys(this.timeline);
 
-    const resistances = this.datas.resistances;
-    resistances.forEach((resistance) => {
-      const x = 0;
+    zones.forEach((zone) => {
+      const candle = this.timeline[zone.startTime];
+
+      const end = this.timeline[zone.endTime];
+      const start = this.timeline[zone.startTime];
+
+      let x = 0;
+      if (start != null) {
+        x = start.x;
+      }
+
+      let width = x + this.ui.width;
+      if (end != null) {
+        width = end.x + end.width - x;
+      }
+
+      if (zone.startTime > timelineKeys[timelineKeys.length - 1]) {
+        return;
+      }
+
       const y =
         this.ui.height -
-        ((resistance - this.klines_lowest_price) / this.clamped_highest_price) *
+        ((zone.price - this.klines_lowest_price) / this.clamped_highest_price) *
           this.ui.height;
-      this.ui.drawRect(x, y, this.ui.width, 1, "red");
+
+      this.ui.drawRect(x, y, width, 1, "white");
     });
   }
 }
