@@ -322,9 +322,7 @@ export default class Analyser {
         zone.endTime = currentKline.time;
       }
     }
-    this.datas.oppositionZones = this.datas.s_r_zones.filter(
-      (zone) => zone.endTime === null,
-    );
+    this.datas.oppositionZones = this.datas.s_r_zones
   }
 
   onEnd(callback) {

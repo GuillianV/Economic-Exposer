@@ -311,19 +311,27 @@ class Klines {
     const timelineKeys = Object.keys(this.timeline);
 
     zones.forEach((zone) => {
-      const candle = this.timeline[zone.startTime];
-
       const end = this.timeline[zone.endTime];
       const start = this.timeline[zone.startTime];
-
+      let broken = false;
       let x = 0;
-      if (start != null) {
-        x = start.x;
-      }
-
       let width = x + this.ui.width;
-      if (end != null) {
-        width = end.x + end.width - x;
+
+      if (!zone.endTime) {
+        if (start != null) {
+          x = start.x;
+        }
+      } else {
+        if (start == null && end == null) {
+          return;
+        }
+        broken = true;
+        if (start != null) {
+          x = start.x;
+        }
+        if (end != null) {
+          width = end.x + end.width - x
+        }
       }
 
       if (zone.startTime > timelineKeys[timelineKeys.length - 1]) {
@@ -335,7 +343,7 @@ class Klines {
         ((zone.price - this.klines_lowest_price) / this.clamped_highest_price) *
           this.ui.height;
 
-      this.ui.drawRect(x, y, width, 1, "white");
+      this.ui.drawRect(x, y, width, 1, broken ? "#ffffff20" : "white");
     });
   }
 }
