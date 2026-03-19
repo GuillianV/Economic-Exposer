@@ -39,6 +39,15 @@ export function parseKlines(rows) {
       ignore,
     ] = row;
 
+    const buyerQuote = parseFloat(takerBuyQuoteVolume);
+    const sellerQuote = parseFloat(quoteVolume) - buyerQuote;
+
+    const buyersQuoteVolumePercent = buyerQuote / quoteVolume;
+    const sellersQuoteVolumePercent = sellerQuote / quoteVolume;
+    
+    const buyersVolume = buyersQuoteVolumePercent * volume;
+    const sellersVolume = sellersQuoteVolumePercent * volume;
+
     klines[formatTimestamp(time)] = {
       open,
       high,
@@ -50,6 +59,10 @@ export function parseKlines(rows) {
       trades,
       takerBuyBaseVolume,
       takerBuyQuoteVolume,
+      buyersQuoteVolumePercent,
+      sellersQuoteVolumePercent,
+      buyersVolume,
+      sellersVolume,
     };
   });
   return klines;
@@ -89,5 +102,10 @@ export function parseSimpleKline(klineRaw, timestamp) {
     trades: parseInt(klineRaw.trades),
     takerBuyBaseVolume: parseFloat(klineRaw.takerBuyBaseVolume),
     takerBuyQuoteVolume: parseFloat(klineRaw.takerBuyQuoteVolume),
+    buyersQuoteVolumePercent: parseFloat(klineRaw.buyersQuoteVolumePercent),
+    sellersQuoteVolumePercent: parseFloat(klineRaw.sellersQuoteVolumePercent),
+    buyersVolume: parseFloat(klineRaw.buyersVolume),
+    sellersVolume: parseFloat(klineRaw.sellersVolume),
+
   };
 }

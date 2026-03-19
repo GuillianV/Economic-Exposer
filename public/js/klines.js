@@ -29,6 +29,7 @@ class Klines {
     this.indicators = {
       _drawHigsLows: false,
       _drawSupportsResistances: false,
+      _drawVolumes: true,
     };
   }
 
@@ -199,6 +200,9 @@ class Klines {
     if (this.indicators._drawSupportsResistances) {
       this._drawSupportsResistances();
     }
+    if (this.indicators._drawVolumes) {
+      this._drawVolumes();
+    }
 
     this._drawTrades();
   }
@@ -330,7 +334,7 @@ class Klines {
           x = start.x;
         }
         if (end != null) {
-          width = end.x + end.width - x
+          width = end.x + end.width - x;
         }
       }
 
@@ -344,6 +348,31 @@ class Klines {
           this.ui.height;
 
       this.ui.drawRect(x, y, width, 1, broken ? "#ffffff20" : "white");
+    });
+  }
+
+  _drawVolumes() {
+    const timelineKeys = Object.keys(this.timeline);
+    timelineKeys.forEach((time) => {
+      const kline = this.timeline[time];
+      const x = kline.x;
+      const y = this.ui.height - kline.volume;
+      let firstColor = kline.open > kline.close ? "red" : "green";
+      let secondColor = kline.open < kline.close ? "red" : "green";
+      
+      let firstHeight = 0
+      let secondHeight = 0
+      if (kline.buyersQuoteVolumePercent > kline.sellersQuoteVolumePercent) {
+        firstHeight = kline.buyersVolume;
+        secondHeight = kline.sellersVolume;
+      }else {
+        firstHeight = kline.sellersVolume;
+        secondHeight = kline.buyersVolume;
+      }
+      
+
+      this.ui.drawRect(x + 1, y, kline.width - 2, firstHeight, firstColor);
+      this.ui.drawRect(x + 1, y + firstHeight, kline.width - 2, secondHeight, secondColor);
     });
   }
 }
