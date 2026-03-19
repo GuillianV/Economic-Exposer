@@ -1,5 +1,5 @@
 import { intervalToSeconds } from "../utils.js";
-import { tripleStar } from "./conditions/index.js";
+import { tripleStar, zonesRessist } from "./conditions/index.js";
 import MoneyManager, { RR } from "./money-manager.js";
 import { parseSimpleKline } from "./parsers/kline.js";
 import Strategy, { Strategies } from "./strategy.js";
@@ -60,23 +60,31 @@ export default class Analyser {
     this.onEndCb = () => {};
 
     this.strategies = new Strategies([
-      new Strategy(
-        new MoneyManager(1000, RR["0.33"]),
-        tripleStar,
-        "tripleStar-033",
-      ),
+      // new Strategy(
+      //   new MoneyManager(1000, RR["0.33"]),
+      //   tripleStar,
+      //   "tripleStar-033",
+      // ),
 
-      new Strategy(
-        new MoneyManager(1000, RR["0.5"]),
-        tripleStar,
-        "tripleStar-05",
-      ),
+      // new Strategy(
+      //   new MoneyManager(1000, RR["0.5"]),
+      //   tripleStar,
+      //   "tripleStar-05",
+      // ),
       new Strategy(new MoneyManager(10000, RR[1]), tripleStar, "tripleStar-1"),
       new Strategy(new MoneyManager(10000, RR[2]), tripleStar, "tripleStar-2"),
       new Strategy(new MoneyManager(10000, RR[3]), tripleStar, "tripleStar-3"),
-      new Strategy(new MoneyManager(10000, RR[4]), tripleStar, "tripleStar-4"),
-      new Strategy(new MoneyManager(10000, RR[5]), tripleStar, "tripleStar-5"),
-      new Strategy(new MoneyManager(10000, RR[6]), tripleStar, "tripleStar-6"),
+
+      new Strategy(new MoneyManager(10000, RR[1]), zonesRessist, "zonesRessist-1"),
+      new Strategy(new MoneyManager(10000, RR[2]), zonesRessist, "zonesRessist-2"),
+      new Strategy(new MoneyManager(10000, RR[3]), zonesRessist, "zonesRessist-3"),
+      new Strategy(new MoneyManager(10000, RR[4]), zonesRessist, "zonesRessist-4"),
+      new Strategy(new MoneyManager(10000, RR[5]), zonesRessist, "zonesRessist-5"),
+      new Strategy(new MoneyManager(10000, RR[6]), zonesRessist, "zonesRessist-6"),
+
+      // new Strategy(new MoneyManager(10000, RR[4]), tripleStar, "tripleStar-4"),
+      // new Strategy(new MoneyManager(10000, RR[5]), tripleStar, "tripleStar-5"),
+      // new Strategy(new MoneyManager(10000, RR[6]), tripleStar, "tripleStar-6"),
     ]);
   }
 
@@ -265,7 +273,7 @@ export default class Analyser {
       localExtremes.direction === "up" ? "bullish" : "bearish";
   }
 
-  updateSupportsResistances() {
+  updateSupportsResistances(breakCount = 1) {
     if (!this.datas.localExtremes) return;
 
     const { currentKline } = this.datas;
@@ -291,6 +299,7 @@ export default class Analyser {
         price: swing.price,
         type: "resistance",
         startTime: swing.time,
+        breakCount: 0,
         endTime: null,
       });
     }
@@ -301,6 +310,7 @@ export default class Analyser {
         price: swing.price,
         type: "support",
         startTime: swing.time,
+        breakCount: 0,
         endTime: null,
       });
     }
@@ -315,14 +325,20 @@ export default class Analyser {
 
     for (const zone of activeZones) {
       if (zone.type === "resistance" && currentKline.high > zone.price) {
+        zone.breakCount++;
         // === RESISTANCE CASSÉE → SUPPRESSION IMMÉDIATE ===
-        zone.endTime = currentKline.time;
+        if (zone.breakCount >= breakCount) {
+          zone.endTime = currentKline.time;
+        }
       } else if (zone.type === "support" && currentKline.low < zone.price) {
+        zone.breakCount++;
         // === SUPPORT CASSÉ → SUPPRESSION IMMÉDIATE ===
-        zone.endTime = currentKline.time;
+        if (zone.breakCount >= breakCount) {
+          zone.endTime = currentKline.time;
+        }
       }
     }
-    this.datas.oppositionZones = this.datas.s_r_zones
+    this.datas.oppositionZones = this.datas.s_r_zones;
   }
 
   onEnd(callback) {
