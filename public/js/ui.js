@@ -24,7 +24,13 @@ class UI extends EventEmitter {
 
   initStrategyDetailsContainer(name) {
     const strategyResultContainer = document.createElement("div");
-    strategyResultContainer.classList.add("flex", "flex-col", "p-4", "w-1/3" , "basis-1/3");
+    strategyResultContainer.classList.add(
+      "flex",
+      "flex-col",
+      "p-4",
+      "w-1/3",
+      "basis-1/3",
+    );
     strategyResultContainer.innerHTML = `
       <div class="p-4 border-2 rounded-md glass relative">
 
@@ -301,6 +307,19 @@ class UI extends EventEmitter {
   drawRect(x, y, width, height, color) {
     this.ctx.fillStyle = color;
     this.ctx.fillRect(x, y, width, height);
+  }
+
+  drawLine(x1, y1, x2, y2, color = "#ffffff", lineWidth = 2) {
+    this.ctx.save();
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = lineWidth;
+    this.ctx.lineJoin = "round";
+    this.ctx.lineCap = "round";
+    this.ctx.beginPath();
+    this.ctx.moveTo(x1, y1);
+    this.ctx.lineTo(x2, y2);
+    this.ctx.stroke();
+    this.ctx.restore();
   }
 
   initCanvas() {

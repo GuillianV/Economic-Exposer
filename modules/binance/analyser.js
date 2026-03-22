@@ -3,7 +3,7 @@ import { tripleStar, zonesRessist } from "./conditions/index.js";
 import MoneyManager, { RR } from "./money-manager.js";
 import { parseSimpleKline } from "./parsers/kline.js";
 import Strategy, { Strategies } from "./strategy.js";
-
+import util from "util";
 export default class Analyser {
   /**
    * Données internes pour les extrêmes et niveaux
@@ -75,16 +75,21 @@ export default class Analyser {
       new Strategy(new MoneyManager(1000, RR[2]), tripleStar, "tripleStar-2"),
       new Strategy(new MoneyManager(1000, RR[3]), tripleStar, "tripleStar-3"),
 
-      new Strategy(new MoneyManager(1000, RR[1]), zonesRessist, "zonesRessist-1"),
-      new Strategy(new MoneyManager(1000, RR[2]), zonesRessist, "zonesRessist-2"),
-      new Strategy(new MoneyManager(1000, RR[3]), zonesRessist, "zonesRessist-3"),
-      new Strategy(new MoneyManager(1000, RR[4]), zonesRessist, "zonesRessist-4"),
-      new Strategy(new MoneyManager(1000, RR[5]), zonesRessist, "zonesRessist-5"),
-      new Strategy(new MoneyManager(1000, RR[6]), zonesRessist, "zonesRessist-6"),
-
-      // new Strategy(new MoneyManager(10000, RR[4]), tripleStar, "tripleStar-4"),
-      // new Strategy(new MoneyManager(10000, RR[5]), tripleStar, "tripleStar-5"),
-      // new Strategy(new MoneyManager(10000, RR[6]), tripleStar, "tripleStar-6"),
+      new Strategy(
+        new MoneyManager(1000, RR[1]),
+        zonesRessist,
+        "zonesRessist-1",
+      ),
+      new Strategy(
+        new MoneyManager(1000, RR[2]),
+        zonesRessist,
+        "zonesRessist-2",
+      ),
+      new Strategy(
+        new MoneyManager(1000, RR[3]),
+        zonesRessist,
+        "zonesRessist-3",
+      ),
     ]);
   }
 
@@ -124,7 +129,10 @@ export default class Analyser {
 
     this.updateHighsLows(0.15, 0.15);
 
-    this.updateSupportsResistances();
+    this.updateSupportsResistances(1);
+
+    this.updateTrendlines(1000, 0.001, 20);
+
     //Strategy part
     this.strategies.updateOpenTrades(
       this.datas,
@@ -341,6 +349,163 @@ export default class Analyser {
     this.datas.oppositionZones = this.datas.s_r_zones;
   }
 
+  updateTrendlines(maxSwings = 300, touchTolerance = 0.002, minInterval = 10) {
+    if (!this.datas.trendsWait) this.datas.trendsWait = {};
+    if (!this.datas.trendlines) this.datas.trendlines = [];
+
+    const { currentKline } = this.datas;
+    if (!currentKline || !this.datas.s_r_zones) return;
+
+    const swings = this.datas.s_r_zones.map((zone) => {
+      return {
+        price: zone.price,
+        time: zone.startTime,
+        type: zone.type,
+      };
+    });
+
+    const swingHighs = swings.filter((zone) => zone.type === "resistance");
+    const swingLows = swings.filter((zone) => zone.type === "support");
+
+    const recentLows = swingLows.slice(-maxSwings);
+    const recentHighs = swingHighs.slice(-maxSwings);
+
+    const tlKey = (type, p1, p2, p3) =>
+      `${type}_${p1.time}_${p2.time}_${p3.time}`;
+
+    const existingKeys = new Set(
+      this.datas.trendlines.map((tl) => tlKey(tl.type, tl.p1, tl.p2, tl.p3)),
+    );
+
+    const buildFromTriplets = (pivots, type) => {
+      const dirCheck = (p1, p2) =>
+        type === "ascending" ? p2.price > p1.price : p2.price < p1.price;
+
+      for (let i = 0; i < pivots.length - 2; i++) {
+        for (let j = i + 1; j < pivots.length - 1; j++) {
+          const p1 = pivots[i];
+          const p2 = pivots[j];
+
+          if (!dirCheck(p1, p2)) continue;
+
+          if (p1.time + this.intervalMilliseconds * minInterval > p2.time) continue;
+
+          let cutsThroughCurrent = false;
+          for (let k = p1.time; k < p2.time; k += this.intervalMilliseconds) {
+            const kline = this.targetEntriesObjects[k];
+
+            if (p1.price > kline.open && p2.price < kline.close) {
+              cutsThroughCurrent = true;
+              break;
+            }
+
+            if (p2.price > kline.open && p1.price < kline.close) {
+              cutsThroughCurrent = true;
+              break;
+            }
+          }
+
+          if (cutsThroughCurrent) continue;
+
+          const slope = (p2.price - p1.price) / (p2.time - p1.time);
+
+          const projectedNow = p2.price + slope * (currentKline.time - p2.time);
+
+          // ─── Recherche de p3 aligné ───────────────────────────────────────
+          for (let k = j + 1; k < pivots.length; k++) {
+            const p3 = pivots[k];
+
+            if (!dirCheck(p2, p3)) continue;
+
+            const expectedPrice = p2.price + slope * (p3.time - p2.time);
+            const deviation =
+              Math.abs(p3.price - expectedPrice) / expectedPrice;
+
+            if (deviation > touchTolerance) continue;
+
+            let cutsThroughCurrent = false;
+            for (let k = p2.time; k < p3.time; k += this.intervalMilliseconds) {
+              const kline = this.targetEntriesObjects[k];
+
+              if (expectedPrice > kline.open && expectedPrice < kline.close) {
+                cutsThroughCurrent = true;
+                break;
+              }
+
+              if (expectedPrice > kline.close && expectedPrice < kline.open) {
+                cutsThroughCurrent = true;
+                break;
+              }
+            }
+
+            if (cutsThroughCurrent) continue;
+
+            const key = tlKey(type, p1, p2, p3);
+            if (existingKeys.has(key)) continue;
+
+            const isBroken =
+              type === "ascending"
+                ? currentKline.low < projectedNow
+                : currentKline.high > projectedNow;
+
+            const tl = {
+              type,
+              p1,
+              p2,
+              p3,
+              slope,
+              broken: isBroken,
+              breakTime: isBroken ? currentKline.time : null,
+              breakPrice: isBroken
+                ? type === "ascending"
+                  ? currentKline.low
+                  : currentKline.high
+                : null,
+              startTime: p1.time,
+              lastTouchTime: p3.time,
+              currentProjected: projectedNow,
+            };
+
+            this.datas.trendlines.push(tl);
+            existingKeys.add(key);
+          }
+        }
+      }
+    };
+
+    buildFromTriplets(recentLows, "ascending");
+    buildFromTriplets(recentHighs, "descending");
+
+    // ─── Mise à jour tick-à-tick ──────────────────────────────────────────────
+    for (const tl of this.datas.trendlines) {
+      if (tl.broken) continue;
+
+      const projected =
+        tl.p2.price + tl.slope * (currentKline.time - tl.p2.time);
+
+      if (tl.type === "ascending") {
+        if (currentKline.low < projected) {
+          tl.broken = true;
+          tl.breakTime = currentKline.time;
+          tl.breakPrice = currentKline.low;
+          continue;
+        }
+      } else {
+        if (currentKline.high > projected) {
+          tl.broken = true;
+          tl.breakTime = currentKline.time;
+          tl.breakPrice = currentKline.high;
+          continue;
+        }
+      }
+
+      tl.currentProjected = projected;
+    }
+
+    this.datas.activeTrendlines = this.datas.trendlines.filter(
+      (tl) => !tl.broken,
+    );
+  }
   onEnd(callback) {
     this.onEndCb = callback;
   }

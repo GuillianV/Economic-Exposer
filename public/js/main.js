@@ -74,7 +74,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   ws.on("end", (data) => {
-
+    console.log("end");
     klines.onTrades(data.strategies);
     klines.onUpdate(data.klines, data.datas);
     strategies.upsert(data.strategies);

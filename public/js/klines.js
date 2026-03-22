@@ -29,7 +29,8 @@ class Klines {
     this.indicators = {
       _drawHigsLows: false,
       _drawSupportsResistances: false,
-      _drawVolumes: true,
+      _drawVolumes: false,
+      _drawTrendlines: false,
     };
   }
 
@@ -204,6 +205,10 @@ class Klines {
       this._drawVolumes();
     }
 
+    if (this.indicators._drawTrendlines) {
+      this._drawTrendlines();
+    }
+
     this._drawTrades();
   }
 
@@ -359,20 +364,103 @@ class Klines {
       const y = this.ui.height - kline.volume;
       let firstColor = kline.open > kline.close ? "red" : "green";
       let secondColor = kline.open < kline.close ? "red" : "green";
-      
-      let firstHeight = 0
-      let secondHeight = 0
+
+      let firstHeight = 0;
+      let secondHeight = 0;
       if (kline.buyersQuoteVolumePercent > kline.sellersQuoteVolumePercent) {
         firstHeight = kline.buyersVolume;
         secondHeight = kline.sellersVolume;
-      }else {
+      } else {
         firstHeight = kline.sellersVolume;
         secondHeight = kline.buyersVolume;
       }
-      
 
       this.ui.drawRect(x + 1, y, kline.width - 2, firstHeight, firstColor);
-      this.ui.drawRect(x + 1, y + firstHeight, kline.width - 2, secondHeight, secondColor);
+      this.ui.drawRect(
+        x + 1,
+        y + firstHeight,
+        kline.width - 2,
+        secondHeight,
+        secondColor,
+      );
     });
+  }
+
+  _drawTrendlines() {
+    if (!this.datas.trendlines || this.datas.trendlines.length === 0) return;
+
+    const timelineKeys = Object.keys(this.timeline).map(Number);
+    if (timelineKeys.length === 0) return;
+
+    const firstVisibleTime = timelineKeys[0];
+    const lastVisibleTime = timelineKeys[timelineKeys.length - 1];
+
+    // ─── Helpers de projection (même formule que partout dans la classe) ─────
+
+    const priceToY = (price) =>
+      this.ui.height -
+      ((price - this.klines_lowest_price) / this.clamped_highest_price) *
+        this.ui.height;
+
+    // Convertit un timestamp → X en pixels
+    // Si le tick n'est pas dans la fenêtre visible, extrapole linéairement
+    const timeToX = (time) => {
+      const candle = this.timeline[time];
+      if (candle) return candle.x + candle.width / 2;
+
+      const first = this.timeline[firstVisibleTime];
+      const last = this.timeline[lastVisibleTime];
+      const pxPerMs =
+        (last.x + last.width / 2 - (first.x + first.width / 2)) /
+        (lastVisibleTime - firstVisibleTime);
+
+      return first.x + first.width / 2 + (time - firstVisibleTime) * pxPerMs;
+    };
+
+    // ─── Dessin de chaque trendline active ───────────────────────────────────
+
+    for (const tl of this.datas.trendlines) {
+      // Point d'ancrage gauche : p1 (ou son extrapolation hors fenêtre)
+      const x1 = timeToX(tl.p1.time);
+      const y1 = priceToY(tl.p1.price);
+
+      // Point droit : projection jusqu'au bord du canvas
+      const projectedPrice =
+        tl.p2.price + tl.slope * (lastVisibleTime - tl.p2.time);
+
+      let x2 = this.ui.width;
+
+      const y2 = priceToY(projectedPrice);
+
+      // Couleur : vert pour support ascendant, rouge pour résistance descendante
+      // Opacité croissante avec le nombre de touches (max 0.9)
+      const broken = tl.broken;
+    
+      const getRand = jsf32(
+        tl.startTime,
+        tl.startTime,
+        tl.startTime,
+        tl.startTime,
+      );
+
+      const colorR = Math.floor(getRand() * 50) + 205;
+      const colorG = Math.floor(getRand() * 50) + 205;
+      const colorB = Math.floor(getRand() * 50) + 205;
+
+      const opacity = (0.3 - (broken ? 0.25 : 0)).toFixed(2);
+      const color = `rgba(${colorR},${colorG},${colorB} ,${opacity})`;
+      const lw = tl.touchCount >= 3 ? 2 : 1;
+
+      this.ui.drawLine(x1, y1, x2, y2, color, lw);
+
+      for (const pivot of [tl.p1, tl.p2, tl.p3]) {
+        const candle = this.timeline[pivot.time];
+        if (!candle) continue;
+
+        const px = candle.x + candle.width / 2;
+        const py = priceToY(pivot.price);
+        this.ui.drawRect(px - 3, py - 3, 6, 6, color);
+      }
+    }
   }
 }

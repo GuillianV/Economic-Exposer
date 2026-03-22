@@ -107,7 +107,7 @@ function onStart({ id }, ws) {
       chain: "btcusdc",
       interval: "1m",
       startingTick: startingTicks,
-      initialTicks: 60,
+      initialTicks: 20,
     };
     const strategy = new Analyser(entries, options);
     for (let i = 0; i < options.initialTicks; i++) {
