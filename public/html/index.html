@@ -3,72 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Strategy</title>
+    <title>Home</title>
     <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body class="bg-slate-800 text-slate-200 h-full">
-    <div
-      class="flex absolute top-0 left-1/2 -translate-x-1/2 p-2 m-2 glass text-blue-950 rounded-md flex-col"
-    >
-      <div class="p-2">
-        <button
-          id="tab-parent-btn-ticks"
-          class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950"
-        >
-          Ticks
-        </button>
-        <button
-          id="tab-parent-btn-indicator"
-          class="tab-parent-btn glass rounded-md p-2 border-2 border-blue-950"
-        >
-          Indicators
-        </button>
+  <body>
+    <div class="flex flex-row w-full h-screen">
+      <div class="left-menu bg-slate-100 w-1/3 h-full">
+        <div class="flex flex-col">
+          <ul>
+            <li class="p-4">
+              <a href="/importers" class="menu-item flex flex-row justify-between items-center w-full p-4 border glass transition-all duration-300 hover:bg-slate-200 border-slate-700 rounded-xl">
+                <p>Importers</p>
+                <img src="/img/arrow-left.png" class="arrow rotate-180 w-6 h-6" />
+              </a>
+            </li>
+     
+          </ul>
+        </div>
       </div>
-      <div class="flex justify-center p-2" id="tickContainer"></div>
-
-      <div class="flex justify-center p-2" id="indicatorsContainer"></div>
+      <div class="bg-slate-100 w-full"></div>
     </div>
 
-    <canvas class="w-full h-screen" id="klines"></canvas>
-
-    <div id="strategyResultContainer" class="flex flex-wrap w-full h-full border-t-2 border-slate-200"></div>
     <script src="/js/utils.js"></script>
     <script src="/js/event-emmiter.js"></script>
-    <script src="/js/ui.js"></script>
-    <script src="/js/klines.js"></script>
-    <script src="/js/strategy.js"></script>
     <script src="/js/websocket.js"></script>
-    <script src="/js/main.js"></script>
+
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const ws = new WebSocketClient("ws://localhost:3001");
+        ws.send({
+          page: "home",
+          type: "connect",
+          data: {},
+        });
+
+        ws.on("connect", () => {
+          console.log("connected");
+        });
+      });
+    </script>
   </body>
 </html>
-
-<style>
-  .glass {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 16px;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-  }
-
-  button {
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-  button.glass:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-
-  .tab-hidden {
-    display: none;
-  }
-
-  .tab-parent-enabled {
-    background: rgba(255, 255, 255, 0.7);
-  }
-
-  .tab-child-enabled {
-    background: rgba(255, 255, 255, 0.5);
-  }
-</style>

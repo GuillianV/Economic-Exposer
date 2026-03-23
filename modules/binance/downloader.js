@@ -14,7 +14,7 @@ export default class BinanceDataDownloader extends EventEmitter {
   #timestamp_now;
   #loading;
 
-  constructor(binanceVisionUrl, binanceDatasSettings = [new BinanceDataSetting("btcusdc", 5, BinanceDataSettingsIntervals.all)]) {
+  constructor(binanceVisionUrl) {
     super();
 
     if (!binanceVisionUrl) {
@@ -22,20 +22,27 @@ export default class BinanceDataDownloader extends EventEmitter {
       process.exit(1);
     }
 
+    this.#binanceVisionUrl = binanceVisionUrl;
+
+    this.#timestamp_now = Date.now();
+
+    return this;
+  }
+
+  async set(binanceDatasSettings = [new BinanceDataSetting("btcusdc", 5, BinanceDataSettingsIntervals.all)]) {
     if (!binanceDatasSettings || binanceDatasSettings.length === 0) {
       logger.error("Binance Datas Settings is not defined");
       process.exit(1);
     }
 
-    this.#binanceVisionUrl = binanceVisionUrl;
     this.#binanceDatasSettings = binanceDatasSettings;
-    this.#timestamp_now = Date.now();
+
     this.#loading = {
       actual: 0,
       total: this.#binanceDatasSettings.map((item) => item.klinesIntervals.length * item.backward_days).reduce((a, b) => a + b, 0),
     };
+
     this._init();
-    return this;
   }
 
   async _init() {
@@ -237,6 +244,24 @@ export class BinanceDataSettingsIntervals {
     BinanceDataSettingsIntervals.h6,
     BinanceDataSettingsIntervals.h8,
   ];
+
+  static getKlineList() {
+    return [
+      BinanceDataSettingsIntervals.s1,
+      BinanceDataSettingsIntervals.m1,
+      BinanceDataSettingsIntervals.m3,
+      BinanceDataSettingsIntervals.m5,
+      BinanceDataSettingsIntervals.m15,
+      BinanceDataSettingsIntervals.m30,
+      BinanceDataSettingsIntervals.h1,
+      BinanceDataSettingsIntervals.h2,
+      BinanceDataSettingsIntervals.h4,
+      BinanceDataSettingsIntervals.h6,
+      BinanceDataSettingsIntervals.h8,
+      BinanceDataSettingsIntervals.h12,
+      BinanceDataSettingsIntervals.d1,
+    ];
+  }
 
   static getKlineIntervalCount(interval) {
     switch (interval) {

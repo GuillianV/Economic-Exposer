@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="flex flex-row w-full min-h-screen h-full">
+      <!-- Sidebar -->
+      <aside class="left-menu bg-slate-100 w-1/3 min-h-screen h-full top-0 sticky">
+        <nav>
+          <ul>
+            <li class="p-4">
+              <a href="/importers" class="pointer-events-none menu-item flex flex-row justify-between items-center w-full p-4 border glass transition-all duration-300 hover:bg-slate-200 border-slate-700 rounded-xl bg-slate-300!">
+                <p>Importers</p>
+                <img src="/img/arrow-left.png" class="arrow rotate-180 w-6 h-6" alt="arrow" />
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </aside>
+
+      <!-- Main content -->
+      <main class="bg-slate-100 w-full min-h-screen h-full">
+        <div class="flex flex-col p-4">
+          <h1 class="font-bold text-3xl text-center mb-4">Importers</h1>
+
+          <!-- Binance section -->
+          <section class="flex flex-col">
+            <h2 class="bg-amber-500 p-4 rounded-t-3xl font-bold">Binance</h2>
+            <div id="binance-container" class="flex flex-col"></div>
+            <div class="mt-4 flex gap-2">
+              <button id="binance-add" class="glass rounded-md p-4 border-2 border-blue-950 font-bold cursor-pointer">Add ticker</button>
+              <button id="binance-save" class="glass rounded-md p-4 border-2 border-blue-950 font-bold cursor-pointer hover:bg-green-500! transition-all">Save</button>
+              <button id="binance-download" class="glass rounded-md p-4 border-2 border-blue-950 font-bold cursor-pointer">Download</button>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/event-emmiter.js"></script>
+    <script src="/js/websocket.js"></script>
+
+    <script>
+      // ─── WebSocket ────────────────────────────────────────────────────────────
+
+      function initWebSocket() {
+        const ws = new WebSocketClient("ws://localhost:3001");
+        ws.send({ page: "importers", type: "connect", data: {} });
+        ws.on("connect", () => console.log("connected"));
+      }
+
+      // ─── API ──────────────────────────────────────────────────────────────────
+
+      async function fetchIntervals() {
+        const data = await fetch("/api/importers/binance/intervals").then((r) => r.json());
+        return [...data, "all"];
+      }
+
+      async function fetchSavedSettings() {
+        const data = await fetch("/api/importers/binance/settings/").then((r) => r.json());
+        return data.importers ?? [];
+      }
+
+      async function saveSettings(importers) {
+        await fetch("/api/importers/binance/settings/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(importers),
+        });
+      }
+
+      // ─── DOM helpers ──────────────────────────────────────────────────────────
+
+      /**
+       * Builds the <select> options HTML from an intervals array.
+       * @param {string[]} intervals
+       * @param {string} [selected]
+       */
+      function buildIntervalOptions(intervals, selected = "") {
+        return intervals.map((iv) => `<option value="${iv}" ${iv === selected ? "selected" : ""}>${iv}</option>`).join("");
+      }
+
+      /**
+       * Creates a binance importer row element.
+       * @param {string[]} intervals
+       * @param {{ ticker?: string, rewinds?: string|number, interval?: string }} [values]
+       */
+      function createBinanceRow(intervals, values = {}) {
+        const { ticker = "", rewinds = "", interval = "" } = values;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "binance-wrapper flex flex-col w-full p-4 border-2 border-t-0! border-slate-400";
+        wrapper.innerHTML = `
+          <div class="w-full flex justify-between items-center mb-4">
+            <label>Ticker</label>
+            <input
+              type="text"
+              name="ticker"
+              class="glass rounded-md p-2 border-2 border-blue-950"
+              placeholder="btcusdc"
+              value="${ticker}"
+            />
+          </div>
+          <div class="w-full flex justify-between items-center mb-4">
+            <label>Rewinds days</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              name="rewinds"
+              class="glass rounded-md p-2 border-2 border-blue-950"
+              placeholder="60"
+              value="${rewinds}"
+            />
+          </div>
+          <div class="w-full flex justify-between items-center mb-4">
+            <label>Interval</label>
+            <select name="interval" class="glass rounded-md p-2 border-2 border-blue-950">
+              ${buildIntervalOptions(intervals, interval)}
+            </select>
+          </div>
+        `;
+        return wrapper;
+      }
+
+      /**
+       * Refreshes rounded corners so only the last row has a rounded bottom.
+       * @param {HTMLElement} container
+       */
+      function refreshRadius(container) {
+        const rows = container.querySelectorAll(".binance-wrapper");
+        rows.forEach((row, i) => {
+          row.classList.toggle("rounded-b-3xl", i === rows.length - 1);
+        });
+      }
+
+      /**
+       * Reads all binance rows and returns their values as an array of objects.
+       * @param {HTMLElement} container
+       */
+      function collectBinanceSettings(container) {
+        return [...container.querySelectorAll(".binance-wrapper")].map((row) => ({
+          ticker: row.querySelector("[name=ticker]").value,
+          rewinds: row.querySelector("[name=rewinds]").value,
+          interval: row.querySelector("[name=interval]").value,
+        }));
+      }
+
+      // ─── Init ─────────────────────────────────────────────────────────────────
+
+      window.addEventListener("DOMContentLoaded", async () => {
+        initWebSocket();
+
+        const container = document.getElementById("binance-container");
+
+        // Fetch intervals first — both addRow and loadSaved depend on it
+        const intervals = await fetchIntervals();
+
+        // Load saved settings
+        const savedImporters = await fetchSavedSettings();
+        savedImporters.forEach((importer) => {
+          const saved = container.appendChild(createBinanceRow(intervals, importer));
+          saved.querySelector("select").value = importer.interval;
+        });
+        refreshRadius(container);
+
+        // Add row button
+        document.getElementById("binance-add").addEventListener("click", () => {
+          container.appendChild(createBinanceRow(intervals));
+          refreshRadius(container);
+        });
+
+        // Save button
+        document.getElementById("binance-save").addEventListener("click", async () => {
+          const settings = collectBinanceSettings(container).filter((s) => s.ticker != "" && s.interval != "");
+
+          await saveSettings(settings);
+        });
+      });
+    </script>
+  </body>
+</html>
