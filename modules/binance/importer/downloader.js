@@ -1,12 +1,12 @@
 import fs from "fs";
-import { logger } from "../logs/index.js";
-import { timestampParser } from "../utils.js";
+import { logger } from "../../logs/index.js";
+import { timestampParser } from "../../utils.js";
 import { parse } from "csv-parse";
 import extract from "extract-zip";
 import https from "https";
 import path from "path";
-import EventEmitter from "../event-emmiter.js";
-import { parseKlines } from "./parsers/kline.js";
+import EventEmitter from "../../event-emmiter.js";
+import { parseKlines } from "../parsers/kline.js";
 
 export default class BinanceDataDownloader extends EventEmitter {
   #binanceVisionUrl;
@@ -64,7 +64,6 @@ export default class BinanceDataDownloader extends EventEmitter {
       if (typeof callback !== "function") {
         throw new Error("Callback must be a function");
       }
-      // logger.info(`loading : ${this.#loading.actual}/${this.#loading.total}, file : ${filename}`);
 
       callback(this.#loading, filename);
     });

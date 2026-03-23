@@ -1,9 +1,7 @@
-import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./binance/downloader.js";
-import fs from "fs";
-import CryptoBacktester from "./binance/index.js";
-import binanceImporter from "./binance/importer.js";
+import { BinanceDataSettingsIntervals } from "./importer/downloader.js";
+import binanceImporter from "./importer/importer.js";
 
-export function importers(app) {
+export function binanceImportersRoutes(app) {
   app.get("/api/importers/binance/intervals", (req, res) => {
     res.json(BinanceDataSettingsIntervals.getKlineList());
   });
@@ -23,3 +21,4 @@ export function importers(app) {
     res.json(binanceImporter.getSettings());
   });
 }
+

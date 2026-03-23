@@ -1,10 +1,12 @@
 import dotenv from "dotenv";
 import express from "express";
 import { WebSocketServer } from "ws";
-import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./modules/binance/downloader.js";
-import CryptoBacktester from "./modules/binance/index.js";
-import Analyser from "./modules/binance/analyser.js";
-import { importers } from "./modules/api.js";
+import { BinanceDataSetting, BinanceDataSettingsIntervals } from "./modules/binance/importer/downloader.js";
+import CryptoBacktester from "./modules/analyser/index.js";
+import Analyser from "./modules/analyser/analyser.js";
+import { binanceImportersRoutes } from "./modules/binance/api.js";
+import ServerSocket from "./modules/socket.js";
+import "./modules/binance/socket.js";
 const __dirname = import.meta.dirname;
 
 const app = express();
@@ -14,8 +16,7 @@ dotenv.config();
 
 app.use(express.static("public"));
 app.use(express.json());
-importers(app);
-
+binanceImportersRoutes(app);
 
 
 // const rewindsDays = 3;
@@ -86,27 +87,6 @@ app.get("/importers", (req, res) => {
   res.sendFile(__dirname + "/public/html/importers.html");
 });
 
-const wss = new WebSocketServer({ port: 3001 });
-
-function onMessage(message, cb) {
-  let page = null;
-  let type = null;
-  let data = null;
-  try {
-    message = JSON.parse(message);
-    page = message.page;
-    type = message.type;
-    data = message.data;
-  } catch (e) {
-    console.log(e);
-    return;
-  }
-
-  if (typeof cb === "function") {
-    cb(page, type, data);
-  }
-}
-
 // const strategies = {};
 // const sockets = {};
 
@@ -150,54 +130,33 @@ function onMessage(message, cb) {
 //   );
 // }
 
-let websocket = null;
+// function routeMessage(page, type, data) {
+//     switch (page) {
+//       case "home":
+//         routeHomeMessage(type, data);
+//         break;
+//     }
+//   }
 
-wss.on("connection", (ws) => {
-  websocket = ws;
-  ws.on("message", (message) => {
-    onMessage(message, (page, type, data) => {
-      routeMessage(page, type, data);
-      // switch (type) {
-      //   case "start":
-      //     onStart(data, ws);
-      //     break;
-      //   case "tick":
-      //     onTick(data, ws);
-      //     break;
-      //   default:
-      //     break;
-      // }
-    });
-  });
-});
+//   function routeHomeMessage(type, data) {
+//     switch (type) {
+//       case "connect":
+//         sendConnect();
+//         break;
+//       default:
+//         break;
+//     }
+//   }
 
-function routeMessage(page, type, data) {
-  switch (page) {
-    case "home":
-      routeHomeMessage(type, data);
-      break;
-  }
-}
-
-function routeHomeMessage(type, data) {
-  switch (type) {
-    case "connect":
-      sendConnect();
-      break;
-    default:
-      break;
-  }
-}
-
-function sendConnect() {
-  websocket.send(
-    JSON.stringify({
-      page: "home",
-      type: "connect",
-      data: {},
-    }),
-  );
-}
+//   function sendConnect() {
+//     websocket.send(
+//       JSON.stringify({
+//         page: "home",
+//         type: "connect",
+//         data: {},
+//       }),
+//     );
+//   }
 
 app.listen(port, () => {
   console.log(`App listening on port ${port}`);

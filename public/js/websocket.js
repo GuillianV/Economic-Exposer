@@ -23,8 +23,9 @@ class WebSocketClient extends EventEmitter {
   }
 
   onMessage(event) {
-    this.parseMessage(event.data, (type, data) => {
-      this.trigger(type, [data]);
+    this.parseMessage(event.data, (page,type, data) => {
+      console.log(page, type, data);
+      this.trigger(page, [type, data]);
     });
   }
 
@@ -56,19 +57,22 @@ class WebSocketClient extends EventEmitter {
   }
 
   parseMessage(message, cb) {
+    let fulldatas = null;
+    let page = null;
     let type = null;
     let data = null;
     try {
-      message = JSON.parse(message);
-      type = message.type;
-      data = message.data;
+      fulldatas = JSON.parse(message);
+      page = fulldatas.page;
+      type = fulldatas.type;
+      data = fulldatas.data;
     } catch (e) {
       console.log(e);
       return;
     }
 
     if (typeof cb === "function") {
-      cb(type, data);
+      cb(page, type, data);
     }
   }
 }

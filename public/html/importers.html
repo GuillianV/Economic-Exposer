@@ -51,7 +51,9 @@
       function initWebSocket() {
         const ws = new WebSocketClient("ws://localhost:3001");
         ws.send({ page: "importers", type: "connect", data: {} });
-        ws.on("connect", () => console.log("connected"));
+        ws.on("importers", (type, data) => {
+          
+        });
       }
 
       // ─── API ──────────────────────────────────────────────────────────────────
@@ -63,6 +65,11 @@
 
       async function fetchSavedSettings() {
         const data = await fetch("/api/importers/binance/settings/").then((r) => r.json());
+        return data.importers ?? [];
+      }
+
+      async function fetchDownload() {
+        const data = await fetch("/api/importers/binance/download").then((r) => r.json());
         return data.importers ?? [];
       }
 
@@ -180,6 +187,11 @@
           const settings = collectBinanceSettings(container).filter((s) => s.ticker != "" && s.interval != "");
 
           await saveSettings(settings);
+        });
+
+        // Download button
+        document.getElementById("binance-download").addEventListener("click", async () => {
+          await fetchDownload();
         });
       });
     </script>

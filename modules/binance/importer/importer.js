@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import fs from "fs";
-import { logger } from "../logs/index.js";
+import { logger } from "../../logs/index.js";
 import BinanceDataDownloader, { BinanceDataSetting, BinanceDataSettingsIntervals } from "./downloader.js";
 dotenv.config();
 class BinanceImporter {
@@ -12,9 +12,6 @@ class BinanceImporter {
     this.BINANCE_VISION_URL = process.env.BINANCE_VISION_URL;
 
     this.#downloader = new BinanceDataDownloader(this.BINANCE_VISION_URL);
-    this.#downloader.onLoading(({actual, total}) => {
-      console.log(`Downloading ${actual}/${total}`);
-    });
 
     this.settings_folder = `settings/importers/`;
     this.settings_file = `${this.settings_folder}binance.json`;
@@ -91,6 +88,12 @@ class BinanceImporter {
       binanceDatasSettings.push(new BinanceDataSetting(importer.ticker, importer.rewinds, importer.interval == "all" ? BinanceDataSettingsIntervals.all : importer.interval));
     }
     this.#downloader.set(binanceDatasSettings);
+  }
+
+  onImport(callback = () => {}) {
+    this.#downloader.onLoading(({ actual, total }) => {
+      callback({ actual, total });
+    });
   }
 }
 

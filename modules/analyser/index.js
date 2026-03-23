@@ -1,7 +1,7 @@
 import BinanceDataDownloader, {
   BinanceDataSetting,
   BinanceDataSettingsIntervals,
-} from "./downloader.js";
+} from "../binance/importer/downloader.js";
 import { timestampParser } from "../utils.js";
 import { parseKlinesSaved } from "./parsers/kline.js";
 import { logger } from "../logs/index.js";
