@@ -35,9 +35,11 @@ export default class Analyser {
     this.options = options;
     this.entriesObjects = entriesObjects;
 
+
     // On cible la paire/intervalle demandée
     this.targetEntriesObjects =
       this.entriesObjects[options.chain][options.interval];
+      console.log(this.targetEntriesObjects)
     this.targetEntriesArray = Object.entries(this.targetEntriesObjects);
 
     // Configuration de départ
