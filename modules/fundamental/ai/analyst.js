@@ -37,10 +37,10 @@ RÈGLES STRICTES :
 - INTERPRÈTE, ne répète pas. Ne dis jamais juste "DXY à 120" : dis ce que ça SIGNIFIE ("dollar fort = conditions restrictives, vent de face pour le risque"). Chaque chiffre doit être accompagné de sa lecture.
 - Ancre CHAQUE affirmation dans une donnée précise fournie (cite le chiffre et sa variation). N'invente AUCUNE donnée. Si une source est stale/indisponible, écris-le explicitement et n'extrapole pas.
 - Privilégie les DYNAMIQUES (tendances) aux niveaux bruts, et CROISE les axes (ex. dollar fort + peur extrême + funding neutre = quelle lecture combinée).
-- CONTEXTE HISTORIQUE : quand une métrique est annotée [pXX/5a] (rang percentile sur ~5 ans), interprète son NIVEAU via ce percentile — p<10 = extrême bas, p>90 = extrême haut. Un EXTRÊME est bien plus significatif qu'un niveau médian (mean reversion, capitulation, euphorie).
+- CONTEXTE HISTORIQUE : quand une métrique est annotée [pXX/5a] (rang percentile sur ~5 ans), interprète son NIVEAU via ce percentile — p<10 = extrême bas, p>90 = extrême haut. Un EXTRÊME est bien plus significatif qu'un niveau médian (mean reversion, capitulation, euphorie). FAIS REMONTER ce percentile dans le champ "valeur" de chaque signal_cle concerné (ex. "VIX 18,4 — p53/5a médian").
 - Sois concret et spécifique : cite des news/événements précis quand c'est pertinent.
 - SURPRISES ÉCO : pour un indicateur PUBLIÉ, ce qui meut les marchés est l'écart RÉEL vs PRÉVISION (consensus) — pas le niveau brut. Exploite la "surprise" fournie (ex. inflation au-dessus du consensus = pression haussière sur les taux = vent de face pour le risque ; emploi/croissance sous le consensus = ralentissement). Pour les events À VENIR, identifie les catalyseurs majeurs (FOMC, CPI, NFP) et le consensus attendu.
-- VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment.
+- VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment. Donne une "posture" claire (défensif/neutre/opportuniste-prudent) et "a_eviter" (le piège du moment). Ce N'EST PAS du daytrading : aucune entrée/sortie, seulement une posture d'investisseur prudent.
 - CONSEILS : donne 2-3 conseils CONCRETS et PRUDENTS adaptés au régime actuel — orientés gestion du risque, dimensionnement/exposition, patience, et indicateurs à surveiller. JAMAIS d'objectif de prix, JAMAIS "achète/vends maintenant". Ce sont des éclairages pour décider, PAS une recommandation financière.
 - Exprime ton incertitude via "confiance" (0 à 1).
 - Réponds en français.
@@ -53,9 +53,9 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "niveau_de_risque": "faible" | "modéré" | "élevé",
   "lecture_par_axe": {
     "sentiment": "Fear&Greed, funding, DVOL (vol implicite) interprétés",
-    "positionnement": "COT : hedge funds vs institutionnels sur futures BTC (qui est net long/short)",
-    "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle",
-    "liquidite": "liquidité nette (niveau ET tendance) et son implication pour BTC",
+    "positionnement": "COT MULTI-ACTIFS : net spéculatif BTC + forex (EUR/JPY/GBP) + actions (S&P500/Nasdaq) + or/pétrole ; souligne les extrêmes de positionnement (percentile)",
+    "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle (avec percentiles)",
+    "liquidite": "liquidité nette Fed ET liquidité GLOBALE (Fed+BCE+BoJ), niveau ET tendance, implication pour le risque/BTC",
     "marches_tradfi": "lecture S&P500/Nasdaq/VIX et alignement avec BTC",
     "matieres_premieres": "...",
     "structure_crypto": "...",
@@ -63,7 +63,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     "geopolitique": "..."
   },
   "signaux_cles": [
-    { "donnee": "ex. Dollar Index", "valeur": "120.4 (24h +0.3%)", "lecture": "ce que ça implique concrètement" }
+    { "donnee": "ex. Dollar Index", "valeur": "120.4 (24h +0.3%, p53/5a médian)", "lecture": "ce que ça implique concrètement" }
   ],
   "ce_qui_a_change": ["évolutions notables des tendances 24h/7j, ou [] si pas d'historique"],
   "correlations": ["CROSS-MARKET explicite : BTC vs S&P500/Nasdaq (alignement risk-on ?), BTC vs VIX (inverse ?), BTC vs or/DXY/10Y, et toute DIVERGENCE notable"],
@@ -77,6 +77,8 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "alertes": ["bascule notable détectée dans les données, ou [] si rien de notable"],
   "pour_debutants": {
     "en_bref": "explication TRÈS simple de la situation en 2-3 phrases, SANS jargon (comme à un proche non-initié) : ce que 'risk-on/off' veut dire ici concrètement, et s'il faut plutôt être serein ou prudent",
+    "posture": "défensif" | "neutre" | "opportuniste-prudent",
+    "a_eviter": "le piège typique du moment pour un débutant (ex. acheter dans l'euphorie, paniquer sur un creux, surutiliser le levier) — formulé simplement",
     "termes_cles": [
       { "terme": "ex. Liquidité nette", "explication": "définition en une phrase simple + pourquoi ça compte pour le BTC" }
     ]
@@ -86,7 +88,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   ]
 }
 
-Vise 3 signaux_cles minimum, 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants (en_bref + 2-3 termes_cles), et remplis lecture_par_axe pour CHAQUE axe disponible.`;
+Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + 2-3 termes_cles), et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];

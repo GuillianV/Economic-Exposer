@@ -61,7 +61,7 @@ Collecte **chaque heure**. L'IA ne se déclenche **que** si : la cadence de fond
 
 `LLM_PROVIDER` (défaut `deepseek`) choisit le principal ; **fallback automatique vers Groq** si le principal échoue. Disponibles : `deepseek`, `groq`, `gemini` *(palier gratuit indisponible en UE)*.
 
-Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, `alertes`, **`pour_debutants`** (vulgarisation + termes clés), **`conseils`** (2-3 conseils prudents adaptés au régime, orientés gestion du risque — pas de reco financière).
+Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, `alertes`, **`pour_debutants`** (vulgarisation + **posture** défensif/neutre/opportuniste-prudent + **à éviter** + termes clés ; pas de daytrading), **`conseils`** (2-3 conseils prudents adaptés au régime, orientés gestion du risque — pas de reco financière). Les `signaux_cles` portent le **percentile** (ex. `p53/5a`) pour situer chaque chiffre.
 
 ## Interface web
 
