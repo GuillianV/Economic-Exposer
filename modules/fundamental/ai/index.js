@@ -1,1 +1,1 @@
-export { analyze, formatState, getProvider } from "./analyst.js";
+export { analyze, formatState } from "./analyst.js";

@@ -49,6 +49,29 @@ export async function maybeAnalyze(state, trends) {
   return { triggered: true, reasons, verdict, record, file };
 }
 
+/**
+ * Force une analyse MAINTENANT : collecte un snapshot, analyse sans condition,
+ * et enregistre le verdict corrélé. NE met PAS à jour la référence de bascule
+ * (ai-state) — une analyse à la demande ne doit pas fausser la cadence du
+ * service. Utilisé par `fa:ai`.
+ */
+export async function analyzeNow() {
+  const { state } = await collectOnce();
+  const trends = await getTrends();
+  const { provider, verdict, raw } = await analyze(state, trends);
+  const record = {
+    ts: state.ts,
+    snapshotTs: state.ts,
+    provider,
+    triggers: ["analyse forcée (fa:ai)"],
+    verdict,
+    raw: verdict ? undefined : raw,
+  };
+  const file = await saveVerdict(record);
+  logger.info(`[ai] analyse forcée enregistrée (${verdict?.regime ?? "non parsé"}) → ${file}`);
+  return { provider, verdict, raw, file, snapshotTs: state.ts };
+}
+
 /** Un tour de service : collecte → tendances → analyse conditionnelle. */
 export async function serviceTick() {
   const { state } = await collectOnce();

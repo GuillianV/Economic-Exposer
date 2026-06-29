@@ -5,11 +5,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "fa:check": "node verify-fundamental.mjs",
-    "fa:trends": "node verify-trends.mjs",
-    "fa:ai": "node verify-ai.mjs",
-    "fa:tick": "node verify-tick.mjs",
-    "fa:serve": "node service.mjs",
+    "fa:check": "node check.mjs",
+    "fa:trends": "node trends.mjs",
+    "fa:ai": "node ai.mjs",
+    "fa:tick": "node tick.mjs",
+    "fa:freshness": "node freshness.mjs",
+    "fa:serve": "node serve.mjs",
     "fa:api": "node api.mjs"
   },
   "author": "GuillianV",

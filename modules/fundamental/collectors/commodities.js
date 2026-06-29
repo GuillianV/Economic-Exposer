@@ -1,21 +1,21 @@
 import { Collector } from "./base.js";
 
 /**
- * Matières premières via FRED — proxy du risque géopolitique et de l'inflation.
- * Nécessite process.env.FRED_API_KEY (même clé que fred). Axe : commodities.
+ * Matières premières — proxy du risque géopolitique, de l'inflation et de la
+ * croissance. Axe : commodities.
  *
- * Séries (dernière observation) :
- *   DCOILWTICO    - pétrole WTI ($/baril)
- *   DCOILBRENTEU  - pétrole Brent ($/baril)
- *   DHHNGSP       - gaz naturel Henry Hub ($/MMBtu)
- *
- * NB : les séries or LBMA de FRED sont discontinuées (404). L'or spot
- * nécessitera une source dédiée plus tard (proxy géopolitique = pétrole ici).
+ *  - Énergie & métaux industriels & agricoles via FRED (clé requise) :
+ *      WTI, Brent, gaz, cuivre ("Dr Copper" = croissance), blé (alimentaire).
+ *  - Or & argent via gold-api.com (gratuit, sans clé) car les séries or de
+ *    FRED sont discontinuées. L'or = narratif "digital gold", inverse des
+ *    taux réels.
  */
-const SERIES = {
+const FRED_SERIES = {
   wtiOil: "DCOILWTICO",
   brentOil: "DCOILBRENTEU",
   natGas: "DHHNGSP",
+  copper: "PCOPPUSDM", // $/tonne, mensuel
+  wheat: "PWHEAMTUSDM", // $/tonne, mensuel
 };
 
 export class CommoditiesCollector extends Collector {
@@ -23,7 +23,7 @@ export class CommoditiesCollector extends Collector {
     super("commodities", { axis: "commodities" });
   }
 
-  async #latest(seriesId, apiKey) {
+  async #latestFred(seriesId, apiKey) {
     const url =
       `https://api.stlouisfed.org/fred/series/observations` +
       `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1`;
@@ -33,17 +33,28 @@ export class CommoditiesCollector extends Collector {
     return { value: obs.value === "." ? null : Number(obs.value), date: obs.date };
   }
 
+  async #metal(symbol) {
+    const json = await this.getJson(`https://api.gold-api.com/price/${symbol}`);
+    return json?.price != null ? { value: Number(json.price), date: json.updatedAt } : null;
+  }
+
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
-    // Tolérant par série : une série discontinuée (HTTP 400) ne casse pas le reste.
-    const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled(keys.map((k) => this.#latest(SERIES[k], apiKey)));
+    const keys = Object.keys(FRED_SERIES);
+    const tasks = [
+      ...keys.map((k) => this.#latestFred(FRED_SERIES[k], apiKey)),
+      this.#metal("XAU"), // or
+      this.#metal("XAG"), // argent
+    ];
+    const settled = await Promise.allSettled(tasks);
+    const val = (i) => (settled[i].status === "fulfilled" ? settled[i].value : null);
+
     const out = {};
-    keys.forEach((k, i) => {
-      out[k] = settled[i].status === "fulfilled" ? settled[i].value : null;
-    });
+    keys.forEach((k, i) => (out[k] = val(i)));
+    out.gold = val(keys.length);
+    out.silver = val(keys.length + 1);
     return out;
   }
 }

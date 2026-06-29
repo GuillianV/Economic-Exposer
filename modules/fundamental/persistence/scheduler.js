@@ -35,30 +35,3 @@ export async function getTrends(lookbackDays = 8) {
   const history = await loadMetricsSince(Date.now() - lookbackDays * 86400000);
   return computeTrends(history);
 }
-
-/**
- * Démarre la collecte périodique (défaut : horaire). Collecte immédiatement
- * une première fois, puis à chaque intervalle. Renvoie une fonction stop().
- */
-export function startCollection({ intervalMs = HOUR_MS } = {}) {
-  let stopped = false;
-
-  const tick = async () => {
-    if (stopped) return;
-    try {
-      await collectOnce();
-    } catch (err) {
-      logger.error(`[persistence] collecte échouée : ${err.message}`);
-    }
-  };
-
-  tick(); // première collecte immédiate
-  const timer = setInterval(tick, intervalMs);
-  logger.info(`[persistence] collecte démarrée — intervalle ${Math.round(intervalMs / 60000)} min`);
-
-  return function stop() {
-    stopped = true;
-    clearInterval(timer);
-    logger.info("[persistence] collecte arrêtée");
-  };
-}

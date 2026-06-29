@@ -7,17 +7,24 @@ import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
 import { OnChainCollector } from "./collectors/onchain.js";
 import { NewsCollector } from "./collectors/news.js";
 import { EconomicCalendarCollector } from "./collectors/economic-calendar.js";
+import { FfCalendarCollector } from "./collectors/ff-calendar.js";
 import { CommoditiesCollector } from "./collectors/commodities.js";
 import { MarketsCollector } from "./collectors/markets.js";
+import { MarketsLiveCollector } from "./collectors/markets-live.js";
+import { LiquidityCollector } from "./collectors/liquidity.js";
 import { GdeltCollector } from "./collectors/gdelt.js";
 import { AcledCollector } from "./collectors/acled.js";
 import { GoogleNewsCollector } from "./collectors/google-news.js";
+import { DeribitCollector } from "./collectors/deribit.js";
+import { CftcCotCollector } from "./collectors/cftc-cot.js";
 
 /**
  * Liste des collecteurs :
- *   sentiment   : fear-greed, binance-futures
- *   macro       : fred, economic-calendar
- *   commodities : commodities (WTI/Brent/gaz)
+ *   sentiment   : fear-greed, binance-futures, deribit (DVOL)
+ *   positioning : cftc-cot (positionnement futures BTC : hedge funds / institutionnels)
+ *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), economic-calendar
+ *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
+ *   commodities : commodities (WTI/Brent/gaz/cuivre/blé/or/argent)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko
  *   onchain     : defillama, blockchain-info
@@ -27,10 +34,15 @@ import { GoogleNewsCollector } from "./collectors/google-news.js";
 export function buildCollectors() {
   return [
     new FearGreedCollector(),
+    new DeribitCollector(),
+    new CftcCotCollector(),
     new FredCollector(),
     new EconomicCalendarCollector(),
+    new FfCalendarCollector(),
+    new LiquidityCollector(),
     new CommoditiesCollector(),
     new MarketsCollector(),
+    new MarketsLiveCollector(),
     new CoinGeckoCollector(),
     new DefiLlamaCollector(),
     new BinanceFuturesCollector(),

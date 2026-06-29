@@ -1,4 +1,6 @@
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { logger } from "../logs/index.js";
 import {
   listSnapshots,
@@ -12,6 +14,11 @@ import {
   getSnapshotForVerdict,
 } from "../fundamental/persistence/store.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
+import { EconomicCalendarCollector } from "../fundamental/collectors/economic-calendar.js";
+import { FfCalendarCollector } from "../fundamental/collectors/ff-calendar.js";
+import { buildCalendar } from "../fundamental/calendar.js";
+
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../public");
 
 const DAY = 86400000;
 
@@ -65,7 +72,51 @@ export function createApp() {
         "GET /api/verdicts/:ts/snapshot",
         "GET /api/trends?lookbackDays=",
         "GET /api/metrics?since=",
+        "GET /api/calendar",
       ],
+    }),
+  );
+
+  // --- Calendrier économique unifié (format type investing.com) ---
+  // FairEconomy (riche : multi-pays, heure, prévision/réel) prolongé par FRED
+  // (horizon US lointain), repli FRED seul. Lit le dernier snapshot ; collecte
+  // en direct ce qui manque (ou si le snapshot a plus d'1 h).
+  app.get(
+    "/api/calendar",
+    wrap(async (req, res) => {
+      const snap = await loadLatestSnapshot();
+      const fresh = snap && Date.now() - snap.ts < 3600000;
+      let ff = fresh ? snap.axes?.macro?.["ff-calendar"] : null;
+      let fred = fresh ? snap.axes?.macro?.["economic-calendar"] : null;
+      let source = fresh ? "snapshot" : "live";
+      let ts = snap?.ts;
+
+      if (!ff?.events?.length) {
+        const r = await new FfCalendarCollector().collect();
+        if (!r.stale) {
+          ff = r.data;
+          source = fresh ? "snapshot+live" : "live";
+          ts = Math.max(ts || 0, r.ts);
+        }
+      }
+      if (!fred) {
+        const rf = await new EconomicCalendarCollector().collect();
+        if (!rf.stale) {
+          fred = rf.data;
+          ts = Math.max(ts || 0, rf.ts);
+        }
+      }
+
+      const cal = buildCalendar(ff, fred);
+      if (!cal.events.length) return res.status(503).json({ error: "calendrier indisponible (FairEconomy + FRED en échec)" });
+
+      res.json({
+        source,
+        ts,
+        iso: ts ? new Date(ts).toISOString() : null,
+        ...cal,
+        count: cal.events.length,
+      });
     }),
   );
 
@@ -169,6 +220,9 @@ export function createApp() {
       res.json(await loadMetricsSince(since));
     }),
   );
+
+  // Frontend statique (page calendrier) servi à la racine.
+  app.use(express.static(PUBLIC_DIR));
 
   return app;
 }

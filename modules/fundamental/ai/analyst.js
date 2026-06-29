@@ -8,13 +8,6 @@ const PROVIDERS = { deepseek, gemini, groq };
 // Chaîne par défaut : DeepSeek d'abord, Groq en secours (gratuit) si DeepSeek échoue.
 const DEFAULT_CHAIN = ["deepseek", "groq"];
 
-export function getProvider(nameOverride) {
-  const wanted = nameOverride || process.env.LLM_PROVIDER || "deepseek";
-  const p = PROVIDERS[wanted];
-  if (!p) throw new Error(`Fournisseur LLM inconnu : ${wanted} (dispo : ${Object.keys(PROVIDERS).join(", ")})`);
-  return p;
-}
-
 /** Ordre des fournisseurs à essayer : LLM_PROVIDER en tête, puis le reste en secours. */
 export function getProviderChain() {
   const order = [];
@@ -33,7 +26,9 @@ const SYSTEM = `Tu es un analyste macro/cross-market senior. Tu analyses le Bitc
 
 Ton rôle : à partir des données fournies (sentiment, macro, marchés TradFi, matières premières, structure crypto, on-chain, géopolitique, calendrier, news) ET de leurs TENDANCES (variations 1h/24h/7j), produire une lecture RICHE du régime de marché ET des CORRÉLATIONS CROSS-MARKET.
 
-ANALYSE CROSS-MARKET (important) : compare et croise explicitement le BTC avec les autres marchés — S&P500 & Nasdaq (BTC corrèle au risk-on actions), VIX (peur actions, corrélation inverse), or & dollar (DXY), rendements obligataires (10Y). Identifie les ALIGNEMENTS (tout risk-off ensemble) et surtout les DIVERGENCES (ex. actions qui montent mais BTC qui décroche, ou inverse) — les divergences sont souvent les signaux les plus riches.
+ANALYSE CROSS-MARKET (important) : compare et croise explicitement le BTC avec les autres marchés — S&P500 & Nasdaq (BTC corrèle au risk-on actions), VIX (peur actions, corrélation inverse), or & dollar (DXY), rendements obligataires (10Y nominal et RÉEL). Identifie les ALIGNEMENTS (tout risk-off ensemble) et surtout les DIVERGENCES (ex. actions qui montent mais BTC qui décroche, ou inverse) — les divergences sont souvent les signaux les plus riches.
+
+LIQUIDITÉ (driver prioritaire) : la LIQUIDITÉ NETTE (bilan Fed − RRP − TGA) et sa TENDANCE sont un moteur de fond majeur du BTC — une liquidité qui se contracte est un vent de face structurel, une expansion un soutien. Pondère-la fortement, ainsi que les taux RÉELS (un taux réel qui monte pénalise les actifs sans rendement).
 
 RÈGLES STRICTES :
 - NE PRÉDIS PAS le prix : aucun objectif de cours, aucun "BTC va monter/baisser". Les marchés sont imprévisibles à court terme. Raisonne en SCÉNARIOS CONDITIONNELS et en ASYMÉTRIE.
@@ -41,6 +36,9 @@ RÈGLES STRICTES :
 - Ancre CHAQUE affirmation dans une donnée précise fournie (cite le chiffre et sa variation). N'invente AUCUNE donnée. Si une source est stale/indisponible, écris-le explicitement et n'extrapole pas.
 - Privilégie les DYNAMIQUES (tendances) aux niveaux bruts, et CROISE les axes (ex. dollar fort + peur extrême + funding neutre = quelle lecture combinée).
 - Sois concret et spécifique : cite des news/événements précis quand c'est pertinent.
+- SURPRISES ÉCO : pour un indicateur PUBLIÉ, ce qui meut les marchés est l'écart RÉEL vs PRÉVISION (consensus) — pas le niveau brut. Exploite la "surprise" fournie (ex. inflation au-dessus du consensus = pression haussière sur les taux = vent de face pour le risque ; emploi/croissance sous le consensus = ralentissement). Pour les events À VENIR, identifie les catalyseurs majeurs (FOMC, CPI, NFP) et le consensus attendu.
+- VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment.
+- CONSEILS : donne 2-3 conseils CONCRETS et PRUDENTS adaptés au régime actuel — orientés gestion du risque, dimensionnement/exposition, patience, et indicateurs à surveiller. JAMAIS d'objectif de prix, JAMAIS "achète/vends maintenant". Ce sont des éclairages pour décider, PAS une recommandation financière.
 - Exprime ton incertitude via "confiance" (0 à 1).
 - Réponds en français.
 
@@ -51,8 +49,10 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "confiance": 0.0,
   "niveau_de_risque": "faible" | "modéré" | "élevé",
   "lecture_par_axe": {
-    "sentiment": "lecture interprétée (ou 'données indisponibles')",
-    "macro": "...",
+    "sentiment": "Fear&Greed, funding, DVOL (vol implicite) interprétés",
+    "positionnement": "COT : hedge funds vs institutionnels sur futures BTC (qui est net long/short)",
+    "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle",
+    "liquidite": "liquidité nette (niveau ET tendance) et son implication pour BTC",
     "marches_tradfi": "lecture S&P500/Nasdaq/VIX et alignement avec BTC",
     "matieres_premieres": "...",
     "structure_crypto": "...",
@@ -71,10 +71,19 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     { "date": "AAAA-MM-JJ", "evenement": "ex. CPI", "enjeu": "pourquoi ça compte pour le risque" }
   ],
   "asymetrie": "où penche le rapport risque/récompense et pourquoi",
-  "alertes": ["bascule notable détectée dans les données, ou [] si rien de notable"]
+  "alertes": ["bascule notable détectée dans les données, ou [] si rien de notable"],
+  "pour_debutants": {
+    "en_bref": "explication TRÈS simple de la situation en 2-3 phrases, SANS jargon (comme à un proche non-initié) : ce que 'risk-on/off' veut dire ici concrètement, et s'il faut plutôt être serein ou prudent",
+    "termes_cles": [
+      { "terme": "ex. Liquidité nette", "explication": "définition en une phrase simple + pourquoi ça compte pour le BTC" }
+    ]
+  },
+  "conseils": [
+    { "conseil": "action PRUDENTE adaptée au régime (gestion du risque / exposition / patience / ce qu'il faut surveiller)", "pourquoi": "le lien explicite avec les données actuelles", "prudence": "la nuance ou le risque à garder en tête" }
+  ]
 }
 
-Vise 3 signaux_cles minimum, 3 scénarios (haussier/baissier/médian), et remplis lecture_par_axe pour CHAQUE axe disponible.`;
+Vise 3 signaux_cles minimum, 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants (en_bref + 2-3 termes_cles), et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];
@@ -98,21 +107,48 @@ export function formatState(state, trends) {
 
   const fg = a.sentiment?.["fear-greed"];
   const fut = a.sentiment?.["binance-futures"];
+  const dvol = a.sentiment?.deribit;
   push(`\n## SENTIMENT`);
   if (fg) push(`- Fear & Greed : ${fg.value} (${fg.classification})${fmtTrend(trends, "fearGreed")}, précédent ${fg.previousValue}`);
   if (fut) push(`- Funding BTCUSDT : ${fut.lastFundingRate}${fmtTrend(trends, "funding")} · Open Interest : ${fut.openInterest}${fmtTrend(trends, "openInterest")} · prix ${fut.markPrice}${fmtTrend(trends, "btcPrice")}`);
+  if (dvol) push(`- DVOL (vol implicite BTC, "VIX crypto") : ${dvol.dvol}${fmtTrend(trends, "dvol")}`);
+
+  const cot = a.positioning?.["cftc-cot"];
+  push(`\n## POSITIONNEMENT (CFTC COT, futures BTC CME, ${cot?.date ?? "?"})`);
+  if (cot?.hedgeFundsNet != null) {
+    push(`- Hedge funds (leveraged) : net ${cot.hedgeFundsNet}${fmtTrend(trends, "cotHedgeFundsNet")} (long ${cot.hedgeFundsLong} / short ${cot.hedgeFundsShort})`);
+    push(`- Institutionnels (asset mgrs) : net ${cot.assetMgrNet} (long ${cot.assetMgrLong} / short ${cot.assetMgrShort})`);
+  } else push(`- (stale)`);
 
   const fred = a.macro?.fred;
   push(`\n## MACRO`);
   if (fred) {
-    push(`- M2 : ${fred.m2?.value}${fmtTrend(trends, "m2")} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")} · 10Y : ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")} · Fed Funds : ${fred.fedFunds?.value}% · CPI : ${fred.cpi?.value}`);
+    push(`- M2 : ${fred.m2?.value}${fmtTrend(trends, "m2")} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}`);
+    push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value} · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
+    push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
+    push(`- Conditions/risque : spread HY ${fred.highYieldSpread?.value}%${fmtTrend(trends, "highYieldSpread")} · conditions fin. (NFCI) ${fred.financialConditions?.value} · stress (StLouis) ${fred.financialStress?.value} · incertitude politique (EPU) ${fred.policyUncertainty?.value}${fmtTrend(trends, "policyUncertainty")}`);
+    push(`- Éco réelle : CPI ${fred.cpi?.value} · PCE ${fred.pce?.value} · ventes détail ${fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${fred.foodPriceIndex?.value}`);
+  } else push(`- (stale)`);
+
+  const liq = a.liquidity?.liquidity;
+  push(`\n## LIQUIDITÉ (driver clé)`);
+  if (liq?.netLiquidity) {
+    push(`- Liquidité nette : ${liq.netLiquidity.value?.toFixed?.(0)} Md$${fmtTrend(trends, "netLiquidity")} = bilan Fed ${liq.fedBalanceSheet?.value?.toFixed?.(0)} − RRP ${liq.reverseRepo?.value?.toFixed?.(0)} − TGA ${liq.tga?.value?.toFixed?.(0)}`);
   } else push(`- (stale)`);
 
   const com = a.commodities?.commodities;
-  if (com) push(`\n## MATIÈRES PREMIÈRES\n- WTI : ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")} · Brent : ${com.brentOil?.value} · Gaz : ${com.natGas?.value}`);
+  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${com.gold?.value}${fmtTrend(trends, "gold")} · Argent ${com.silver?.value} · Cuivre ${com.copper?.value} (Dr Copper) · Blé ${com.wheat?.value}`);
 
   const mk = a.markets?.markets;
-  if (mk) push(`\n## MARCHÉS TRADFI (cross-market)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}`);
+  if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}`);
+
+  const mkLive = a.markets?.["markets-live"];
+  if (mkLive) {
+    const parts = Object.entries(mkLive)
+      .filter(([, v]) => v)
+      .map(([sym, v]) => `${sym} ${v.value}`);
+    if (parts.length) push(`## MARCHÉS TEMPS RÉEL (intraday) : ${parts.join(" · ")}`);
+  }
 
   const cg = a.structure?.coingecko;
   if (cg) push(`\n## STRUCTURE CRYPTO\n- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH/BTC : ${cg.ethBtcRatio}${fmtTrend(trends, "ethBtcRatio")} · Mcap total : ${cg.totalMarketCapUsd}${fmtTrend(trends, "totalMarketCapUsd")}`);
@@ -135,10 +171,55 @@ export function formatState(state, trends) {
   }
   if (!gd?.topHeadlines?.length && ac?.totalEvents == null) push(`- (stale)`);
 
+  // --- CALENDRIER ÉCO : FairEconomy (riche, multi-pays, prévision/réel) en
+  // primaire ; FRED pour l'horizon US lointain + filet sur les résultats. ---
+  const ff = a.macro?.["ff-calendar"];
   const cal = a.macro?.["economic-calendar"];
-  if (cal?.upcoming?.length) {
-    push(`\n## CALENDRIER ÉCO (à venir)`);
-    cal.upcoming.forEach((e) => push(`- ${e.date} : ${e.name}`));
+  const ffEvents = ff?.events || [];
+  const hhmm = (ms) => (ms ? new Date(ms).toISOString().slice(11, 16) : "--:--");
+
+  // Résultats publiés = SURPRISE (réel vs prévision). FairEconomy d'abord ;
+  // repli FRED (US) tant que FairEconomy n'a pas encore de réel.
+  const ffDone = ffEvents.filter((e) => e.actual != null);
+  if (ffDone.length) {
+    push(`\n## RÉSULTATS ÉCO RÉCENTS (réel vs prévision = surprise)`);
+    ffDone.forEach((e) => {
+      const surp =
+        e.surprise != null
+          ? ` · surprise ${e.surprise >= 0 ? "+" : ""}${e.surprise} (${e.surprise >= 0 ? "au-dessus" : "sous"} consensus)`
+          : "";
+      const fc = e.forecast != null ? `, prév ${e.forecast}` : "";
+      const pv = e.previous != null ? `, préc ${e.previous}` : "";
+      push(`- ${e.date} ${e.country} ${e.event} : réel ${e.actual}${fc}${pv}${surp}`);
+    });
+  } else if (cal?.recent?.some((e) => e.result)) {
+    push(`\n## RÉSULTATS ÉCO RÉCENTS (publiés, ${cal.recentDays}j, US/FRED)`);
+    cal.recent
+      .filter((e) => e.result)
+      .forEach((e) => {
+        const r = e.result;
+        const chg =
+          r.pctIsSignal && r.changePct != null
+            ? `${r.changePct >= 0 ? "+" : ""}${r.changePct.toFixed(2)}% vs préc.`
+            : r.change != null
+            ? `${r.change >= 0 ? "+" : ""}${r.change} vs préc. (${r.previous})`
+            : "";
+        push(`- ${e.date} : ${r.label} = ${r.value}${chg ? ` (${chg})` : ""}`);
+      });
+  }
+
+  // À venir : FairEconomy (prévision + impact, multi-pays) prolongé par
+  // l'horizon US lointain de FRED (au-delà de la semaine FairEconomy).
+  const ffUpcoming = ffEvents.filter((e) => e.actual == null);
+  const lastFfDate = ffUpcoming.length ? ffUpcoming[ffUpcoming.length - 1].date : null;
+  const fredFar = (cal?.upcoming || []).filter((e) => !lastFfDate || e.date > lastFfDate);
+  if (ffUpcoming.length || fredFar.length) {
+    push(`\n## CALENDRIER ÉCO — À VENIR`);
+    ffUpcoming.forEach((e) => {
+      const fc = e.forecast != null ? ` (prév ${e.forecast}${e.previous != null ? `, préc ${e.previous}` : ""})` : "";
+      push(`- ${e.date} ${hhmm(e.datetime)} ${e.country} ${e.event}${fc} [${e.impact}]`);
+    });
+    fredFar.forEach((e) => push(`- ${e.date} US ${e.name}${e.type === "fomc" ? " ⚠️ catalyseur majeur" : ""}`));
   }
 
   const news = a.news?.news;

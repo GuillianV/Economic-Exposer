@@ -7,17 +7,19 @@ Il collecte en permanence des données réelles (sentiment, macro, marchés acti
 > **Objectif : aide à la décision, pas un robot trader.** L'outil produit un *état du monde* + des *scénarios conditionnels* + des *alertes sur bascule* — pour que **toi** décides. Il ne prédit **pas** le prix (les marchés sont imprévisibles à court terme) ; il éclaire le contexte que tu ne peux pas surveiller 24/7 à la main.
 
 ```
-collecte (13 collecteurs / 8 axes) → persistance → tendances → IA (verdict) → API
+collecte (17 collecteurs / 10 axes) → persistance → tendances → IA (verdict) → API
 ```
 
 ## Données collectées
 
 | Axe | Sources | Clé requise |
 |---|---|---|
-| **sentiment** | Fear & Greed, funding/OI Binance | — |
-| **macro** | FRED (M2, DXY, 10Y, Fed Funds, CPI) + calendrier éco | `FRED_API_KEY` |
-| **commodities** | WTI, Brent, gaz (FRED) | `FRED_API_KEY` |
-| **markets** | S&P500, Nasdaq, Dow, VIX (FRED) | `FRED_API_KEY` |
+| **sentiment** | Fear & Greed, funding/OI Binance, **DVOL** (vol implicite BTC, Deribit) | — |
+| **positioning** | **CFTC COT** : positionnement futures BTC CME (hedge funds vs institutionnels) | — |
+| **macro** | FRED : M2, dollar + FX (majeures & émergents), taux (2Y→30Y, **réels**, courbe, SOFR), crédit HY, **conditions/stress (NFCI, StLouis)**, **incertitude (EPU)**, CPI/PCE/ventes/sentiment/chômage, **prix alimentaires** + calendrier éco (publications US **+ réunions FOMC** + **résultats publiés**) ; **calendrier riche multi-pays** (heure, impact, **précédent/prévision/réel**) via FairEconomy/ForexFactory | `FRED_API_KEY` ; FairEconomy *(sans clé)* |
+| **liquidity** | Liquidité nette = bilan Fed − RRP − TGA (FRED) — *driver clé* | `FRED_API_KEY` |
+| **commodities** | WTI, Brent, gaz, cuivre, blé (FRED) + **or, argent** (gold-api) | `FRED_API_KEY` |
+| **markets** | S&P500, Nasdaq, Dow, VIX en clôture J-1 (FRED) + **intraday temps réel** (Finnhub ou Twelve Data) | `FRED_API_KEY` ; `FINNHUB_API_KEY` *(optionnel, intraday)* |
 | **structure** | dominance BTC, ETH/BTC, mcap (CoinGecko) | `COINGECKO_API_KEY` *(optionnel)* |
 | **onchain** | TVL, stablecoins (DefiLlama), hashrate (blockchain.info) | — |
 | **geopolitics** | manchettes (GDELT), conflits structurés (ACLED) | ACLED *(optionnel)* |
@@ -37,24 +39,33 @@ Chaque source absente dégrade proprement (marquée `stale`), sans casser le res
 
 ## Commandes
 
-| Commande | Rôle |
-|---|---|
-| `npm run fa:check` | Photo live des 8 axes + dump complet dans `data/last-check.json` |
-| `npm run fa:trends` | Collecte 1 snapshot + affiche les tendances (1h/24h/7j) |
-| `npm run fa:ai` | Analyse IA → **JSON pur** sur stdout |
-| `npm run fa:tick` | Un tour de service (collecte + analyse conditionnelle) |
-| `npm run fa:serve` | **Service 24/7** : collecte horaire + IA (fond + bascule) |
-| `npm run fa:api` | **API HTTP publique** (port 3000) |
+Chaque commande `fa:<x>` correspond au fichier d'entrée `<x>.mjs` à la racine.
+
+| Commande | Rôle | Écrit dans `data/` |
+|---|---|---|
+| `npm run fa:check` | Photo live des 10 axes + dump complet inspectable | `last-check.json` (dump debug) |
+| `npm run fa:freshness` | Diagnostic de fraîcheur : date réelle + âge de chaque source | — (lecture seule) |
+| `npm run fa:api` | **API HTTP publique** (port 3000) + page calendrier | — (lecture seule) |
+| `npm run fa:trends` | Collecte 1 snapshot + affiche les tendances (1h/24h/7j) | **snapshot** |
+| `npm run fa:ai` | **Force** une analyse IA → **JSON pur** sur stdout (`--prompt` = debug, n'écrit rien) | **snapshot + verdict** |
+| `npm run fa:tick` | Un tour de service (collecte + analyse *conditionnelle*) | **snapshot** (+ verdict si déclenché) |
+| `npm run fa:serve` | **Service 24/7** : collecte horaire + IA (fond + bascule) | **snapshots + verdicts** |
+
+Trois familles : **diagnostic** (lecture seule : `check`, `freshness`, `api`) · **génération de données** (historisent : `trends`, `ai`, `tick`, `serve`).
 
 ### Logique du service (`fa:serve`)
 
-Collecte **chaque heure**. L'IA ne se déclenche **que** si : la cadence de fond (`AI_BASELINE_HOURS`, défaut 4h) est dépassée, **OU** une bascule notable est détectée (seuils : F&G ±6, DXY ±0.5 %, S&P ±1 %, VIX ±10 %, BTC ±3 %…), **OU** un catalyseur calendaire tombe le jour même (CPI, NFP…). → pas de spam, pas de coût inutile.
+Collecte **chaque heure**. L'IA ne se déclenche **que** si : la cadence de fond (`AI_BASELINE_HOURS`, défaut 4h) est dépassée, **OU** une bascule notable est détectée (seuils : F&G ±6, DXY ±0.5 %, S&P ±1 %, VIX ±10 %, BTC ±3 %…), **OU** un catalyseur calendaire tombe le jour même (CPI, NFP, **FOMC**…). → pas de spam, pas de coût inutile.
 
 ### IA — fournisseurs
 
 `LLM_PROVIDER` (défaut `deepseek`) choisit le principal ; **fallback automatique vers Groq** si le principal échoue. Disponibles : `deepseek`, `groq`, `gemini` *(palier gratuit indisponible en UE)*.
 
-Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, `alertes`.
+Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, `alertes`, **`pour_debutants`** (vulgarisation + termes clés), **`conseils`** (2-3 conseils prudents adaptés au régime, orientés gestion du risque — pas de reco financière).
+
+## Interface web
+
+`npm run fa:api` sert aussi une **page calendrier** (façon investing.com) sur `http://localhost:3000/` : tableau multi-pays avec heure, impact, précédent/prévision/réel, filtres (impact, pays, à venir/publiés) et rafraîchissement auto.
 
 ## API (lecture seule, CORS ouvert)
 
@@ -73,12 +84,13 @@ Base : `http://localhost:3000`
 | `GET /api/verdicts/:ts/snapshot` | **Le snapshot qui a produit ce verdict** |
 | `GET /api/trends?lookbackDays=` | Tendances courantes |
 | `GET /api/metrics?since=` | Série de métriques (pour graphes) |
+| `GET /api/calendar` | **Calendrier éco unifié** (format investing.com) : FairEconomy (multi-pays, heure, impact, précédent/prévision/réel, ~7 j) + FRED (horizon US lointain + FOMC) |
 
 ## Stockage des données
 
 ```
 data/
-  snapshots/AAAA-MM-JJ/<ISO-ts>.json   # 1 fichier/collecte : état complet (8 axes) + 25 métriques fusionnés
+  snapshots/AAAA-MM-JJ/<ISO-ts>.json   # 1 fichier/collecte : état complet (10 axes) + ~60 métriques fusionnés
   verdicts/AAAA-MM-JJ/<ISO-ts>.json    # 1 fichier/analyse IA
   ai-state.json                        # référence de bascule + dernier run IA
   last-check.json                      # dernier dump de fa:check
