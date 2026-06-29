@@ -1,7 +1,0 @@
-1 Corriger les trades
-- Ajouter correctement l'overflow quand le tp ou le sl est pris en compte au price change uniquement si il est déclanché a cause de l'overflow
-
-2 Mettre a jour le moneymanagment
-//- Calculer correctement le capital apres un trade
-//- Ajouter une fonction qui donne le capital disponible
-- Ajuster le capitalInital utilisé en fonction de la taille du stop loss et tp pour diminuer les frais
