@@ -1,31 +1,38 @@
 import { Collector } from "./base.js";
 
 /**
- * Binance Futures — positionnement / levier (proxy de sentiment).
+ * Binance Futures — positionnement / levier (proxy de sentiment), BTC + ETH.
  * Sans clé, gratuit. Axe : sentiment.
  *
- * Le funding et l'open interest se lisent sur le perpetual BTCUSDT
- * (référence du marché des dérivés), indépendamment du spot tradé.
+ * Funding & open interest sur les perpétuels BTCUSDT / ETHUSDT (référence du
+ * marché des dérivés). Les champs BTC restent à plat (rétro-compat) ; ETH est
+ * ajouté sous `eth`.
  */
-const SYMBOL = "BTCUSDT";
+const FAPI = "https://fapi.binance.com/fapi/v1";
+const num = (v) => (v != null ? Number(v) : null);
 
 export class BinanceFuturesCollector extends Collector {
   constructor() {
     super("binance-futures", { axis: "sentiment" });
   }
 
-  async fetchData() {
+  async #symbol(symbol) {
     const [premium, oi] = await Promise.all([
-      this.getJson(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${SYMBOL}`),
-      this.getJson(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${SYMBOL}`),
+      this.getJson(`${FAPI}/premiumIndex?symbol=${symbol}`),
+      this.getJson(`${FAPI}/openInterest?symbol=${symbol}`),
     ]);
-
     return {
-      symbol: SYMBOL,
-      lastFundingRate: premium?.lastFundingRate != null ? Number(premium.lastFundingRate) : null,
-      markPrice: premium?.markPrice != null ? Number(premium.markPrice) : null,
+      symbol,
+      lastFundingRate: num(premium?.lastFundingRate),
+      markPrice: num(premium?.markPrice),
       nextFundingTime: premium?.nextFundingTime ?? null,
-      openInterest: oi?.openInterest != null ? Number(oi.openInterest) : null,
+      openInterest: num(oi?.openInterest),
     };
+  }
+
+  async fetchData() {
+    const [btc, eth] = await Promise.all([this.#symbol("BTCUSDT"), this.#symbol("ETHUSDT")]);
+    // BTC à plat (rétro-compat) + ETH sous `eth`.
+    return { ...btc, eth };
   }
 }

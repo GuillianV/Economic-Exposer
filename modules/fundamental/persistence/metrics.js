@@ -23,8 +23,10 @@ export function extractMetrics(state) {
 
   const fg = sentiment["fear-greed"] ?? {};
   const fut = sentiment["binance-futures"] ?? {};
+  const eth = fut.eth ?? {};
   const deribit = sentiment.deribit ?? {};
   const fred = macro.fred ?? {};
+  const cotMk = cot.markets ?? {};
 
   const num = (v) => (Number.isFinite(v) ? v : null);
 
@@ -35,10 +37,21 @@ export function extractMetrics(state) {
     openInterest: num(fut.openInterest),
     btcPrice: num(fut.markPrice) ?? num(chain.marketPriceUsd),
     dvol: num(deribit.dvol),
-    // positionnement (CFTC COT)
+    // ETH (breadth crypto)
+    ethPrice: num(eth.markPrice),
+    ethFunding: num(eth.lastFundingRate),
+    ethOpenInterest: num(eth.openInterest),
+    // positionnement (CFTC COT) — BTC + multi-actifs (net spéculatif)
     cotHedgeFundsNet: num(cot.hedgeFundsNet),
     cotAssetMgrNet: num(cot.assetMgrNet),
     cotOpenInterest: num(cot.openInterest),
+    cotEurNet: num(cotMk.eurFx?.specNet),
+    cotJpyNet: num(cotMk.jpy?.specNet),
+    cotGbpNet: num(cotMk.gbp?.specNet),
+    cotSp500Net: num(cotMk.sp500?.specNet),
+    cotNasdaqNet: num(cotMk.nasdaq?.specNet),
+    cotGoldNet: num(cotMk.gold?.specNet),
+    cotWtiNet: num(cotMk.wti?.specNet),
     // macro
     m2: num(fred.m2?.value),
     dxy: num(fred.dollarIndex?.value),
@@ -66,11 +79,14 @@ export function extractMetrics(state) {
     consumerSentiment: num(fred.consumerSentiment?.value),
     unemployment: num(fred.unemployment?.value),
     foodPriceIndex: num(fred.foodPriceIndex?.value),
-    // liquidité nette (Md$) — driver clé
+    // liquidité (Md$) — driver clé : Fed nette + globale (Fed+BCE+BoJ)
     netLiquidity: num(liquidity.netLiquidity?.value),
     fedBalanceSheet: num(liquidity.fedBalanceSheet?.value),
     reverseRepo: num(liquidity.reverseRepo?.value),
     tga: num(liquidity.tga?.value),
+    ecbAssets: num(liquidity.ecbAssets?.value),
+    bojAssets: num(liquidity.bojAssets?.value),
+    globalLiquidity: num(liquidity.globalLiquidity?.value),
     // commodités
     wtiOil: num(commodities.wtiOil?.value),
     brentOil: num(commodities.brentOil?.value),
@@ -88,6 +104,8 @@ export function extractMetrics(state) {
     btcDominance: num(structure.btcDominance),
     ethBtcRatio: num(structure.ethBtcRatio),
     totalMarketCapUsd: num(structure.totalMarketCapUsd),
+    altMarketCapUsd: num(structure.altMarketCapUsd),
+    total3MarketCapUsd: num(structure.total3MarketCapUsd),
     // on-chain
     totalTvlUsd: num(defillama.totalTvlUsd),
     stablecoinMcapUsd: num(defillama.stablecoinMcapUsd),

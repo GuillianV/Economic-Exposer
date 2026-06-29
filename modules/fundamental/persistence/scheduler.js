@@ -3,6 +3,7 @@ import { getWorldState } from "../world-state.js";
 import { extractMetrics } from "./metrics.js";
 import { saveSnapshot, loadMetricsSince } from "./store.js";
 import { computeTrends } from "./trends.js";
+import { getBaselines } from "./baselines.js";
 
 export const HOUR_MS = 3600000;
 
@@ -30,8 +31,11 @@ export async function collectOnce() {
   return { snapshot, state, file };
 }
 
-/** Tendances courantes calculées sur l'historique des `lookbackDays` derniers jours. */
+/** Tendances courantes (deltas 1h/24h/7j) + normalisation (z/pctRank vs historique). */
 export async function getTrends(lookbackDays = 8) {
-  const history = await loadMetricsSince(Date.now() - lookbackDays * 86400000);
-  return computeTrends(history);
+  const [history, baselines] = await Promise.all([
+    loadMetricsSince(Date.now() - lookbackDays * 86400000),
+    getBaselines(),
+  ]);
+  return computeTrends(history, baselines);
 }

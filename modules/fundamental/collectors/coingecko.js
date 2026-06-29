@@ -5,7 +5,8 @@ import { Collector } from "./base.js";
  * Clé "demo" optionnelle (process.env.COINGECKO_API_KEY) pour relever le quota.
  * Axe : structure.
  *
- * Donne : dominance BTC/ETH, market cap totale + variation 24h, ratio ETH/BTC.
+ * Donne : dominance BTC/ETH, market cap totale + variation 24h, ratio ETH/BTC,
+ * et la force des alts via TOTAL2 (hors BTC) / TOTAL3 (hors BTC+ETH).
  */
 export class CoinGeckoCollector extends Collector {
   constructor() {
@@ -26,10 +27,20 @@ export class CoinGeckoCollector extends Collector {
     ]);
 
     const g = global?.data ?? {};
+    const total = g.total_market_cap?.usd ?? null;
+    const btcDom = g.market_cap_percentage?.btc ?? null;
+    const ethDom = g.market_cap_percentage?.eth ?? null;
+
+    // TOTAL2 = mcap hors BTC ; TOTAL3 = hors BTC+ETH (force des alts).
+    const altMarketCapUsd = total != null && btcDom != null ? total * (1 - btcDom / 100) : null;
+    const total3MarketCapUsd = total != null && btcDom != null && ethDom != null ? total * (1 - (btcDom + ethDom) / 100) : null;
+
     return {
-      btcDominance: g.market_cap_percentage?.btc ?? null,
-      ethDominance: g.market_cap_percentage?.eth ?? null,
-      totalMarketCapUsd: g.total_market_cap?.usd ?? null,
+      btcDominance: btcDom,
+      ethDominance: ethDom,
+      totalMarketCapUsd: total,
+      altMarketCapUsd,
+      total3MarketCapUsd,
       marketCapChange24h: g.market_cap_change_percentage_24h_usd ?? null,
       ethBtcRatio: ethBtc?.ethereum?.btc ?? null,
     };

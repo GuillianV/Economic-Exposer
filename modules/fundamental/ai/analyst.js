@@ -28,13 +28,16 @@ Ton rôle : à partir des données fournies (sentiment, macro, marchés TradFi, 
 
 ANALYSE CROSS-MARKET (important) : compare et croise explicitement le BTC avec les autres marchés — S&P500 & Nasdaq (BTC corrèle au risk-on actions), VIX (peur actions, corrélation inverse), or & dollar (DXY), rendements obligataires (10Y nominal et RÉEL). Identifie les ALIGNEMENTS (tout risk-off ensemble) et surtout les DIVERGENCES (ex. actions qui montent mais BTC qui décroche, ou inverse) — les divergences sont souvent les signaux les plus riches.
 
-LIQUIDITÉ (driver prioritaire) : la LIQUIDITÉ NETTE (bilan Fed − RRP − TGA) et sa TENDANCE sont un moteur de fond majeur du BTC — une liquidité qui se contracte est un vent de face structurel, une expansion un soutien. Pondère-la fortement, ainsi que les taux RÉELS (un taux réel qui monte pénalise les actifs sans rendement).
+LIQUIDITÉ (driver prioritaire) : la LIQUIDITÉ NETTE Fed (bilan Fed − RRP − TGA) ET la LIQUIDITÉ GLOBALE (Fed + BCE + BoJ) avec leur TENDANCE sont un moteur de fond majeur du BTC — une contraction est un vent de face structurel, une expansion un soutien. Pondère-les fortement, ainsi que les taux RÉELS (un taux réel qui monte pénalise les actifs sans rendement).
+
+POSITIONNEMENT MULTI-ACTIFS (CFTC COT) : le net spéculatif est fourni pour le BTC mais aussi le forex (EUR/JPY/GBP), les actions (S&P500/Nasdaq) et les matières (or/WTI). Croise-les : un positionnement extrême (cf. percentile) sur plusieurs actifs révèle le régime de risque global et d'éventuels retournements (capitulation/euphorie).
 
 RÈGLES STRICTES :
 - NE PRÉDIS PAS le prix : aucun objectif de cours, aucun "BTC va monter/baisser". Les marchés sont imprévisibles à court terme. Raisonne en SCÉNARIOS CONDITIONNELS et en ASYMÉTRIE.
 - INTERPRÈTE, ne répète pas. Ne dis jamais juste "DXY à 120" : dis ce que ça SIGNIFIE ("dollar fort = conditions restrictives, vent de face pour le risque"). Chaque chiffre doit être accompagné de sa lecture.
 - Ancre CHAQUE affirmation dans une donnée précise fournie (cite le chiffre et sa variation). N'invente AUCUNE donnée. Si une source est stale/indisponible, écris-le explicitement et n'extrapole pas.
 - Privilégie les DYNAMIQUES (tendances) aux niveaux bruts, et CROISE les axes (ex. dollar fort + peur extrême + funding neutre = quelle lecture combinée).
+- CONTEXTE HISTORIQUE : quand une métrique est annotée [pXX/5a] (rang percentile sur ~5 ans), interprète son NIVEAU via ce percentile — p<10 = extrême bas, p>90 = extrême haut. Un EXTRÊME est bien plus significatif qu'un niveau médian (mean reversion, capitulation, euphorie).
 - Sois concret et spécifique : cite des news/événements précis quand c'est pertinent.
 - SURPRISES ÉCO : pour un indicateur PUBLIÉ, ce qui meut les marchés est l'écart RÉEL vs PRÉVISION (consensus) — pas le niveau brut. Exploite la "surprise" fournie (ex. inflation au-dessus du consensus = pression haussière sur les taux = vent de face pour le risque ; emploi/croissance sous le consensus = ralentissement). Pour les events À VENIR, identifie les catalyseurs majeurs (FOMC, CPI, NFP) et le consensus attendu.
 - VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment.
@@ -96,6 +99,15 @@ function fmtTrend(trends, key) {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
+// Contexte historique : rang percentile (vs ~5 ans) + label qualitatif.
+function fmtNorm(trends, key) {
+  const m = trends?.metrics?.[key];
+  if (!m || m.pctRank == null) return "";
+  const p = m.pctRank;
+  const label = p <= 10 ? "très bas" : p <= 30 ? "bas" : p >= 90 ? "très haut" : p >= 70 ? "haut" : "médian";
+  return ` [p${p}/5a, ${label}]`;
+}
+
 /** Met en forme le world-state + tendances en texte compact pour le LLM. */
 export function formatState(state, trends) {
   const a = state.axes ?? {};
@@ -109,38 +121,49 @@ export function formatState(state, trends) {
   const fut = a.sentiment?.["binance-futures"];
   const dvol = a.sentiment?.deribit;
   push(`\n## SENTIMENT`);
-  if (fg) push(`- Fear & Greed : ${fg.value} (${fg.classification})${fmtTrend(trends, "fearGreed")}, précédent ${fg.previousValue}`);
+  if (fg) push(`- Fear & Greed : ${fg.value} (${fg.classification})${fmtTrend(trends, "fearGreed")}${fmtNorm(trends, "fearGreed")}, précédent ${fg.previousValue}`);
   if (fut) push(`- Funding BTCUSDT : ${fut.lastFundingRate}${fmtTrend(trends, "funding")} · Open Interest : ${fut.openInterest}${fmtTrend(trends, "openInterest")} · prix ${fut.markPrice}${fmtTrend(trends, "btcPrice")}`);
+  if (fut?.eth) push(`- Funding ETHUSDT : ${fut.eth.lastFundingRate}${fmtTrend(trends, "ethFunding")} · OI : ${fut.eth.openInterest} · prix ${fut.eth.markPrice}${fmtTrend(trends, "ethPrice")}`);
   if (dvol) push(`- DVOL (vol implicite BTC, "VIX crypto") : ${dvol.dvol}${fmtTrend(trends, "dvol")}`);
 
   const cot = a.positioning?.["cftc-cot"];
-  push(`\n## POSITIONNEMENT (CFTC COT, futures BTC CME, ${cot?.date ?? "?"})`);
+  push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
   if (cot?.hedgeFundsNet != null) {
-    push(`- Hedge funds (leveraged) : net ${cot.hedgeFundsNet}${fmtTrend(trends, "cotHedgeFundsNet")} (long ${cot.hedgeFundsLong} / short ${cot.hedgeFundsShort})`);
-    push(`- Institutionnels (asset mgrs) : net ${cot.assetMgrNet} (long ${cot.assetMgrLong} / short ${cot.assetMgrShort})`);
+    push(`- BTC : hedge funds net ${cot.hedgeFundsNet}${fmtTrend(trends, "cotHedgeFundsNet")}${fmtNorm(trends, "cotHedgeFundsNet")} · institutionnels net ${cot.assetMgrNet}`);
+    const mk = cot.markets || {};
+    const line = (lbl, key, mkey) => (mk[mkey]?.specNet != null ? `${lbl} ${mk[mkey].specNet}${fmtNorm(trends, key)}` : null);
+    const fx = [line("EUR", "cotEurNet", "eurFx"), line("JPY", "cotJpyNet", "jpy"), line("GBP", "cotGbpNet", "gbp")].filter(Boolean);
+    const eq = [line("S&P500", "cotSp500Net", "sp500"), line("Nasdaq", "cotNasdaqNet", "nasdaq")].filter(Boolean);
+    const cm = [line("Or", "cotGoldNet", "gold"), line("WTI", "cotWtiNet", "wti")].filter(Boolean);
+    if (fx.length) push(`- Forex : ${fx.join(" · ")}`);
+    if (eq.length) push(`- Actions : ${eq.join(" · ")}`);
+    if (cm.length) push(`- Matières : ${cm.join(" · ")}`);
   } else push(`- (stale)`);
 
   const fred = a.macro?.fred;
   push(`\n## MACRO`);
   if (fred) {
-    push(`- M2 : ${fred.m2?.value}${fmtTrend(trends, "m2")} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}`);
+    push(`- M2 : ${fred.m2?.value}${fmtTrend(trends, "m2")} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}${fmtNorm(trends, "dxy")}`);
     push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value} · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
-    push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
-    push(`- Conditions/risque : spread HY ${fred.highYieldSpread?.value}%${fmtTrend(trends, "highYieldSpread")} · conditions fin. (NFCI) ${fred.financialConditions?.value} · stress (StLouis) ${fred.financialStress?.value} · incertitude politique (EPU) ${fred.policyUncertainty?.value}${fmtTrend(trends, "policyUncertainty")}`);
+    push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")}${fmtNorm(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")}${fmtNorm(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value}${fmtNorm(trends, "yieldCurve")} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
+    push(`- Conditions/risque : spread HY ${fred.highYieldSpread?.value}%${fmtTrend(trends, "highYieldSpread")}${fmtNorm(trends, "highYieldSpread")} · conditions fin. (NFCI) ${fred.financialConditions?.value} · stress (StLouis) ${fred.financialStress?.value}${fmtNorm(trends, "financialStress")} · incertitude politique (EPU) ${fred.policyUncertainty?.value}${fmtTrend(trends, "policyUncertainty")}`);
     push(`- Éco réelle : CPI ${fred.cpi?.value} · PCE ${fred.pce?.value} · ventes détail ${fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${fred.foodPriceIndex?.value}`);
   } else push(`- (stale)`);
 
   const liq = a.liquidity?.liquidity;
   push(`\n## LIQUIDITÉ (driver clé)`);
   if (liq?.netLiquidity) {
-    push(`- Liquidité nette : ${liq.netLiquidity.value?.toFixed?.(0)} Md$${fmtTrend(trends, "netLiquidity")} = bilan Fed ${liq.fedBalanceSheet?.value?.toFixed?.(0)} − RRP ${liq.reverseRepo?.value?.toFixed?.(0)} − TGA ${liq.tga?.value?.toFixed?.(0)}`);
+    push(`- Liquidité nette Fed : ${liq.netLiquidity.value?.toFixed?.(0)} Md$${fmtTrend(trends, "netLiquidity")} = bilan Fed ${liq.fedBalanceSheet?.value?.toFixed?.(0)} − RRP ${liq.reverseRepo?.value?.toFixed?.(0)} − TGA ${liq.tga?.value?.toFixed?.(0)}`);
+    if (liq.globalLiquidity) {
+      push(`- Liquidité GLOBALE : ${liq.globalLiquidity.value?.toFixed?.(0)} Md$${fmtTrend(trends, "globalLiquidity")} = Fed nette + BCE ${liq.ecbAssets?.value?.toFixed?.(0)} + BoJ ${liq.bojAssets?.value?.toFixed?.(0)} (le BTC suit la liquidité mondiale)`);
+    }
   } else push(`- (stale)`);
 
   const com = a.commodities?.commodities;
-  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${com.gold?.value}${fmtTrend(trends, "gold")} · Argent ${com.silver?.value} · Cuivre ${com.copper?.value} (Dr Copper) · Blé ${com.wheat?.value}`);
+  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${com.gold?.value}${fmtTrend(trends, "gold")} · Argent ${com.silver?.value} · Cuivre ${com.copper?.value}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${com.wheat?.value}`);
 
   const mk = a.markets?.markets;
-  if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}`);
+  if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}`);
 
   const mkLive = a.markets?.["markets-live"];
   if (mkLive) {
@@ -151,7 +174,11 @@ export function formatState(state, trends) {
   }
 
   const cg = a.structure?.coingecko;
-  if (cg) push(`\n## STRUCTURE CRYPTO\n- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH/BTC : ${cg.ethBtcRatio}${fmtTrend(trends, "ethBtcRatio")} · Mcap total : ${cg.totalMarketCapUsd}${fmtTrend(trends, "totalMarketCapUsd")}`);
+  if (cg) {
+    push(`\n## STRUCTURE CRYPTO`);
+    push(`- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH : ${cg.ethDominance?.toFixed?.(2)}% · ETH/BTC : ${cg.ethBtcRatio}${fmtTrend(trends, "ethBtcRatio")}`);
+    push(`- Mcap total : ${cg.totalMarketCapUsd}${fmtTrend(trends, "totalMarketCapUsd")} · TOTAL2 (alts hors BTC) : ${cg.altMarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "altMarketCapUsd")} · TOTAL3 (hors BTC+ETH) : ${cg.total3MarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "total3MarketCapUsd")}`);
+  }
 
   const dl = a.onchain?.defillama;
   const ch = a.onchain?.["blockchain-info"];

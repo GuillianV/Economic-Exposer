@@ -1,4 +1,5 @@
 import { METRIC_KEYS } from "./metrics.js";
+import { normalize } from "./baselines.js";
 
 /**
  * Calcul des tendances : pour chaque métrique, sa valeur courante et ses
@@ -37,9 +38,10 @@ function delta(current, past) {
 
 /**
  * @param history snapshots triés croissant ({ ts, metrics })
- * @returns { ts, metrics: { <metric>: { value, d1h, d24h, d7d } }, count }
+ * @param baselines distributions de normalisation (optionnel) -> ajoute z/pctRank
+ * @returns { ts, metrics: { <metric>: { value, d1h, d24h, d7d, z, pctRank } }, count }
  */
-export function computeTrends(history) {
+export function computeTrends(history, baselines = null) {
   if (!Array.isArray(history) || history.length === 0) {
     return { ts: Date.now(), metrics: {}, count: 0 };
   }
@@ -55,6 +57,10 @@ export function computeTrends(history) {
       const ref = findNearest(past, now - h.ms, h.tolMs);
       entry[h.key] = delta(value, ref?.metrics?.[key] ?? null);
     }
+    // Contexte historique (où on est dans la distribution).
+    const { z, pctRank } = normalize(key, value, baselines);
+    entry.z = z;
+    entry.pctRank = pctRank;
     out[key] = entry;
   }
 

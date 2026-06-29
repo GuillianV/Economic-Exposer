@@ -2,7 +2,7 @@
 
 Service d'**analyse fondamentale crypto** (focus Bitcoin, contexte cross-market) qui tourne en continu.
 
-Il collecte en permanence des données réelles (sentiment, macro, marchés actions, matières premières, structure crypto, on-chain, géopolitique, news), les **historise**, en calcule les **tendances**, puis les fait **synthétiser par une IA** en un verdict structuré.
+Il collecte en permanence des données réelles (sentiment, macro multi-actifs, liquidité globale, positionnement institutionnel, marchés actions, matières premières, structure crypto, on-chain, géopolitique, news), les **historise**, en calcule les **tendances** et la **normalisation** (z-score / rang percentile vs ~5 ans, pour situer chaque métrique dans sa distribution), puis les fait **synthétiser par une IA** en un verdict structuré.
 
 > **Objectif : aide à la décision, pas un robot trader.** L'outil produit un *état du monde* + des *scénarios conditionnels* + des *alertes sur bascule* — pour que **toi** décides. Il ne prédit **pas** le prix (les marchés sont imprévisibles à court terme) ; il éclaire le contexte que tu ne peux pas surveiller 24/7 à la main.
 
@@ -14,13 +14,13 @@ collecte (17 collecteurs / 10 axes) → persistance → tendances → IA (verdic
 
 | Axe | Sources | Clé requise |
 |---|---|---|
-| **sentiment** | Fear & Greed, funding/OI Binance, **DVOL** (vol implicite BTC, Deribit) | — |
-| **positioning** | **CFTC COT** : positionnement futures BTC CME (hedge funds vs institutionnels) | — |
+| **sentiment** | Fear & Greed, funding/OI Binance (**BTC + ETH**), **DVOL** (vol implicite BTC, Deribit) | — |
+| **positioning** | **CFTC COT multi-actifs** : net spéculatif BTC, forex (EUR/JPY/GBP), actions (S&P500/Nasdaq), or/pétrole | — |
 | **macro** | FRED : M2, dollar + FX (majeures & émergents), taux (2Y→30Y, **réels**, courbe, SOFR), crédit HY, **conditions/stress (NFCI, StLouis)**, **incertitude (EPU)**, CPI/PCE/ventes/sentiment/chômage, **prix alimentaires** + calendrier éco (publications US **+ réunions FOMC** + **résultats publiés**) ; **calendrier riche multi-pays** (heure, impact, **précédent/prévision/réel**) via FairEconomy/ForexFactory | `FRED_API_KEY` ; FairEconomy *(sans clé)* |
-| **liquidity** | Liquidité nette = bilan Fed − RRP − TGA (FRED) — *driver clé* | `FRED_API_KEY` |
+| **liquidity** | Liquidité nette Fed (bilan − RRP − TGA) **+ liquidité GLOBALE (Fed + BCE + BoJ)** (FRED) — *driver clé* | `FRED_API_KEY` |
 | **commodities** | WTI, Brent, gaz, cuivre, blé (FRED) + **or, argent** (gold-api) | `FRED_API_KEY` |
 | **markets** | S&P500, Nasdaq, Dow, VIX en clôture J-1 (FRED) + **intraday temps réel** (Finnhub ou Twelve Data) | `FRED_API_KEY` ; `FINNHUB_API_KEY` *(optionnel, intraday)* |
-| **structure** | dominance BTC, ETH/BTC, mcap (CoinGecko) | `COINGECKO_API_KEY` *(optionnel)* |
+| **structure** | dominance BTC/ETH, ETH/BTC, mcap total + **TOTAL2/TOTAL3** (force des alts) (CoinGecko) | `COINGECKO_API_KEY` *(optionnel)* |
 | **onchain** | TVL, stablecoins (DefiLlama), hashrate (blockchain.info) | — |
 | **geopolitics** | manchettes (GDELT), conflits structurés (ACLED) | ACLED *(optionnel)* |
 | **news** | 22 flux RSS + 9 thèmes Google News | — |
@@ -82,7 +82,7 @@ Base : `http://localhost:3000`
 | `GET /api/verdicts/latest` | Dernier verdict |
 | `GET /api/verdicts/:ts` | Un verdict |
 | `GET /api/verdicts/:ts/snapshot` | **Le snapshot qui a produit ce verdict** |
-| `GET /api/trends?lookbackDays=` | Tendances courantes |
+| `GET /api/trends?lookbackDays=` | Tendances (deltas 1h/24h/7j) **+ normalisation** (`z`, `pctRank` vs ~5 ans) |
 | `GET /api/metrics?since=` | Série de métriques (pour graphes) |
 | `GET /api/calendar` | **Calendrier éco unifié** (format investing.com) : FairEconomy (multi-pays, heure, impact, précédent/prévision/réel, ~7 j) + FRED (horizon US lointain + FOMC) |
 
