@@ -6,8 +6,7 @@ import { DefiLlamaCollector } from "./collectors/defillama.js";
 import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
 import { OnChainCollector } from "./collectors/onchain.js";
 import { NewsCollector } from "./collectors/news.js";
-import { EconomicCalendarCollector } from "./collectors/economic-calendar.js";
-import { FfCalendarCollector } from "./collectors/ff-calendar.js";
+import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
 import { CommoditiesCollector } from "./collectors/commodities.js";
 import { MarketsCollector } from "./collectors/markets.js";
 import { MarketsLiveCollector } from "./collectors/markets-live.js";
@@ -22,7 +21,7 @@ import { CftcCotCollector } from "./collectors/cftc-cot.js";
  * Liste des collecteurs :
  *   sentiment   : fear-greed, binance-futures, deribit (DVOL)
  *   positioning : cftc-cot (positionnement futures BTC : hedge funds / institutionnels)
- *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), economic-calendar
+ *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), investing-calendar (calendrier riche scrapé, repli FairEconomy interne)
  *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé/or/argent)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
@@ -37,8 +36,7 @@ export function buildCollectors() {
     new DeribitCollector(),
     new CftcCotCollector(),
     new FredCollector(),
-    new EconomicCalendarCollector(),
-    new FfCalendarCollector(),
+    new InvestingCalendarCollector(),
     new LiquidityCollector(),
     new CommoditiesCollector(),
     new MarketsCollector(),

@@ -59,4 +59,25 @@ export class Collector {
       }
     });
   }
+
+  // Helper : POST form-encoded → JSON. Même bornage par hôte et même gestion du
+  // timeout que getJson. `body` est une chaîne `x-www-form-urlencoded`.
+  async postForm(url, body, { headers = {}, timeout = DEFAULT_TIMEOUT_MS } = {}) {
+    return withHostGate(safeHost(url), async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", ...headers },
+          body,
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`);
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+  }
 }

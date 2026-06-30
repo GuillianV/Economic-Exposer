@@ -81,7 +81,7 @@
       <tbody id="rows"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
     </table>
   </div>
-  <footer>Données : <span id="prov">—</span> · maj auto 60 s · prévision/multi-pays (FairEconomy, gratuit, ~7 j) + horizon US lointain &amp; réels (FRED).</footer>
+  <footer>Données : <span id="prov">—</span> · maj auto 60 s · multi-pays, heure, impact, précédent/prévision/<strong>réel</strong> (investing.com) + horizon US lointain &amp; FOMC (FRED). FairEconomy en repli.</footer>
 
 <script>
 const FLAGS = { US:"🇺🇸", EU:"🇪🇺", EA:"🇪🇺", CN:"🇨🇳", JP:"🇯🇵", GB:"🇬🇧", UK:"🇬🇧", DE:"🇩🇪",
@@ -151,7 +151,7 @@ async function load() {
   try {
     const r = await fetch("/api/calendar");
     DATA = await r.json();
-    const prov = DATA.rich ? '<span class="badge fmp">FairEconomy + FRED — complet</span>' : '<span class="badge fred">FRED — US, sans prévision</span>';
+    const prov = DATA.rich ? `<span class="badge fmp">${(DATA.provider || "riche").toUpperCase()} — complet</span>` : '<span class="badge fred">FRED — US, sans prévision</span>';
     document.getElementById("meta").innerHTML =
       `${prov} · ${DATA.count} événements · source <code>${DATA.source}</code> · maj ${DATA.iso ? new Date(DATA.iso).toLocaleString("fr-FR") : "—"}`;
     document.getElementById("prov").textContent = DATA.provider?.toUpperCase() || "—";

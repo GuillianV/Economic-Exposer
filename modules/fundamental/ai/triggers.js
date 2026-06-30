@@ -59,9 +59,17 @@ export function formatChange(c) {
   return `${c.label} ${c.delta >= 0 ? "+" : ""}${c.delta} (${c.from}→${c.to})`;
 }
 
-/** Catalyseurs calendaires tombant aujourd'hui (CPI, NFP, etc.). */
+/** Catalyseurs calendaires fort impact tombant aujourd'hui (CPI, NFP, FOMC, etc.). */
 export function calendarToday(state) {
-  const upcoming = state?.axes?.macro?.["economic-calendar"]?.upcoming || [];
   const today = new Date().toISOString().slice(0, 10);
-  return upcoming.filter((e) => e.date === today);
+  const events = state?.axes?.macro?.["investing-calendar"]?.events || [];
+  const out = [];
+  for (const e of events) {
+    if (e.date === today && e.impact === "high") {
+      out.push({ name: `${e.country || ""} ${e.event}`.trim(), date: today });
+    }
+  }
+  // Dédoublonnage par libellé.
+  const seen = new Set();
+  return out.filter((e) => (seen.has(e.name) ? false : (seen.add(e.name), true)));
 }

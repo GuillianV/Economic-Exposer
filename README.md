@@ -16,7 +16,7 @@ collecte (17 collecteurs / 10 axes) → persistance → tendances → IA (verdic
 |---|---|---|
 | **sentiment** | Fear & Greed, funding/OI Binance (**BTC + ETH**), **DVOL** (vol implicite BTC, Deribit) | — |
 | **positioning** | **CFTC COT multi-actifs** : net spéculatif BTC, forex (EUR/JPY/GBP), actions (S&P500/Nasdaq), or/pétrole | — |
-| **macro** | FRED : M2, dollar + FX (majeures & émergents), taux (2Y→30Y, **réels**, courbe, SOFR), crédit HY, **conditions/stress (NFCI, StLouis)**, **incertitude (EPU)**, CPI/PCE/ventes/sentiment/chômage, **prix alimentaires** + calendrier éco (publications US **+ réunions FOMC** + **résultats publiés**) ; **calendrier riche multi-pays** (heure, impact, **précédent/prévision/réel**) via FairEconomy/ForexFactory | `FRED_API_KEY` ; FairEconomy *(sans clé)* |
+| **macro** | FRED : M2, dollar + FX (majeures & émergents), taux (2Y→30Y, **réels**, courbe, SOFR), crédit HY, **conditions/stress (NFCI, StLouis)**, **incertitude (EPU)**, CPI/PCE/ventes/sentiment/chômage, **prix alimentaires** ; **calendrier riche multi-pays** (heure, impact, **précédent/prévision/réel** y compris **FOMC/NFP/CPI**) scrapé sur **investing.com** (repli FairEconomy) | `FRED_API_KEY` ; investing.com/FairEconomy *(sans clé)* |
 | **liquidity** | Liquidité nette Fed (bilan − RRP − TGA) **+ liquidité GLOBALE (Fed + BCE + BoJ)** (FRED) — *driver clé* | `FRED_API_KEY` |
 | **commodities** | WTI, Brent, gaz, cuivre, blé (FRED) + **or, argent** (gold-api) | `FRED_API_KEY` |
 | **markets** | S&P500, Nasdaq, Dow, VIX en clôture J-1 (FRED) + **intraday temps réel** (Finnhub ou Twelve Data) | `FRED_API_KEY` ; `FINNHUB_API_KEY` *(optionnel, intraday)* |
@@ -65,7 +65,7 @@ Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_
 
 ## Interface web
 
-`npm run fa:api` sert aussi une **page calendrier** (façon investing.com) sur `http://localhost:3000/` : tableau multi-pays avec heure, impact, précédent/prévision/réel, filtres (impact, pays, à venir/publiés) et rafraîchissement auto.
+`npm run fa:api` sert aussi une **page calendrier** (façon investing.com) sur `http://localhost:3000/` : tableau multi-pays avec heure, impact, précédent/prévision/réel (données investing.com), filtres (impact, pays, à venir/publiés) et rafraîchissement auto.
 
 ## API (lecture seule, CORS ouvert)
 
@@ -84,7 +84,7 @@ Base : `http://localhost:3000`
 | `GET /api/verdicts/:ts/snapshot` | **Le snapshot qui a produit ce verdict** |
 | `GET /api/trends?lookbackDays=` | Tendances (deltas 1h/24h/7j) **+ normalisation** (`z`, `pctRank` vs ~5 ans) |
 | `GET /api/metrics?since=` | Série de métriques (pour graphes) |
-| `GET /api/calendar` | **Calendrier éco unifié** (format investing.com) : FairEconomy (multi-pays, heure, impact, précédent/prévision/réel, ~7 j) + FRED (horizon US lointain + FOMC) |
+| `GET /api/calendar` | **Calendrier éco unifié** (format investing.com) : investing.com (multi-pays, heure, impact, précédent/prévision/**réel**), repli FairEconomy |
 
 ## Stockage des données
 

@@ -14,8 +14,7 @@ import {
   getSnapshotForVerdict,
 } from "../fundamental/persistence/store.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
-import { EconomicCalendarCollector } from "../fundamental/collectors/economic-calendar.js";
-import { FfCalendarCollector } from "../fundamental/collectors/ff-calendar.js";
+import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
 import { buildCalendar } from "../fundamental/calendar.js";
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../public");
@@ -78,37 +77,29 @@ export function createApp() {
   );
 
   // --- Calendrier économique unifié (format type investing.com) ---
-  // FairEconomy (riche : multi-pays, heure, prévision/réel) prolongé par FRED
-  // (horizon US lointain), repli FRED seul. Lit le dernier snapshot ; collecte
-  // en direct ce qui manque (ou si le snapshot a plus d'1 h).
+  // Source riche : investing.com (scrapé) en primaire, FairEconomy en repli. Lit
+  // le dernier snapshot ; collecte en direct si rien (ou snapshot de plus d'1 h).
   app.get(
     "/api/calendar",
     wrap(async (req, res) => {
       const snap = await loadLatestSnapshot();
       const fresh = snap && Date.now() - snap.ts < 3600000;
-      let ff = fresh ? snap.axes?.macro?.["ff-calendar"] : null;
-      let fred = fresh ? snap.axes?.macro?.["economic-calendar"] : null;
+      let rich = fresh ? snap.axes?.macro?.["investing-calendar"] : null;
       let source = fresh ? "snapshot" : "live";
       let ts = snap?.ts;
 
-      if (!ff?.events?.length) {
-        const r = await new FfCalendarCollector().collect();
-        if (!r.stale) {
-          ff = r.data;
+      if (!rich?.events?.length) {
+        // Le collecteur gère lui-même le repli investing.com → FairEconomy.
+        const r = await new InvestingCalendarCollector().collect();
+        if (!r.stale && r.data?.events?.length) {
+          rich = r.data;
           source = fresh ? "snapshot+live" : "live";
           ts = Math.max(ts || 0, r.ts);
         }
       }
-      if (!fred) {
-        const rf = await new EconomicCalendarCollector().collect();
-        if (!rf.stale) {
-          fred = rf.data;
-          ts = Math.max(ts || 0, rf.ts);
-        }
-      }
 
-      const cal = buildCalendar(ff, fred);
-      if (!cal.events.length) return res.status(503).json({ error: "calendrier indisponible (FairEconomy + FRED en échec)" });
+      const cal = buildCalendar(rich);
+      if (!cal.events.length) return res.status(503).json({ error: "calendrier indisponible (investing.com + FairEconomy en échec)" });
 
       res.json({
         source,

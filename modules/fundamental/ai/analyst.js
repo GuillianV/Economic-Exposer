@@ -200,15 +200,13 @@ export function formatState(state, trends) {
   }
   if (!gd?.topHeadlines?.length && ac?.totalEvents == null) push(`- (stale)`);
 
-  // --- CALENDRIER ÉCO : FairEconomy (riche, multi-pays, prévision/réel) en
-  // primaire ; FRED pour l'horizon US lointain + filet sur les résultats. ---
-  const ff = a.macro?.["ff-calendar"];
-  const cal = a.macro?.["economic-calendar"];
+  // --- CALENDRIER ÉCO : collecteur unique investing-calendar (investing.com,
+  // repli FairEconomy interne) — multi-pays, heure, impact, précédent/prévision/réel. ---
+  const ff = a.macro?.["investing-calendar"];
   const ffEvents = ff?.events || [];
   const hhmm = (ms) => (ms ? new Date(ms).toISOString().slice(11, 16) : "--:--");
 
-  // Résultats publiés = SURPRISE (réel vs prévision). FairEconomy d'abord ;
-  // repli FRED (US) tant que FairEconomy n'a pas encore de réel.
+  // Résultats publiés = SURPRISE (réel vs prévision).
   const ffDone = ffEvents.filter((e) => e.actual != null);
   if (ffDone.length) {
     push(`\n## RÉSULTATS ÉCO RÉCENTS (réel vs prévision = surprise)`);
@@ -221,34 +219,16 @@ export function formatState(state, trends) {
       const pv = e.previous != null ? `, préc ${e.previous}` : "";
       push(`- ${e.date} ${e.country} ${e.event} : réel ${e.actual}${fc}${pv}${surp}`);
     });
-  } else if (cal?.recent?.some((e) => e.result)) {
-    push(`\n## RÉSULTATS ÉCO RÉCENTS (publiés, ${cal.recentDays}j, US/FRED)`);
-    cal.recent
-      .filter((e) => e.result)
-      .forEach((e) => {
-        const r = e.result;
-        const chg =
-          r.pctIsSignal && r.changePct != null
-            ? `${r.changePct >= 0 ? "+" : ""}${r.changePct.toFixed(2)}% vs préc.`
-            : r.change != null
-            ? `${r.change >= 0 ? "+" : ""}${r.change} vs préc. (${r.previous})`
-            : "";
-        push(`- ${e.date} : ${r.label} = ${r.value}${chg ? ` (${chg})` : ""}`);
-      });
   }
 
-  // À venir : FairEconomy (prévision + impact, multi-pays) prolongé par
-  // l'horizon US lointain de FRED (au-delà de la semaine FairEconomy).
+  // À venir : prévision + impact, multi-pays (investing.com / FairEconomy).
   const ffUpcoming = ffEvents.filter((e) => e.actual == null);
-  const lastFfDate = ffUpcoming.length ? ffUpcoming[ffUpcoming.length - 1].date : null;
-  const fredFar = (cal?.upcoming || []).filter((e) => !lastFfDate || e.date > lastFfDate);
-  if (ffUpcoming.length || fredFar.length) {
+  if (ffUpcoming.length) {
     push(`\n## CALENDRIER ÉCO — À VENIR`);
     ffUpcoming.forEach((e) => {
       const fc = e.forecast != null ? ` (prév ${e.forecast}${e.previous != null ? `, préc ${e.previous}` : ""})` : "";
       push(`- ${e.date} ${hhmm(e.datetime)} ${e.country} ${e.event}${fc} [${e.impact}]`);
     });
-    fredFar.forEach((e) => push(`- ${e.date} US ${e.name}${e.type === "fomc" ? " ⚠️ catalyseur majeur" : ""}`));
   }
 
   const news = a.news?.news;

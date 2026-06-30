@@ -4,12 +4,13 @@
  *
  * N'affecte QUE les hôtes listés dans LIMITS ; tout autre hôte passe sans
  * limite (aucun surcoût). Le limiteur est partagé par tous les collecteurs via
- * `base.js`. Ex. FRED reçoit ~40 appels par collecte → sans bornage, les appels
- * lourds (economic-calendar) timeoutent en file d'attente.
+ * `base.js`. Ex. FRED reçoit de nombreux appels par collecte → sans bornage, les
+ * appels concurrents timeoutent en file d'attente.
  */
 const LIMITS = {
   "api.stlouisfed.org": { concurrency: 6, minIntervalMs: 30 }, // FRED
   "api.gdeltproject.org": { concurrency: 1, minIntervalMs: 1000 }, // GDELT rate-limite fort
+  "www.investing.com": { concurrency: 1, minIntervalMs: 1500 }, // scraping poli (anti-bot)
 };
 
 class Gate {
