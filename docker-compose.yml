@@ -22,19 +22,16 @@ services:
     labels:
       - 'traefik.enable=true'
       - 'traefik.docker.network=traefik-net'
-      # Routeur HTTP (redirigé vers HTTPS)
+      # Routeur HTTP (sert directement, PAS de redirect ici pour éviter la boucle
+      # "too many redirects" derrière un proxy SSL Flexible / une redirection globale Traefik)
       - 'traefik.http.routers.${PROJECT_NAME}.rule=Host(`${FULL_DOMAIN_NAME}`)'
       - 'traefik.http.routers.${PROJECT_NAME}.entrypoints=http'
-      - 'traefik.http.routers.${PROJECT_NAME}.middlewares=${PROJECT_NAME}-redirect'
       # Routeur HTTPS
       - 'traefik.http.routers.${PROJECT_NAME}-secure.rule=Host(`${FULL_DOMAIN_NAME}`)'
       - 'traefik.http.routers.${PROJECT_NAME}-secure.entrypoints=https'
       - 'traefik.http.routers.${PROJECT_NAME}-secure.tls=true'
       # Service (port interne de l'API)
       - 'traefik.http.services.${PROJECT_NAME}.loadbalancer.server.port=3000'
-      # Redirection http -> https
-      - 'traefik.http.middlewares.${PROJECT_NAME}-redirect.redirectscheme.scheme=https'
-      - 'traefik.http.middlewares.${PROJECT_NAME}-redirect.redirectscheme.permanent=true'
 networks:
   traefik-net:
     external: true
