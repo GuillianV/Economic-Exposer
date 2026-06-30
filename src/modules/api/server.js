@@ -12,6 +12,7 @@ import {
   getSnapshotForVerdict,
 } from "../fundamental/persistence/store.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
+import { freshnessPayload } from "../fundamental/freshness.js";
 import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
 import { buildCalendar } from "../fundamental/calendar.js";
 import { METRIC_DICTIONARY, GLOSSARY } from "../fundamental/dictionary.js";
@@ -94,6 +95,8 @@ export function createApp() {
       "GET /api/snapshots/latest",
       "GET /api/snapshots/:ts",
       "GET /api/snapshots/:ts/verdict",
+      "GET /api/snapshots/:ts/freshness",
+      "GET /api/freshness",
       "GET /api/verdicts?since=&limit=",
       "GET /api/verdicts/latest",
       "GET /api/verdicts/:ts",
@@ -179,6 +182,29 @@ export function createApp() {
       const v = await getVerdictForSnapshot(ts);
       if (!v) return res.status(404).json({ error: "aucun verdict pour ce snapshot" });
       res.json(v);
+    }),
+  );
+
+  // Fraîcheur des données d'un snapshot : date réelle + âge de chaque source,
+  // pour que le consommateur sache de QUAND datent les données du verdict.
+  app.get(
+    "/api/snapshots/:ts/freshness",
+    wrap(async (req, res) => {
+      const ts = parseTs(req.params.ts);
+      if (ts == null) return res.status(400).json({ error: "ts invalide" });
+      const snap = await loadSnapshotByTs(ts);
+      if (!snap) return res.status(404).json({ error: "snapshot introuvable" });
+      res.json(freshnessPayload(snap));
+    }),
+  );
+
+  // Fraîcheur du DERNIER snapshot (raccourci pratique).
+  app.get(
+    "/api/freshness",
+    wrap(async (req, res) => {
+      const snap = await loadLatestSnapshot();
+      if (!snap) return res.status(404).json({ error: "aucun snapshot" });
+      res.json(freshnessPayload(snap));
     }),
   );
 

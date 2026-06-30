@@ -16,6 +16,11 @@ const BASE = "https://api.gdeltproject.org/api/v2/doc/doc";
 // sourcelang:english coupe le bruit multilingue ; sort=hybridrel = pertinence.
 const GEO_QUERY = "(war OR conflict OR military OR sanctions OR invasion OR ceasefire) sourcelang:english";
 
+// Cache last-good (au niveau module : persiste entre collectes dans le process
+// `fa:serve`). GDELT rate-limite fort (429 fréquent) ; la géopolitique évolue
+// lentement, donc resservir la dernière collecte réussie vaut mieux que rien.
+let lastGood = null; // { headlineCount, topHeadlines, fetchedTs }
+
 function parseSeenDate(s) {
   // format GDELT : "20260629T131500Z"
   if (!s || s.length < 15) return null;
@@ -35,7 +40,17 @@ export class GdeltCollector extends Collector {
       `${BASE}?query=${encodeURIComponent(GEO_QUERY)}` +
       `&mode=artlist&format=json&timespan=2d&maxrecords=${this.maxRecords}&sort=hybridrel`;
 
-    const json = await this.getJson(url, { timeout: 25000 });
+    let json;
+    try {
+      json = await this.getJson(url, { timeout: 25000 });
+    } catch (err) {
+      // 429 (ou autre) : on resert la dernière collecte réussie si on en a une,
+      // marquée `cached` + `fetchedTs` (le consommateur voit l'âge réel via les
+      // dates des manchettes). Sinon on propage -> vraie staleness.
+      if (lastGood) return { ...lastGood, cached: true };
+      throw err;
+    }
+
     const articles = Array.isArray(json?.articles) ? json.articles : [];
 
     const seen = new Set();
@@ -55,9 +70,8 @@ export class GdeltCollector extends Collector {
       });
     }
 
-    return {
-      headlineCount: headlines.length,
-      topHeadlines: headlines,
-    };
+    const data = { headlineCount: headlines.length, topHeadlines: headlines, fetchedTs: Date.now() };
+    lastGood = data; // mémorise la dernière collecte réussie
+    return data;
   }
 }
