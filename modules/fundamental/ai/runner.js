@@ -44,13 +44,14 @@ export async function maybeAnalyze(state, trends) {
   }
 
   logger.info(`[ai] déclenchement → ${reasons.join(" | ")}`);
-  const { provider, verdict, raw } = await analyze(state, trends);
+  const { provider, verdict, raw, violations } = await analyze(state, trends);
   const record = {
     ts: now,
     snapshotTs: now, // corrélation : même ts que le snapshot de cette collecte
     provider,
     triggers: reasons,
     dataQuality: dataQualityOf(state),
+    guardrails: violations ?? [], // garde-fous déterministes appliqués au verdict
     verdict,
     raw: verdict ? undefined : raw,
   };
@@ -73,13 +74,14 @@ export async function maybeAnalyze(state, trends) {
 export async function analyzeNow() {
   const { state } = await collectOnce();
   const trends = await getTrends();
-  const { provider, verdict, raw } = await analyze(state, trends);
+  const { provider, verdict, raw, violations } = await analyze(state, trends);
   const record = {
     ts: state.ts,
     snapshotTs: state.ts,
     provider,
     triggers: ["analyse forcée (fa:ai)"],
     dataQuality: dataQualityOf(state),
+    guardrails: violations ?? [],
     verdict,
     raw: verdict ? undefined : raw,
   };

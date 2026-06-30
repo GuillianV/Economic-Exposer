@@ -1,4 +1,5 @@
 import { logger } from "../../logs/index.js";
+import { validateVerdict } from "./validate.js";
 import * as deepseek from "./providers/deepseek.js";
 import * as gemini from "./providers/gemini.js";
 import * as groq from "./providers/groq.js";
@@ -296,7 +297,14 @@ export async function analyze(state, trends, { provider } = {}) {
   for (const p of chain) {
     try {
       const raw = await p.complete({ system: SYSTEM, user });
-      return { provider: p.name, verdict: parseVerdict(raw), raw, prompt: user };
+      const verdict = parseVerdict(raw);
+      // Garde-fous déterministes : nettoie objectifs de prix / percentiles non
+      // sourcés et signale toute extrapolation de source stale.
+      const violations = verdict ? validateVerdict(verdict, { state, trends }) : [];
+      if (violations.length) {
+        logger.warn(`[ai] garde-fous "${p.name}" : ${violations.map((v) => `${v.type}${v.count ? `×${v.count}` : ""}`).join(", ")}`);
+      }
+      return { provider: p.name, verdict, raw, prompt: user, violations };
     } catch (err) {
       errors.push(`${p.name}: ${err.message}`);
       logger.warn(`[ai] fournisseur "${p.name}" en échec → fallback (${err.message})`);
