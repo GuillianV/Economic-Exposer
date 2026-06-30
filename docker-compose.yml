@@ -1,0 +1,40 @@
+version: '3.8'
+services:
+  crypto-fundamental:
+    container_name: ${PROJECT_NAME:-crypto-fundamental}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Secrets + config applicative (FRED_API_KEY, DEEPSEEK_API_KEY, WEBHOOK_URL, …).
+    # Le même .env sert aussi à la substitution ${...} ci-dessous (lu par compose).
+    env_file: .env
+    environment:
+      - API_PORT=3000
+    volumes:
+      # Persistance : snapshots, verdicts, baselines.json, ai-state.json.
+      # SANS ce volume, on perd l'historique (tendances/normalisation/outcome cassent).
+      - type: bind
+        source: ./data
+        target: /app/data
+    networks:
+      - traefik-net
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=traefik-net'
+      # Routeur HTTP (redirigé vers HTTPS)
+      - 'traefik.http.routers.${PROJECT_NAME}.rule=Host(`${FULL_DOMAIN_NAME}`)'
+      - 'traefik.http.routers.${PROJECT_NAME}.entrypoints=http'
+      - 'traefik.http.routers.${PROJECT_NAME}.middlewares=${PROJECT_NAME}-redirect'
+      # Routeur HTTPS
+      - 'traefik.http.routers.${PROJECT_NAME}-secure.rule=Host(`${FULL_DOMAIN_NAME}`)'
+      - 'traefik.http.routers.${PROJECT_NAME}-secure.entrypoints=https'
+      - 'traefik.http.routers.${PROJECT_NAME}-secure.tls=true'
+      # Service (port interne de l'API)
+      - 'traefik.http.services.${PROJECT_NAME}.loadbalancer.server.port=3000'
+      # Redirection http -> https
+      - 'traefik.http.middlewares.${PROJECT_NAME}-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.middlewares.${PROJECT_NAME}-redirect.redirectscheme.permanent=true'
+networks:
+  traefik-net:
+    external: true

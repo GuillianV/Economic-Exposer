@@ -1,0 +1,10 @@
+node_modules
+data
+.env
+.git
+.gitignore
+.DS_Store
+*.log
+npm-debug.log*
+.claude
+last-check.json
