@@ -43,7 +43,7 @@ RÈGLES STRICTES :
 - CONTEXTE HISTORIQUE : quand une métrique est annotée [pXX/5a] (rang percentile sur ~5 ans), interprète son NIVEAU via ce percentile — p<10 = extrême bas, p>90 = extrême haut. Un EXTRÊME est bien plus significatif qu'un niveau médian (mean reversion, capitulation, euphorie). FAIS REMONTER ce percentile dans le champ "valeur" de chaque signal_cle concerné (ex. "VIX 18,4 — p53/5a médian").
 - Sois concret et spécifique : cite des news/événements précis quand c'est pertinent.
 - SURPRISES ÉCO : pour un indicateur PUBLIÉ, ce qui meut les marchés est l'écart RÉEL vs PRÉVISION (consensus) — pas le niveau brut. Exploite la "surprise" fournie (ex. inflation au-dessus du consensus = pression haussière sur les taux = vent de face pour le risque ; emploi/croissance sous le consensus = ralentissement). Pour les events À VENIR, identifie les catalyseurs majeurs (FOMC, CPI, NFP) et le consensus attendu.
-- VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment. Donne une "posture" claire (défensif/neutre/opportuniste-prudent) et "a_eviter" (le piège du moment). Ce N'EST PAS du daytrading : aucune entrée/sortie, seulement une posture d'investisseur prudent.
+- VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts. Donne une "posture" claire (défensif/neutre/opportuniste-prudent) et "a_eviter" (le piège du moment). Ce N'EST PAS du daytrading : aucune entrée/sortie, seulement une posture d'investisseur prudent.
 - CONSEILS : donne 2-3 conseils CONCRETS et PRUDENTS adaptés au régime actuel — orientés gestion du risque, dimensionnement/exposition, patience, et indicateurs à surveiller. JAMAIS d'objectif de prix, JAMAIS "achète/vends maintenant". Ce sont des éclairages pour décider, PAS une recommandation financière.
 - HORIZON & INVALIDATION : précise TOUJOURS l'HORIZON de validité de ta lecture (swing : quelques jours à semaines, jamais intraday) et les conditions concrètes d'INVALIDATION (ce qui te ferait changer d'avis). C'est ce qui permet à l'utilisateur de savoir QUAND ta lecture ne tient plus.
 - PISTES PAR CLASSE (éducatif, PAS une reco) : remplis "pistes_par_classe" en mappant le RÉGIME ACTUEL vers les CATÉGORIES d'actifs qui l'expriment — "favorisees" (celles que ce climat soutient) et "sous_pression" (celles qu'il pénalise). Donne des GENRES de véhicules représentatifs (types d'ETF, classes de cryptos, secteurs/actions, or, cash/obligations…), JAMAIS un ordre d'achat/vente, JAMAIS de timing, JAMAIS d'objectif de prix, JAMAIS de pourcentage d'allocation. Chaque entrée doit être ANCRÉE sur le régime et les signaux fournis (cite le pourquoi). C'est une illustration pédagogique de "à quoi ressemble ce régime", pas un conseil financier personnalisé.
@@ -86,10 +86,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     "en_bref": "explication TRÈS simple de la situation en 2-3 phrases, SANS jargon (comme à un proche non-initié) : ce que 'risk-on/off' veut dire ici concrètement, et s'il faut plutôt être serein ou prudent",
     "posture": "défensif" | "neutre" | "opportuniste-prudent",
     "a_eviter": "le piège typique du moment pour un débutant (ex. acheter dans l'euphorie, paniquer sur un creux, surutiliser le levier) — formulé simplement",
-    "pistes_simples": "en langage simple : quels GENRES d'actifs ce climat favorise vs lesquels souffrent (ex. 'climat prudent : plutôt cash/or, prudence sur les cryptos à forte volatilité') — éducatif, PAS un ordre d'achat",
-    "termes_cles": [
-      { "terme": "ex. Liquidité nette", "explication": "définition en une phrase simple + pourquoi ça compte pour le BTC" }
-    ]
+    "pistes_simples": "en langage simple : quels GENRES d'actifs ce climat favorise vs lesquels souffrent (ex. 'climat prudent : plutôt cash/or, prudence sur les cryptos à forte volatilité') — éducatif, PAS un ordre d'achat"
   },
   "conseils": [
     { "conseil": "action PRUDENTE adaptée au régime (gestion du risque / exposition / patience / ce qu'il faut surveiller)", "pourquoi": "le lien explicite avec les données actuelles", "prudence": "la nuance ou le risque à garder en tête" }
@@ -104,7 +101,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   }
 }
 
-Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples + 2-3 termes_cles), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
+Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];
@@ -124,6 +121,19 @@ function fmtNorm(trends, key) {
   const p = m.pctRank;
   const label = p <= 10 ? "très bas" : p <= 30 ? "bas" : p >= 90 ? "très haut" : p >= 70 ? "haut" : "médian";
   return ` [p${p}/5a, ${label}]`;
+}
+
+// Mises en forme compactes : évite les flottants à rallonge dans le prompt
+// (gaspillage de tokens + bruit). r() arrondit ; big() abrège les grosses
+// magnitudes en T/Md/M (ex. 2118994149230.84 -> "2.12 T").
+const r = (n, d = 2) => (typeof n === "number" && isFinite(n) ? Number(n.toFixed(d)) : n);
+function big(n) {
+  if (typeof n !== "number" || !isFinite(n)) return n;
+  const a = Math.abs(n);
+  if (a >= 1e12) return `${r(n / 1e12, 2)} T`;
+  if (a >= 1e9) return `${r(n / 1e9, 1)} Md`;
+  if (a >= 1e6) return `${r(n / 1e6, 0)} M`;
+  return String(r(n, 0));
 }
 
 /** Met en forme le world-state + tendances en texte compact pour le LLM. */
@@ -168,7 +178,7 @@ export function formatState(state, trends) {
     push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value} · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
     push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")}${fmtNorm(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")}${fmtNorm(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value}${fmtNorm(trends, "yieldCurve")} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
     push(`- Conditions/risque : spread HY ${fred.highYieldSpread?.value}%${fmtTrend(trends, "highYieldSpread")}${fmtNorm(trends, "highYieldSpread")} · conditions fin. (NFCI) ${fred.financialConditions?.value} · stress (StLouis) ${fred.financialStress?.value}${fmtNorm(trends, "financialStress")} · incertitude politique (EPU) ${fred.policyUncertainty?.value}${fmtTrend(trends, "policyUncertainty")}`);
-    push(`- Éco réelle : CPI ${fred.cpi?.value} · PCE ${fred.pce?.value} · ventes détail ${fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${fred.foodPriceIndex?.value}`);
+    push(`- Éco réelle : CPI ${fred.cpi?.value} · PCE ${fred.pce?.value} · ventes détail ${fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${r(fred.foodPriceIndex?.value, 1)}`);
   } else push(`- (stale)`);
 
   const liq = a.liquidity?.liquidity;
@@ -181,7 +191,7 @@ export function formatState(state, trends) {
   } else push(`- (stale)`);
 
   const com = a.commodities?.commodities;
-  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${com.gold?.value}${fmtTrend(trends, "gold")} · Argent ${com.silver?.value} · Cuivre ${com.copper?.value}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${com.wheat?.value}`);
+  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${r(com.gold?.value, 1)}${fmtTrend(trends, "gold")} · Argent ${r(com.silver?.value, 1)} · Cuivre ${r(com.copper?.value, 0)}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${r(com.wheat?.value, 1)}`);
 
   const mk = a.markets?.markets;
   if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}`);
@@ -197,17 +207,17 @@ export function formatState(state, trends) {
   const cg = a.structure?.coingecko;
   if (cg) {
     push(`\n## STRUCTURE CRYPTO`);
-    push(`- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH : ${cg.ethDominance?.toFixed?.(2)}% · ETH/BTC : ${cg.ethBtcRatio}${fmtTrend(trends, "ethBtcRatio")}`);
-    push(`- Mcap total : ${cg.totalMarketCapUsd}${fmtTrend(trends, "totalMarketCapUsd")} · TOTAL2 (alts hors BTC) : ${cg.altMarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "altMarketCapUsd")} · TOTAL3 (hors BTC+ETH) : ${cg.total3MarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "total3MarketCapUsd")}`);
-    if (cg.totalVolume24hUsd != null) push(`- Volume 24h global : ${cg.totalVolume24hUsd?.toFixed?.(0)}${fmtTrend(trends, "totalVolume24hUsd")} (conviction : un mouvement sans volume est suspect)`);
+    push(`- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH : ${cg.ethDominance?.toFixed?.(2)}% · ETH/BTC : ${r(cg.ethBtcRatio, 4)}${fmtTrend(trends, "ethBtcRatio")}`);
+    push(`- Mcap total : ${big(cg.totalMarketCapUsd)} $${fmtTrend(trends, "totalMarketCapUsd")} · TOTAL2 (alts hors BTC) : ${big(cg.altMarketCapUsd)} $${fmtTrend(trends, "altMarketCapUsd")} · TOTAL3 (hors BTC+ETH) : ${big(cg.total3MarketCapUsd)} $${fmtTrend(trends, "total3MarketCapUsd")}`);
+    if (cg.totalVolume24hUsd != null) push(`- Volume 24h global : ${big(cg.totalVolume24hUsd)} $${fmtTrend(trends, "totalVolume24hUsd")} (conviction : un mouvement sans volume est suspect)`);
   }
 
   const dl = a.onchain?.defillama;
   const ch = a.onchain?.["blockchain-info"];
   const mp = a.onchain?.mempool;
   push(`\n## ON-CHAIN`);
-  if (dl) push(`- TVL DeFi : ${dl.totalTvlUsd}${fmtTrend(trends, "totalTvlUsd")} · Stablecoins : ${dl.stablecoinMcapUsd}${fmtTrend(trends, "stablecoinMcapUsd")}`);
-  if (ch) push(`- Hashrate : ${ch.hashRate}${fmtTrend(trends, "hashRate")} · Transactions 24h : ${ch.nTx}${fmtTrend(trends, "txCount24h")}`);
+  if (dl) push(`- TVL DeFi : ${big(dl.totalTvlUsd)} $${fmtTrend(trends, "totalTvlUsd")} · Stablecoins : ${big(dl.stablecoinMcapUsd)} $${fmtTrend(trends, "stablecoinMcapUsd")}`);
+  if (ch) push(`- Hashrate : ${big(ch.hashRate)}${fmtTrend(trends, "hashRate")} · Transactions 24h : ${ch.nTx}${fmtTrend(trends, "txCount24h")}`);
   if (mp) push(`- Réseau BTC : frais rapides ${mp.feeFast} sat/vB${fmtTrend(trends, "mempoolFeeFast")} · mempool ${mp.mempoolCount} tx en attente${fmtTrend(trends, "mempoolCount")} (congestion = demande réelle de blockspace)`);
 
   push(`\n## GÉOPOLITIQUE`);
@@ -244,9 +254,20 @@ export function formatState(state, trends) {
   }
 
   // À venir : prévision + impact, multi-pays (investing.com / FairEconomy).
-  const ffUpcoming = ffEvents.filter((e) => e.actual == null);
+  // ANTI-BRUIT : on ne garde que les CATALYSEURS — impact [high] (CPI/NFP/FOMC/ISM…)
+  // + le [medium] IMMINENT (≤3 j) — et on plafonne. Le reste (discours BCE/BoE
+  // répétés, PMI mineurs à 2 semaines) noyait le signal (~50% du prompt) sans
+  // rien apporter au verdict swing.
+  const UPCOMING_MED_HORIZON_MS = 3 * 86400000;
+  const UPCOMING_CAP = 30;
+  const ffUp = ffEvents.filter((e) => e.actual == null);
+  const ffHighs = ffUp.filter((e) => e.impact === "high"); // TOUS les majeurs, même lointains (CPI/NFP/FOMC à J+14)
+  const ffMedImm = ffUp.filter((e) => e.impact !== "high" && e.datetime != null && e.datetime - state.ts <= UPCOMING_MED_HORIZON_MS);
+  const ffUpcoming = [...ffHighs, ...ffMedImm] // high prioritaires, on complète avec le medium imminent
+    .slice(0, UPCOMING_CAP)
+    .sort((a, b) => (a.datetime ?? 0) - (b.datetime ?? 0)); // puis ordre chronologique pour l'affichage
   if (ffUpcoming.length) {
-    push(`\n## CALENDRIER ÉCO — À VENIR`);
+    push(`\n## CALENDRIER ÉCO — À VENIR (catalyseurs [high] + [medium] imminent ≤3j)`);
     ffUpcoming.forEach((e) => {
       const fc = e.forecast != null ? ` (prév ${e.forecast}${e.previous != null ? `, préc ${e.previous}` : ""})` : "";
       push(`- ${e.date} ${hhmm(e.datetime)} ${e.country} ${e.event}${fc} [${e.impact}]`);

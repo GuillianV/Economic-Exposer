@@ -39,7 +39,7 @@ Chaque source absente dégrade proprement (marquée `stale`), sans casser le res
 
 ## Commandes
 
-Chaque commande `fa:<x>` correspond au fichier d'entrée `<x>.mjs` à la racine.
+Chaque commande `fa:<x>` correspond au fichier d'entrée `src/<x>.mjs`.
 
 | Commande | Rôle | Écrit dans `data/` |
 |---|---|---|
