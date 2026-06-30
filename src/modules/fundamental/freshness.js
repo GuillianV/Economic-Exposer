@@ -39,7 +39,9 @@ export function freshnessRows(state) {
     ["commodities (pétrole)", "fin de séance J-1", freshest(a.commodities?.commodities?.wtiOil?.date)],
     ["commodities (or/argent)", "temps réel", freshest(a.commodities?.commodities?.gold?.date)],
     ["gdelt", "~15 min", freshest(...(a.geopolitics?.gdelt?.topHeadlines || []).map((h) => h.date))],
-    ["acled", "hebdomadaire", freshest(...(a.geopolitics?.acled?.recentEvents || []).map((e) => e.date))],
+    // acled retiré : collecteur désactivé dans world-state (accès API 403) — il
+    // ne figure pas dans buildCollectors, donc axes.geopolitics.acled n'existe
+    // jamais. Le lister ici produisait un null fantôme. À remettre si réactivé.
     ["news (RSS)", "temps réel (min)", freshest(...(a.news?.news?.items || []).map((i) => i.date))],
   ].map(([source, cadence, dataTs]) => ({ source, cadence, dataTs }));
 }
