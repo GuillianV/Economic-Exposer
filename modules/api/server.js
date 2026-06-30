@@ -84,29 +84,31 @@ export function createApp() {
 
   app.get("/api/health", (req, res) => res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION }));
 
-  // --- Index : liste des endpoints ---
-  app.get("/api", (req, res) =>
-    res.json({
-      schemaVersion: SCHEMA_VERSION,
-      endpoints: [
-        "GET /api/health",
-        "GET /api/snapshots?since=&limit=",
-        "GET /api/snapshots/latest",
-        "GET /api/snapshots/:ts",
-        "GET /api/snapshots/:ts/verdict",
-        "GET /api/verdicts?since=&limit=",
-        "GET /api/verdicts/latest",
-        "GET /api/verdicts/:ts",
-        "GET /api/verdicts/:ts/snapshot",
-        "GET /api/verdicts/:ts/outcome",
-        "GET /api/trends?lookbackDays=",
-        "GET /api/metrics?since=",
-        "GET /api/dictionary",
-        "GET /api/glossary",
-        "GET /api/calendar",
-      ],
-    }),
-  );
+  // --- Index : liste des endpoints (servi sur / ET /api) ---
+  const apiIndex = {
+    service: "crypto-fundamental",
+    schemaVersion: SCHEMA_VERSION,
+    endpoints: [
+      "GET /api/health",
+      "GET /api/snapshots?since=&limit=",
+      "GET /api/snapshots/latest",
+      "GET /api/snapshots/:ts",
+      "GET /api/snapshots/:ts/verdict",
+      "GET /api/verdicts?since=&limit=",
+      "GET /api/verdicts/latest",
+      "GET /api/verdicts/:ts",
+      "GET /api/verdicts/:ts/snapshot",
+      "GET /api/verdicts/:ts/outcome",
+      "GET /api/trends?lookbackDays=",
+      "GET /api/metrics?since=",
+      "GET /api/dictionary",
+      "GET /api/glossary",
+      "GET /api/calendar",
+    ],
+  };
+  const sendIndex = (req, res) => res.json(apiIndex);
+  app.get("/", sendIndex);
+  app.get("/api", sendIndex);
 
   // --- API auto-descriptive : dictionnaire des métriques + glossaire ---
   app.get("/api/dictionary", (req, res) =>
