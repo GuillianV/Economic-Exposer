@@ -85,27 +85,22 @@ export function validateVerdict(verdict, { state, trends } = {}) {
   });
   if (priceHits) violations.push({ type: "price_target", count: priceHits, sample: priceSample });
 
-  // (2) Percentiles non sourcés — on ne redige QUE si la normalisation est
-  // totalement absente (signal net d'invention). Sinon on ne peut pas attribuer
-  // un token à une métrique : on signale seulement.
-  const pctSourced = hasAnyPctRank(trends);
-  let pctHits = 0;
-  let pctSample = null;
-  walkStrings(verdict, (s) => {
-    const m = s.match(PCT_TOKEN);
-    if (!m) return s;
-    pctHits += m.length;
-    if (!pctSample) pctSample = m[0].trim();
-    // Si la normalisation existe, on ne peut pas attribuer le token à une
-    // métrique précise : on signale sans rédiger. Sinon, invention -> redaction.
-    return pctSourced ? s : s.replace(PCT_TOKEN, PCT_MARK);
-  });
-  if (pctHits) {
-    violations.push({
-      type: pctSourced ? "percentile_unverifiable" : "percentile_invented",
-      count: pctHits,
-      sample: pctSample,
+  // (2) Percentiles — on n'agit QUE si la normalisation est ABSENTE des
+  // tendances. Dans ce cas, tout [pXX] est forcément inventé -> redaction + flag.
+  // Si les baselines existent, le prompt porte déjà les annotations [pXX/5a]
+  // légitimes et le modèle ne fait que les CITER : on ne touche à rien et on ne
+  // flag pas (ce ne serait que du bruit non actionnable, non attribuable).
+  if (!hasAnyPctRank(trends)) {
+    let pctHits = 0;
+    let pctSample = null;
+    walkStrings(verdict, (s) => {
+      const m = s.match(PCT_TOKEN);
+      if (!m) return s;
+      pctHits += m.length;
+      if (!pctSample) pctSample = m[0].trim();
+      return s.replace(PCT_TOKEN, PCT_MARK);
     });
+    if (pctHits) violations.push({ type: "percentile_invented", count: pctHits, sample: pctSample });
   }
 
   // (3) Extrapolation de source stale — signalement seul. Un axe dont la source
