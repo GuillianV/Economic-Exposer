@@ -45,13 +45,13 @@ Chaque commande `fa:<x>` correspond au fichier d'entrée `<x>.mjs` à la racine.
 |---|---|---|
 | `npm run fa:check` | Photo live des 10 axes + dump complet inspectable | `last-check.json` (dump debug) |
 | `npm run fa:freshness` | Diagnostic de fraîcheur : date réelle + âge de chaque source | — (lecture seule) |
-| `npm run fa:api` | **API HTTP publique** (port 3000) + page calendrier | — (lecture seule) |
+| `npm run fa:api` | **API HTTP publique** seule (port 3000, lecture) | — (lecture seule) |
 | `npm run fa:trends` | Collecte 1 snapshot + affiche les tendances (1h/24h/7j) | **snapshot** |
 | `npm run fa:ai` | **Force** une analyse IA → **JSON pur** sur stdout (`--prompt` = debug, n'écrit rien) | **snapshot + verdict** |
 | `npm run fa:tick` | Un tour de service (collecte + analyse *conditionnelle*) | **snapshot** (+ verdict si déclenché) |
-| `npm run fa:serve` | **Service 24/7** : collecte horaire + IA (fond + bascule) | **snapshots + verdicts** |
+| `npm run fa:serve` | **Service 24/7 « lance et oublie »** : collecte horaire + IA (fond + bascule) + **webhook** + **API** dans un seul process | **snapshots + verdicts** |
 
-Trois familles : **diagnostic** (lecture seule : `check`, `freshness`, `api`) · **génération de données** (historisent : `trends`, `ai`, `tick`, `serve`).
+Trois familles : **diagnostic** (lecture seule : `check`, `freshness`, `api`) · **génération de données** (historisent : `trends`, `ai`, `tick`, `serve`). Pour un déploiement headless, `fa:serve` suffit (il sert aussi l'API).
 
 ### Logique du service (`fa:serve`)
 
@@ -61,19 +61,20 @@ Collecte **chaque heure**. L'IA ne se déclenche **que** si : la cadence de fond
 
 `LLM_PROVIDER` (défaut `deepseek`) choisit le principal ; **fallback automatique vers Groq** si le principal échoue. Disponibles : `deepseek`, `groq`, `gemini` *(palier gratuit indisponible en UE)*.
 
-Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, `alertes`, **`pour_debutants`** (vulgarisation + **posture** défensif/neutre/opportuniste-prudent + **à éviter** + termes clés ; pas de daytrading), **`conseils`** (2-3 conseils prudents adaptés au régime, orientés gestion du risque — pas de reco financière). Les `signaux_cles` portent le **percentile** (ex. `p53/5a`) pour situer chaque chiffre.
+Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, **`horizon`** (échelle de temps de validité, swing) + **`invalidation`** (ce qui annulerait la lecture), `alertes`, **`pour_debutants`** (vulgarisation + **posture** défensif/neutre/opportuniste-prudent + **à éviter** + termes clés ; pas de daytrading), **`conseils`** (2-3 conseils prudents — pas de reco financière). Les `signaux_cles` portent le **percentile** (ex. `p53/5a`). Le *record* de verdict porte aussi `schemaVersion`, `triggers` et **`dataQuality`** (sources `stale` au moment de l'analyse).
 
-## Interface web
+## Webhook (sortie push)
 
-`npm run fa:api` sert aussi une **page calendrier** (façon investing.com) sur `http://localhost:3000/` : tableau multi-pays avec heure, impact, précédent/prévision/réel (données investing.com), filtres (impact, pays, à venir/publiés) et rafraîchissement auto.
+Le service est headless : il **pousse** chaque verdict (en marche normale) vers `WEBHOOK_URL` par un simple POST JSON — n'importe quel consommateur peut capter (bot, n8n, Zapier, backend…). Pas de Telegram, pas d'UI. Si `WEBHOOK_SECRET` est défini, le corps est signé en HMAC-SHA256 (`X-Signature-256: sha256=<hex>`). Le payload contient un résumé en tête (`regime`, `niveau_de_risque`, `confiance`, `resume`, `horizon`, `posture`, `triggers`, `alertes`, `dataQuality`) **+** le verdict complet.
 
 ## API (lecture seule, CORS ouvert)
 
-Base : `http://localhost:3000`
+Base : `http://localhost:3000`. Auth optionnelle via `API_TOKEN` (Bearer), rate-limit optionnel via `API_RATE_LIMIT` — utiles si l'API est exposée hors localhost.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/health` | Statut |
+| `GET /api/health` | Statut + `schemaVersion` |
+| `GET /api` | Index des endpoints |
 | `GET /api/snapshots?since=&limit=` | Liste des snapshots (`{ts, iso}`) |
 | `GET /api/snapshots/latest` | Dernier snapshot complet |
 | `GET /api/snapshots/:ts` | Un snapshot (ts en epoch ms ou ISO) |
@@ -82,8 +83,11 @@ Base : `http://localhost:3000`
 | `GET /api/verdicts/latest` | Dernier verdict |
 | `GET /api/verdicts/:ts` | Un verdict |
 | `GET /api/verdicts/:ts/snapshot` | **Le snapshot qui a produit ce verdict** |
+| `GET /api/verdicts/:ts/outcome` | **Suivi a posteriori** : deltas factuels des métriques-clés à +24h/+7j |
 | `GET /api/trends?lookbackDays=` | Tendances (deltas 1h/24h/7j) **+ normalisation** (`z`, `pctRank` vs ~5 ans) |
 | `GET /api/metrics?since=` | Série de métriques (pour graphes) |
+| `GET /api/dictionary` | **Dictionnaire** des métriques (label, unité, axe, source, **sens**) — API auto-descriptive |
+| `GET /api/glossary` | **Glossaire** des termes clés (pour consommateur néophyte) |
 | `GET /api/calendar` | **Calendrier éco unifié** (format investing.com) : investing.com (multi-pays, heure, impact, précédent/prévision/**réel**), repli FairEconomy |
 
 ## Stockage des données
@@ -100,5 +104,4 @@ data/
 
 ## Statut
 
-Socle complet et fonctionnel : collecte → persistance → tendances → IA → API.
-À venir : alertes Telegram (push du verdict sur bascule), dashboard.
+Service complet et headless : collecte → persistance → tendances → IA → API + **webhook**. Conçu comme un service de données pur (pas d'UI) : un consommateur externe lit l'API (auto-descriptive via `/api/dictionary` & `/api/glossary`) ou reçoit le push webhook.

@@ -17,7 +17,7 @@ export async function complete({ system, user, timeout = 60000 }) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: { temperature: 0.3, responseMimeType: "application/json", maxOutputTokens: 3000 },
+      generationConfig: { temperature: 0.3, responseMimeType: "application/json", maxOutputTokens: 6000 },
     }),
     signal: AbortSignal.timeout(timeout),
   });

@@ -4,6 +4,17 @@ import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
 import { loadAiState, saveAiState, saveVerdict } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
+import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
+
+/** Qualité des données ayant servi au verdict (fraîcheur des sources). */
+function dataQualityOf(state) {
+  return {
+    stale: state.meta?.staleSources ?? [],
+    ok: state.meta?.ok ?? null,
+    total: state.meta?.total ?? null,
+    freshnessTs: state.ts,
+  };
+}
 
 const BASELINE_MS = (Number(process.env.AI_BASELINE_HOURS) || 4) * 3600000;
 
@@ -39,12 +50,16 @@ export async function maybeAnalyze(state, trends) {
     snapshotTs: now, // corrélation : même ts que le snapshot de cette collecte
     provider,
     triggers: reasons,
+    dataQuality: dataQualityOf(state),
     verdict,
     raw: verdict ? undefined : raw,
   };
   const file = await saveVerdict(record);
   await saveAiState({ lastRunTs: now, refMetrics: metrics });
   logger.info(`[ai] verdict enregistré (${verdict?.regime ?? "non parsé"}) → ${file}`);
+
+  // SORTIE push : notifie tout consommateur via webhook (no-op si non configuré).
+  if (verdict) await emitWebhook(verdictEvent({ schemaVersion: 1, ...record }));
 
   return { triggered: true, reasons, verdict, record, file };
 }
@@ -64,11 +79,13 @@ export async function analyzeNow() {
     snapshotTs: state.ts,
     provider,
     triggers: ["analyse forcée (fa:ai)"],
+    dataQuality: dataQualityOf(state),
     verdict,
     raw: verdict ? undefined : raw,
   };
   const file = await saveVerdict(record);
   logger.info(`[ai] analyse forcée enregistrée (${verdict?.regime ?? "non parsé"}) → ${file}`);
+  // Pas de webhook ici : fa:ai est une analyse manuelle/debug, pas le service.
   return { provider, verdict, raw, file, snapshotTs: state.ts };
 }
 

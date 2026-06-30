@@ -1,6 +1,4 @@
 import express from "express";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { logger } from "../logs/index.js";
 import {
   listSnapshots,
@@ -16,8 +14,9 @@ import {
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
 import { buildCalendar } from "../fundamental/calendar.js";
-
-const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../public");
+import { METRIC_DICTIONARY, GLOSSARY } from "../fundamental/dictionary.js";
+import { computeOutcome } from "../fundamental/persistence/outcome.js";
+import { SCHEMA_VERSION } from "../fundamental/persistence/store.js";
 
 const DAY = 86400000;
 
@@ -47,6 +46,35 @@ export function createApp() {
     next();
   });
 
+  // Auth OPTIONNELLE : si API_TOKEN est défini, exige un Bearer token (ou ?token=)
+  // sur tout /api/* sauf /api/health. Sans la variable : ouvert (dev local).
+  const TOKEN = process.env.API_TOKEN;
+  if (TOKEN) {
+    app.use((req, res, next) => {
+      if (req.path === "/api/health") return next();
+      const auth = req.get("authorization") || "";
+      const provided = auth.startsWith("Bearer ") ? auth.slice(7) : req.query.token;
+      if (provided !== TOKEN) return res.status(401).json({ error: "non autorisé (token requis)" });
+      next();
+    });
+  }
+
+  // Rate-limit OPTIONNEL (par IP, fenêtre glissante 1 min) si API_RATE_LIMIT > 0.
+  const RL = Number(process.env.API_RATE_LIMIT) || 0;
+  if (RL > 0) {
+    const hits = new Map();
+    app.use((req, res, next) => {
+      const ip = req.ip || req.socket?.remoteAddress || "?";
+      const now = Date.now();
+      const w = hits.get(ip) || { count: 0, reset: now + 60000 };
+      if (now > w.reset) { w.count = 0; w.reset = now + 60000; }
+      w.count++;
+      hits.set(ip, w);
+      if (w.count > RL) return res.status(429).json({ error: "trop de requêtes (rate limit)" });
+      next();
+    });
+  }
+
   const wrap = (fn) => (req, res) => {
     Promise.resolve(fn(req, res)).catch((err) => {
       logger.error(`[api] ${req.method} ${req.path} : ${err.message}`);
@@ -54,11 +82,12 @@ export function createApp() {
     });
   };
 
-  app.get("/api/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
+  app.get("/api/health", (req, res) => res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION }));
 
   // --- Index : liste des endpoints ---
   app.get("/api", (req, res) =>
     res.json({
+      schemaVersion: SCHEMA_VERSION,
       endpoints: [
         "GET /api/health",
         "GET /api/snapshots?since=&limit=",
@@ -69,12 +98,21 @@ export function createApp() {
         "GET /api/verdicts/latest",
         "GET /api/verdicts/:ts",
         "GET /api/verdicts/:ts/snapshot",
+        "GET /api/verdicts/:ts/outcome",
         "GET /api/trends?lookbackDays=",
         "GET /api/metrics?since=",
+        "GET /api/dictionary",
+        "GET /api/glossary",
         "GET /api/calendar",
       ],
     }),
   );
+
+  // --- API auto-descriptive : dictionnaire des métriques + glossaire ---
+  app.get("/api/dictionary", (req, res) =>
+    res.json({ schemaVersion: SCHEMA_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY }),
+  );
+  app.get("/api/glossary", (req, res) => res.json({ count: GLOSSARY.length, terms: GLOSSARY }));
 
   // --- Calendrier économique unifié (format type investing.com) ---
   // Source riche : investing.com (scrapé) en primaire, FairEconomy en repli. Lit
@@ -184,6 +222,19 @@ export function createApp() {
     }),
   );
 
+  // Suivi A POSTERIORI : ce qui s'est passé depuis le verdict (deltas factuels
+  // des métriques-clés à +24h/+7j). Pas de note "juste/faux" — le consommateur juge.
+  app.get(
+    "/api/verdicts/:ts/outcome",
+    wrap(async (req, res) => {
+      const ts = parseTs(req.params.ts);
+      if (ts == null) return res.status(400).json({ error: "ts invalide" });
+      const out = await computeOutcome(ts);
+      if (!out) return res.status(404).json({ error: "verdict introuvable" });
+      res.json(out);
+    }),
+  );
+
   app.get(
     "/api/verdicts/:ts",
     wrap(async (req, res) => {
@@ -211,9 +262,6 @@ export function createApp() {
       res.json(await loadMetricsSince(since));
     }),
   );
-
-  // Frontend statique (page calendrier) servi à la racine.
-  app.use(express.static(PUBLIC_DIR));
 
   return app;
 }

@@ -22,6 +22,10 @@ const SNAP_DIR = path.join(DATA, "snapshots");
 const VERDICT_DIR = path.join(DATA, "verdicts");
 const AI_STATE_FILE = path.join(DATA, "ai-state.json");
 
+// Version du format de stockage (snapshots & verdicts). À incrémenter si la
+// forme change, pour qu'un consommateur de l'API puisse s'adapter sans casser.
+export const SCHEMA_VERSION = 1;
+
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function dayKey(ts) {
@@ -90,7 +94,7 @@ export async function saveSnapshot(record) {
   const dayDir = path.join(SNAP_DIR, dayKey(record.ts));
   await fs.mkdir(dayDir, { recursive: true });
   const file = path.join(dayDir, tsToName(record.ts));
-  await fs.writeFile(file, JSON.stringify(record, null, 2), "utf8");
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
   return file;
 }
 
@@ -127,7 +131,7 @@ export async function saveVerdict(record) {
   const dayDir = path.join(VERDICT_DIR, dayKey(record.ts));
   await fs.mkdir(dayDir, { recursive: true });
   const file = path.join(dayDir, tsToName(record.ts));
-  await fs.writeFile(file, JSON.stringify(record, null, 2), "utf8");
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
   return file;
 }
 

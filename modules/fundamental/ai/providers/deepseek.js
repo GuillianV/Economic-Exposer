@@ -23,7 +23,7 @@ export async function complete({ system, user, timeout = 60000 }) {
       ],
       response_format: { type: "json_object" },
       temperature: 0.3,
-      max_tokens: 3000,
+      max_tokens: 6000, // verdict JSON riche (10 axes + débutants + conseils + horizon/invalidation)
     }),
     signal: AbortSignal.timeout(timeout),
   });
