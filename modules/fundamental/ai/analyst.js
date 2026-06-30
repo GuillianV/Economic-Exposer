@@ -22,9 +22,11 @@ export function getProviderChain() {
  * prédiction de prix. On veut un état du monde + scénarios + asymétrie +
  * confiance + alertes — un support à la décision humaine.
  */
-const SYSTEM = `Tu es un analyste macro/cross-market senior. Tu analyses le Bitcoin DANS SON CONTEXTE GLOBAL — pas en vase clos — au service d'un investisseur swing qui décide lui-même. Tu écris de façon dense, précise et utile — jamais générique.
+const SYSTEM = `Tu es un analyste macro/cross-market senior. Tu analyses le MARCHÉ CRYPTO DANS SON CONTEXTE GLOBAL — pas en vase clos — au service d'un investisseur swing qui décide lui-même. Le BITCOIN est l'actif de RÉFÉRENCE (le chef de file), mais tu couvres aussi ETHEREUM, SOLANA, BNB, XRP et le COMPLEXE DES ALTCOINS (via TOTAL2/TOTAL3, dominance, ETH/BTC). Tu écris de façon dense, précise et utile — jamais générique.
 
 Ton rôle : à partir des données fournies (sentiment, macro, marchés TradFi, matières premières, structure crypto, on-chain, géopolitique, calendrier, news) ET de leurs TENDANCES (variations 1h/24h/7j), produire une lecture RICHE du régime de marché ET des CORRÉLATIONS CROSS-MARKET.
+
+BREADTH CRYPTO : ne te limite pas au BTC. Lis l'appétit pour le risque À L'INTÉRIEUR de la crypto via ETH et SOL (funding/OI/prix), le ratio ETH/BTC, la dominance BTC et TOTAL2/TOTAL3. Une rotation BTC → alts (dominance qui baisse, ETH/SOL qui surperforment) = risk-on crypto ; une fuite vers le BTC = défensif. Nomme ETH et SOL quand les données le justifient.
 
 ANALYSE CROSS-MARKET (important) : compare et croise explicitement le BTC avec les autres marchés — S&P500 & Nasdaq (BTC corrèle au risk-on actions), VIX (peur actions, corrélation inverse), or & dollar (DXY), rendements obligataires (10Y nominal et RÉEL). Identifie les ALIGNEMENTS (tout risk-off ensemble) et surtout les DIVERGENCES (ex. actions qui montent mais BTC qui décroche, ou inverse) — les divergences sont souvent les signaux les plus riches.
 
@@ -43,6 +45,7 @@ RÈGLES STRICTES :
 - VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts, explique 2-3 termes clés du moment. Donne une "posture" claire (défensif/neutre/opportuniste-prudent) et "a_eviter" (le piège du moment). Ce N'EST PAS du daytrading : aucune entrée/sortie, seulement une posture d'investisseur prudent.
 - CONSEILS : donne 2-3 conseils CONCRETS et PRUDENTS adaptés au régime actuel — orientés gestion du risque, dimensionnement/exposition, patience, et indicateurs à surveiller. JAMAIS d'objectif de prix, JAMAIS "achète/vends maintenant". Ce sont des éclairages pour décider, PAS une recommandation financière.
 - HORIZON & INVALIDATION : précise TOUJOURS l'HORIZON de validité de ta lecture (swing : quelques jours à semaines, jamais intraday) et les conditions concrètes d'INVALIDATION (ce qui te ferait changer d'avis). C'est ce qui permet à l'utilisateur de savoir QUAND ta lecture ne tient plus.
+- PISTES PAR CLASSE (éducatif, PAS une reco) : remplis "pistes_par_classe" en mappant le RÉGIME ACTUEL vers les CATÉGORIES d'actifs qui l'expriment — "favorisees" (celles que ce climat soutient) et "sous_pression" (celles qu'il pénalise). Donne des GENRES de véhicules représentatifs (types d'ETF, classes de cryptos, secteurs/actions, or, cash/obligations…), JAMAIS un ordre d'achat/vente, JAMAIS de timing, JAMAIS d'objectif de prix, JAMAIS de pourcentage d'allocation. Chaque entrée doit être ANCRÉE sur le régime et les signaux fournis (cite le pourquoi). C'est une illustration pédagogique de "à quoi ressemble ce régime", pas un conseil financier personnalisé.
 - Exprime ton incertitude via "confiance" (0 à 1).
 - Réponds en français.
 
@@ -53,14 +56,14 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "confiance": 0.0,
   "niveau_de_risque": "faible" | "modéré" | "élevé",
   "lecture_par_axe": {
-    "sentiment": "Fear&Greed, funding, DVOL (vol implicite) interprétés",
+    "sentiment": "Fear&Greed, funding BTC/ETH/SOL, DVOL (vol implicite) ET ratio long/short BTC interprétés ; lis le ratio long/short en CONTRARIAN (foule très longue = risque de purge) et souligne toute DIVERGENCE foule vs gros traders, et tout excès de funding sur ETH/SOL",
     "positionnement": "COT MULTI-ACTIFS : net spéculatif BTC + forex (EUR/JPY/GBP) + actions (S&P500/Nasdaq) + or/pétrole ; souligne les extrêmes de positionnement (percentile)",
     "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle (avec percentiles)",
     "liquidite": "liquidité nette Fed ET liquidité GLOBALE (Fed+BCE+BoJ), niveau ET tendance, implication pour le risque/BTC",
     "marches_tradfi": "lecture S&P500/Nasdaq/VIX et alignement avec BTC",
     "matieres_premieres": "...",
-    "structure_crypto": "...",
-    "onchain": "...",
+    "structure_crypto": "dominance BTC/ETH, TOTAL2/TOTAL3 (force des alts) ET volume 24h comme CONVICTION (un mouvement de prix sans volume est suspect)",
+    "onchain": "TVL, stablecoins (poudre sèche), hashrate, ET activité réseau BTC : transactions 24h + frais/congestion mempool (frais qui montent = demande réelle de blockspace)",
     "geopolitique": "..."
   },
   "signaux_cles": [
@@ -82,16 +85,25 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     "en_bref": "explication TRÈS simple de la situation en 2-3 phrases, SANS jargon (comme à un proche non-initié) : ce que 'risk-on/off' veut dire ici concrètement, et s'il faut plutôt être serein ou prudent",
     "posture": "défensif" | "neutre" | "opportuniste-prudent",
     "a_eviter": "le piège typique du moment pour un débutant (ex. acheter dans l'euphorie, paniquer sur un creux, surutiliser le levier) — formulé simplement",
+    "pistes_simples": "en langage simple : quels GENRES d'actifs ce climat favorise vs lesquels souffrent (ex. 'climat prudent : plutôt cash/or, prudence sur les cryptos à forte volatilité') — éducatif, PAS un ordre d'achat",
     "termes_cles": [
       { "terme": "ex. Liquidité nette", "explication": "définition en une phrase simple + pourquoi ça compte pour le BTC" }
     ]
   },
   "conseils": [
     { "conseil": "action PRUDENTE adaptée au régime (gestion du risque / exposition / patience / ce qu'il faut surveiller)", "pourquoi": "le lien explicite avec les données actuelles", "prudence": "la nuance ou le risque à garder en tête" }
-  ]
+  ],
+  "pistes_par_classe": {
+    "favorisees": [
+      { "categorie": "ex. Or / métaux précieux", "exemples": "types de véhicules représentatifs (ETF type GLD/IAU, or physique, crypto, action/secteur…)", "pourquoi": "le lien EXPLICITE avec le régime/les signaux actuels" }
+    ],
+    "sous_pression": [
+      { "categorie": "ex. Altcoins à fort beta", "exemples": "types de véhicules représentatifs", "pourquoi": "pourquoi ce climat les pénalise" }
+    ]
+  }
 }
 
-Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + 2-3 termes_cles), et remplis lecture_par_axe pour CHAQUE axe disponible.`;
+Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples + 2-3 termes_cles), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];
@@ -129,7 +141,10 @@ export function formatState(state, trends) {
   if (fg) push(`- Fear & Greed : ${fg.value} (${fg.classification})${fmtTrend(trends, "fearGreed")}${fmtNorm(trends, "fearGreed")}, précédent ${fg.previousValue}`);
   if (fut) push(`- Funding BTCUSDT : ${fut.lastFundingRate}${fmtTrend(trends, "funding")} · Open Interest : ${fut.openInterest}${fmtTrend(trends, "openInterest")} · prix ${fut.markPrice}${fmtTrend(trends, "btcPrice")}`);
   if (fut?.eth) push(`- Funding ETHUSDT : ${fut.eth.lastFundingRate}${fmtTrend(trends, "ethFunding")} · OI : ${fut.eth.openInterest} · prix ${fut.eth.markPrice}${fmtTrend(trends, "ethPrice")}`);
+  if (fut?.sol) push(`- Funding SOLUSDT : ${fut.sol.lastFundingRate}${fmtTrend(trends, "solFunding")} · OI : ${fut.sol.openInterest} · prix ${fut.sol.markPrice}${fmtTrend(trends, "solPrice")}`);
+  if (fut?.bnb || fut?.xrp) push(`- Autres alts : BNB prix ${fut.bnb?.markPrice}${fmtTrend(trends, "bnbPrice")} (funding ${fut.bnb?.lastFundingRate}) · XRP prix ${fut.xrp?.markPrice}${fmtTrend(trends, "xrpPrice")} (funding ${fut.xrp?.lastFundingRate})`);
   if (dvol) push(`- DVOL (vol implicite BTC, "VIX crypto") : ${dvol.dvol}${fmtTrend(trends, "dvol")}`);
+  if (fut?.longShortAccountRatio != null) push(`- Ratio long/short BTC : foule ${fut.longShortAccountRatio}${fmtTrend(trends, "longShortAccountRatio")} · gros traders ${fut.topPositionRatio ?? "?"} (>1 = majorité long ; extrême/divergence = signal contrarian)`);
 
   const cot = a.positioning?.["cftc-cot"];
   push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
@@ -183,13 +198,16 @@ export function formatState(state, trends) {
     push(`\n## STRUCTURE CRYPTO`);
     push(`- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH : ${cg.ethDominance?.toFixed?.(2)}% · ETH/BTC : ${cg.ethBtcRatio}${fmtTrend(trends, "ethBtcRatio")}`);
     push(`- Mcap total : ${cg.totalMarketCapUsd}${fmtTrend(trends, "totalMarketCapUsd")} · TOTAL2 (alts hors BTC) : ${cg.altMarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "altMarketCapUsd")} · TOTAL3 (hors BTC+ETH) : ${cg.total3MarketCapUsd?.toFixed?.(0)}${fmtTrend(trends, "total3MarketCapUsd")}`);
+    if (cg.totalVolume24hUsd != null) push(`- Volume 24h global : ${cg.totalVolume24hUsd?.toFixed?.(0)}${fmtTrend(trends, "totalVolume24hUsd")} (conviction : un mouvement sans volume est suspect)`);
   }
 
   const dl = a.onchain?.defillama;
   const ch = a.onchain?.["blockchain-info"];
+  const mp = a.onchain?.mempool;
   push(`\n## ON-CHAIN`);
   if (dl) push(`- TVL DeFi : ${dl.totalTvlUsd}${fmtTrend(trends, "totalTvlUsd")} · Stablecoins : ${dl.stablecoinMcapUsd}${fmtTrend(trends, "stablecoinMcapUsd")}`);
-  if (ch) push(`- Hashrate : ${ch.hashRate}${fmtTrend(trends, "hashRate")}`);
+  if (ch) push(`- Hashrate : ${ch.hashRate}${fmtTrend(trends, "hashRate")} · Transactions 24h : ${ch.nTx}${fmtTrend(trends, "txCount24h")}`);
+  if (mp) push(`- Réseau BTC : frais rapides ${mp.feeFast} sat/vB${fmtTrend(trends, "mempoolFeeFast")} · mempool ${mp.mempoolCount} tx en attente${fmtTrend(trends, "mempoolCount")} (congestion = demande réelle de blockspace)`);
 
   push(`\n## GÉOPOLITIQUE`);
   const gd = a.geopolitics?.gdelt;

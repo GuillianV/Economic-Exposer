@@ -26,12 +26,18 @@ export const THRESHOLDS = {
   gold: { type: "pct", value: 2, label: "Or" },
   btcPrice: { type: "pct", value: 3, label: "Prix BTC" },
   ethPrice: { type: "pct", value: 4, label: "Prix ETH" },
+  solPrice: { type: "pct", value: 5, label: "Prix SOL" },
+  bnbPrice: { type: "pct", value: 5, label: "Prix BNB" },
+  xrpPrice: { type: "pct", value: 6, label: "Prix XRP" },
   funding: { type: "abs", value: 0.0003, label: "Funding BTC" },
   ethFunding: { type: "abs", value: 0.0003, label: "Funding ETH" },
+  solFunding: { type: "abs", value: 0.0004, label: "Funding SOL" },
   wtiOil: { type: "pct", value: 3, label: "Pétrole WTI" },
   stablecoinMcapUsd: { type: "pct", value: 1, label: "Stablecoins" },
+  longShortAccountRatio: { type: "abs", value: 0.3, label: "Ratio long/short BTC" },
+  totalVolume24hUsd: { type: "pct", value: 30, label: "Volume crypto 24h" },
+  mempoolFeeFast: { type: "pct", value: 50, label: "Frais réseau BTC" },
   gdeltHeadlines: { type: "abs", value: 8, label: "Volume géopol (GDELT)" },
-  acledFatalities: { type: "abs", value: 50, label: "Morts (ACLED)" },
 };
 
 export function detectChanges(current, ref) {

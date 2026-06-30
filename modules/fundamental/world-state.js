@@ -5,6 +5,7 @@ import { CoinGeckoCollector } from "./collectors/coingecko.js";
 import { DefiLlamaCollector } from "./collectors/defillama.js";
 import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
 import { OnChainCollector } from "./collectors/onchain.js";
+import { MempoolCollector } from "./collectors/mempool.js";
 import { NewsCollector } from "./collectors/news.js";
 import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
 import { CommoditiesCollector } from "./collectors/commodities.js";
@@ -12,7 +13,6 @@ import { MarketsCollector } from "./collectors/markets.js";
 import { MarketsLiveCollector } from "./collectors/markets-live.js";
 import { LiquidityCollector } from "./collectors/liquidity.js";
 import { GdeltCollector } from "./collectors/gdelt.js";
-import { AcledCollector } from "./collectors/acled.js";
 import { GoogleNewsCollector } from "./collectors/google-news.js";
 import { DeribitCollector } from "./collectors/deribit.js";
 import { CftcCotCollector } from "./collectors/cftc-cot.js";
@@ -26,8 +26,8 @@ import { CftcCotCollector } from "./collectors/cftc-cot.js";
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé/or/argent)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko
- *   onchain     : defillama, blockchain-info
- *   geopolitics : gdelt (manchettes), acled (conflits structurés)
+ *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC)
+ *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
  */
 export function buildCollectors() {
@@ -45,8 +45,11 @@ export function buildCollectors() {
     new DefiLlamaCollector(),
     new BinanceFuturesCollector(),
     new OnChainCollector(),
+    new MempoolCollector(),
     new GdeltCollector(),
-    new AcledCollector(),
+    // ACLED désactivé (accès API non accordé à un compte perso → 403). La géopol
+    // reste couverte par GDELT + news. Réactiver : remettre `new AcledCollector()`
+    // (import en haut) une fois l'accès Research obtenu sur myACLED.
     new NewsCollector(),
     new GoogleNewsCollector(),
   ];

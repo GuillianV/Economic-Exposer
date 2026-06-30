@@ -18,12 +18,16 @@ export function extractMetrics(state) {
   const structure = a.structure?.coingecko ?? {};
   const defillama = a.onchain?.defillama ?? {};
   const chain = a.onchain?.["blockchain-info"] ?? {};
+  const mempool = a.onchain?.mempool ?? {};
   const gdelt = a.geopolitics?.gdelt ?? {};
   const acled = a.geopolitics?.acled ?? {};
 
   const fg = sentiment["fear-greed"] ?? {};
   const fut = sentiment["binance-futures"] ?? {};
   const eth = fut.eth ?? {};
+  const sol = fut.sol ?? {};
+  const bnb = fut.bnb ?? {};
+  const xrp = fut.xrp ?? {};
   const deribit = sentiment.deribit ?? {};
   const fred = macro.fred ?? {};
   const cotMk = cot.markets ?? {};
@@ -37,10 +41,20 @@ export function extractMetrics(state) {
     openInterest: num(fut.openInterest),
     btcPrice: num(fut.markPrice) ?? num(chain.marketPriceUsd),
     dvol: num(deribit.dvol),
-    // ETH (breadth crypto)
+    // positionnement de la foule (Binance long/short BTC)
+    longShortAccountRatio: num(fut.longShortAccountRatio),
+    topTraderPositionRatio: num(fut.topPositionRatio),
+    // ETH / SOL (breadth crypto)
     ethPrice: num(eth.markPrice),
     ethFunding: num(eth.lastFundingRate),
     ethOpenInterest: num(eth.openInterest),
+    solPrice: num(sol.markPrice),
+    solFunding: num(sol.lastFundingRate),
+    solOpenInterest: num(sol.openInterest),
+    bnbPrice: num(bnb.markPrice),
+    bnbFunding: num(bnb.lastFundingRate),
+    xrpPrice: num(xrp.markPrice),
+    xrpFunding: num(xrp.lastFundingRate),
     // positionnement (CFTC COT) — BTC + multi-actifs (net spéculatif)
     cotHedgeFundsNet: num(cot.hedgeFundsNet),
     cotAssetMgrNet: num(cot.assetMgrNet),
@@ -104,12 +118,16 @@ export function extractMetrics(state) {
     btcDominance: num(structure.btcDominance),
     ethBtcRatio: num(structure.ethBtcRatio),
     totalMarketCapUsd: num(structure.totalMarketCapUsd),
+    totalVolume24hUsd: num(structure.totalVolume24hUsd),
     altMarketCapUsd: num(structure.altMarketCapUsd),
     total3MarketCapUsd: num(structure.total3MarketCapUsd),
     // on-chain
     totalTvlUsd: num(defillama.totalTvlUsd),
     stablecoinMcapUsd: num(defillama.stablecoinMcapUsd),
     hashRate: num(chain.hashRate),
+    txCount24h: num(chain.nTx),
+    mempoolFeeFast: num(mempool.feeFast),
+    mempoolCount: num(mempool.mempoolCount),
     // géopolitique (volumes = proxy d'intensité)
     gdeltHeadlines: num(gdelt.headlineCount),
     acledEvents: num(acled.totalEvents),

@@ -28,6 +28,7 @@ export class CoinGeckoCollector extends Collector {
 
     const g = global?.data ?? {};
     const total = g.total_market_cap?.usd ?? null;
+    const totalVolume = g.total_volume?.usd ?? null; // volume 24h global = conviction
     const btcDom = g.market_cap_percentage?.btc ?? null;
     const ethDom = g.market_cap_percentage?.eth ?? null;
 
@@ -39,6 +40,7 @@ export class CoinGeckoCollector extends Collector {
       btcDominance: btcDom,
       ethDominance: ethDom,
       totalMarketCapUsd: total,
+      totalVolume24hUsd: totalVolume,
       altMarketCapUsd,
       total3MarketCapUsd,
       marketCapChange24h: g.market_cap_change_percentage_24h_usd ?? null,

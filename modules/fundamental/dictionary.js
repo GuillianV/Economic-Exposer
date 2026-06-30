@@ -18,9 +18,18 @@ export const METRIC_DICTIONARY = {
   openInterest: { label: "Open Interest BTC perp", unit: "BTC", axis: "sentiment", source: "Binance Futures", sens: "↑ = effet de levier croissant (volatilité potentielle accrue)" },
   btcPrice: { label: "Prix BTC", unit: "USD", axis: "sentiment", source: "Binance / blockchain.info", sens: "référence de prix (non prédictif)" },
   dvol: { label: "DVOL (vol. implicite BTC)", unit: "index", axis: "sentiment", source: "Deribit", sens: "↑ = stress/volatilité anticipée (≈ VIX crypto)" },
+  longShortAccountRatio: { label: "Ratio long/short BTC (tous comptes)", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "positionnement de la FOULE ; >1 = majorité long, extrême = risque de retournement (contrarian)" },
+  topTraderPositionRatio: { label: "Ratio long/short BTC (gros traders)", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "positionnement des GROS comptes ; une divergence avec la foule est instructive" },
   ethPrice: { label: "Prix ETH", unit: "USD", axis: "sentiment", source: "Binance Futures", sens: "référence (breadth crypto)" },
   ethFunding: { label: "Funding rate ETH perp", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "même lecture que le funding BTC, pour ETH" },
   ethOpenInterest: { label: "Open Interest ETH perp", unit: "ETH", axis: "sentiment", source: "Binance Futures", sens: "levier sur ETH" },
+  solPrice: { label: "Prix SOL", unit: "USD", axis: "sentiment", source: "Binance Futures", sens: "référence (breadth crypto, alt à fort beta)" },
+  solFunding: { label: "Funding rate SOL perp", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "appétit/levier sur SOL ; extrême = excès spéculatif" },
+  solOpenInterest: { label: "Open Interest SOL perp", unit: "SOL", axis: "sentiment", source: "Binance Futures", sens: "levier sur SOL" },
+  bnbPrice: { label: "Prix BNB", unit: "USD", axis: "sentiment", source: "Binance Futures", sens: "référence (breadth crypto)" },
+  bnbFunding: { label: "Funding rate BNB perp", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "appétit/levier sur BNB" },
+  xrpPrice: { label: "Prix XRP", unit: "USD", axis: "sentiment", source: "Binance Futures", sens: "référence (breadth crypto, alt à fort beta)" },
+  xrpFunding: { label: "Funding rate XRP perp", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "appétit/levier sur XRP" },
 
   // --- positionnement (CFTC COT, net spéculatif = long - short) ---
   cotHedgeFundsNet: { label: "COT net spéculatif BTC (leveraged)", unit: "contrats", axis: "positioning", source: "CFTC", sens: "extrêmes = euphorie/capitulation (retournement possible)" },
@@ -90,6 +99,7 @@ export const METRIC_DICTIONARY = {
   btcDominance: { label: "Dominance BTC", unit: "%", axis: "structure", source: "CoinGecko", sens: "↑ = fuite vers BTC (défensif) ; ↓ = appétit alts (risk-on crypto)" },
   ethBtcRatio: { label: "Ratio ETH/BTC", unit: "ratio", axis: "structure", source: "CoinGecko", sens: "↑ = surperformance ETH (appétit risque crypto)" },
   totalMarketCapUsd: { label: "Cap. marché crypto totale", unit: "USD", axis: "structure", source: "CoinGecko", sens: "taille globale du marché" },
+  totalVolume24hUsd: { label: "Volume crypto 24h", unit: "USD", axis: "structure", source: "CoinGecko", sens: "la CONVICTION derrière les mouvements : un prix qui bouge sans volume est suspect" },
   altMarketCapUsd: { label: "Cap. alts hors BTC (TOTAL2)", unit: "USD", axis: "structure", source: "CoinGecko", sens: "force des altcoins" },
   total3MarketCapUsd: { label: "Cap. hors BTC+ETH (TOTAL3)", unit: "USD", axis: "structure", source: "CoinGecko", sens: "spéculation sur les alts (risk-on extrême)" },
 
@@ -97,6 +107,9 @@ export const METRIC_DICTIONARY = {
   totalTvlUsd: { label: "TVL DeFi totale", unit: "USD", axis: "onchain", source: "DefiLlama", sens: "capitaux engagés en DeFi (appétit risque on-chain)" },
   stablecoinMcapUsd: { label: "Cap. stablecoins", unit: "USD", axis: "onchain", source: "DefiLlama", sens: "↑ = poudre sèche / liquidité crypto disponible" },
   hashRate: { label: "Hashrate Bitcoin", unit: "H/s", axis: "onchain", source: "blockchain.info", sens: "sécurité/engagement des mineurs (signal de fond lent)" },
+  txCount24h: { label: "Transactions BTC (24h)", unit: "count", axis: "onchain", source: "blockchain.info", sens: "activité d'usage du réseau" },
+  mempoolFeeFast: { label: "Frais BTC rapides", unit: "sat/vB", axis: "onchain", source: "mempool.space", sens: "↑ = congestion / forte demande de blockspace (activité réelle)" },
+  mempoolCount: { label: "Transactions en attente (mempool)", unit: "count", axis: "onchain", source: "mempool.space", sens: "↑ = réseau congestionné (pic d'activité)" },
 
   // --- géopolitique (volumes = proxy d'intensité) ---
   gdeltHeadlines: { label: "Volume de manchettes conflit (GDELT)", unit: "count", axis: "geopolitics", source: "GDELT", sens: "↑ = tension géopolitique médiatique" },

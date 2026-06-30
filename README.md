@@ -1,6 +1,6 @@
 # Crypto Fundamental Radar
 
-Service d'**analyse fondamentale crypto** (focus Bitcoin, contexte cross-market) qui tourne en continu.
+Service d'**analyse fondamentale crypto** (Bitcoin comme actif de référence + Ethereum/Solana/alts, contexte cross-market) qui tourne en continu.
 
 Il collecte en permanence des données réelles (sentiment, macro multi-actifs, liquidité globale, positionnement institutionnel, marchés actions, matières premières, structure crypto, on-chain, géopolitique, news), les **historise**, en calcule les **tendances** et la **normalisation** (z-score / rang percentile vs ~5 ans, pour situer chaque métrique dans sa distribution), puis les fait **synthétiser par une IA** en un verdict structuré.
 
@@ -14,15 +14,15 @@ collecte (17 collecteurs / 10 axes) → persistance → tendances → IA (verdic
 
 | Axe | Sources | Clé requise |
 |---|---|---|
-| **sentiment** | Fear & Greed, funding/OI Binance (**BTC + ETH**), **DVOL** (vol implicite BTC, Deribit) | — |
+| **sentiment** | Fear & Greed, funding/OI Binance (**BTC + top alts : ETH/SOL/BNB/XRP**), **ratio long/short BTC** (foule vs gros traders), **DVOL** (vol implicite BTC, Deribit) | — |
 | **positioning** | **CFTC COT multi-actifs** : net spéculatif BTC, forex (EUR/JPY/GBP), actions (S&P500/Nasdaq), or/pétrole | — |
 | **macro** | FRED : M2, dollar + FX (majeures & émergents), taux (2Y→30Y, **réels**, courbe, SOFR), crédit HY, **conditions/stress (NFCI, StLouis)**, **incertitude (EPU)**, CPI/PCE/ventes/sentiment/chômage, **prix alimentaires** ; **calendrier riche multi-pays** (heure, impact, **précédent/prévision/réel** y compris **FOMC/NFP/CPI**) scrapé sur **investing.com** (repli FairEconomy) | `FRED_API_KEY` ; investing.com/FairEconomy *(sans clé)* |
 | **liquidity** | Liquidité nette Fed (bilan − RRP − TGA) **+ liquidité GLOBALE (Fed + BCE + BoJ)** (FRED) — *driver clé* | `FRED_API_KEY` |
 | **commodities** | WTI, Brent, gaz, cuivre, blé (FRED) + **or, argent** (gold-api) | `FRED_API_KEY` |
 | **markets** | S&P500, Nasdaq, Dow, VIX en clôture J-1 (FRED) + **intraday temps réel** (Finnhub ou Twelve Data) | `FRED_API_KEY` ; `FINNHUB_API_KEY` *(optionnel, intraday)* |
-| **structure** | dominance BTC/ETH, ETH/BTC, mcap total + **TOTAL2/TOTAL3** (force des alts) (CoinGecko) | `COINGECKO_API_KEY` *(optionnel)* |
-| **onchain** | TVL, stablecoins (DefiLlama), hashrate (blockchain.info) | — |
-| **geopolitics** | manchettes (GDELT), conflits structurés (ACLED) | ACLED *(optionnel)* |
+| **structure** | dominance BTC/ETH, ETH/BTC, mcap total + **TOTAL2/TOTAL3** (force des alts), **volume 24h** (conviction) (CoinGecko) | `COINGECKO_API_KEY` *(optionnel)* |
+| **onchain** | TVL, stablecoins (DefiLlama), hashrate + tx 24h (blockchain.info), **frais/congestion réseau** (mempool.space) | — |
+| **geopolitics** | manchettes (GDELT) — *ACLED désactivé (accès API refusé sur compte perso)* | — |
 | **news** | 22 flux RSS + 9 thèmes Google News | — |
 
 ## Installation
@@ -61,7 +61,7 @@ Collecte **chaque heure**. L'IA ne se déclenche **que** si : la cadence de fond
 
 `LLM_PROVIDER` (défaut `deepseek`) choisit le principal ; **fallback automatique vers Groq** si le principal échoue. Disponibles : `deepseek`, `groq`, `gemini` *(palier gratuit indisponible en UE)*.
 
-Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, **`horizon`** (échelle de temps de validité, swing) + **`invalidation`** (ce qui annulerait la lecture), `alertes`, **`pour_debutants`** (vulgarisation + **posture** défensif/neutre/opportuniste-prudent + **à éviter** + termes clés ; pas de daytrading), **`conseils`** (2-3 conseils prudents — pas de reco financière). Les `signaux_cles` portent le **percentile** (ex. `p53/5a`). Le *record* de verdict porte aussi `schemaVersion`, `triggers` et **`dataQuality`** (sources `stale` au moment de l'analyse).
+Le verdict est un JSON structuré : `resume`, `regime`, `confiance`, `niveau_de_risque`, `lecture_par_axe`, `signaux_cles`, `ce_qui_a_change`, `correlations` (cross-market), `scenarios`, `catalyseurs_a_venir`, `asymetrie`, **`horizon`** (échelle de temps de validité, swing) + **`invalidation`** (ce qui annulerait la lecture), `alertes`, **`pour_debutants`** (vulgarisation + **posture** défensif/neutre/opportuniste-prudent + **à éviter** + pistes simples + termes clés ; pas de daytrading), **`conseils`** (2-3 conseils prudents — pas de reco financière), **`pistes_par_classe`** (catégories d'actifs *favorisées* / *sous pression* qui expriment le régime, avec exemples de véhicules — **éducatif/illustratif, pas une reco** : ni timing, ni objectif de prix, ni allocation). Les `signaux_cles` portent le **percentile** (ex. `p53/5a`). Le *record* de verdict porte aussi `schemaVersion`, `triggers` et **`dataQuality`** (sources `stale` au moment de l'analyse).
 
 ## Webhook (sortie push)
 
