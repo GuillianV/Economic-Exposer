@@ -86,8 +86,8 @@ export const METRIC_DICTIONARY = {
   natGas: { label: "Gaz naturel (Henry Hub)", unit: "USD/MMBtu", axis: "commodities", source: "FRED", sens: "coût énergie (saisonnier, volatil)" },
   copper: { label: "Cuivre", unit: "USD", axis: "commodities", source: "FRED", sens: "baromètre de la croissance industrielle (Dr. Copper)" },
   wheat: { label: "Blé", unit: "USD", axis: "commodities", source: "FRED", sens: "inflation alimentaire / risque géopolitique" },
-  gold: { label: "Or", unit: "USD/oz", axis: "commodities", source: "gold-api", sens: "valeur refuge ; ↑ souvent avec baisse des taux réels" },
-  silver: { label: "Argent", unit: "USD/oz", axis: "commodities", source: "gold-api", sens: "refuge + demande industrielle" },
+  gold: { label: "Or", unit: "USD/oz", axis: "commodities", source: "gold-api → Yahoo (COMEX)", sens: "valeur refuge ; ↑ souvent avec baisse des taux réels" },
+  silver: { label: "Argent", unit: "USD/oz", axis: "commodities", source: "gold-api → Yahoo (COMEX)", sens: "refuge + demande industrielle" },
 
   // --- marchés TradFi ---
   sp500: { label: "S&P 500", unit: "index", axis: "markets", source: "FRED", sens: "baromètre risk-on actions (BTC y corrèle)" },

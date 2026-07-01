@@ -6,9 +6,9 @@ import { Collector } from "./base.js";
  *
  *  - Énergie & métaux industriels & agricoles via FRED (clé requise) :
  *      WTI, Brent, gaz, cuivre ("Dr Copper" = croissance), blé (alimentaire).
- *  - Or & argent via gold-api.com (gratuit, sans clé) car les séries or de
- *    FRED sont discontinuées. L'or = narratif "digital gold", inverse des
- *    taux réels.
+ *
+ * Or & argent sont dans un collecteur DÉDIÉ (metals.js, même axe) : source
+ * différente (gold-api/Yahoo, sans clé) et pannes rendues visibles séparément.
  */
 const FRED_SERIES = {
   wtiOil: "DCOILWTICO",
@@ -33,28 +33,16 @@ export class CommoditiesCollector extends Collector {
     return { value: obs.value === "." ? null : Number(obs.value), date: obs.date };
   }
 
-  async #metal(symbol) {
-    const json = await this.getJson(`https://api.gold-api.com/price/${symbol}`);
-    return json?.price != null ? { value: Number(json.price), date: json.updatedAt } : null;
-  }
-
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
     const keys = Object.keys(FRED_SERIES);
-    const tasks = [
-      ...keys.map((k) => this.#latestFred(FRED_SERIES[k], apiKey)),
-      this.#metal("XAU"), // or
-      this.#metal("XAG"), // argent
-    ];
-    const settled = await Promise.allSettled(tasks);
+    const settled = await Promise.allSettled(keys.map((k) => this.#latestFred(FRED_SERIES[k], apiKey)));
     const val = (i) => (settled[i].status === "fulfilled" ? settled[i].value : null);
 
     const out = {};
     keys.forEach((k, i) => (out[k] = val(i)));
-    out.gold = val(keys.length);
-    out.silver = val(keys.length + 1);
     return out;
   }
 }

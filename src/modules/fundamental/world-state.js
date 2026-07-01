@@ -9,6 +9,7 @@ import { MempoolCollector } from "./collectors/mempool.js";
 import { NewsCollector } from "./collectors/news.js";
 import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
 import { CommoditiesCollector } from "./collectors/commodities.js";
+import { MetalsCollector } from "./collectors/metals.js";
 import { MarketsCollector } from "./collectors/markets.js";
 import { MarketsLiveCollector } from "./collectors/markets-live.js";
 import { LiquidityCollector } from "./collectors/liquidity.js";
@@ -23,7 +24,7 @@ import { CftcCotCollector } from "./collectors/cftc-cot.js";
  *   positioning : cftc-cot (positionnement futures BTC : hedge funds / institutionnels)
  *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), investing-calendar (calendrier riche scrapé, repli FairEconomy interne)
  *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
- *   commodities : commodities (WTI/Brent/gaz/cuivre/blé/or/argent)
+ *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko
  *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC)
@@ -39,6 +40,7 @@ export function buildCollectors() {
     new InvestingCalendarCollector(),
     new LiquidityCollector(),
     new CommoditiesCollector(),
+    new MetalsCollector(),
     new MarketsCollector(),
     new MarketsLiveCollector(),
     new CoinGeckoCollector(),

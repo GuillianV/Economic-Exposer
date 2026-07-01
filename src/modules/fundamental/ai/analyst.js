@@ -191,7 +191,8 @@ export function formatState(state, trends) {
   } else push(`- (stale)`);
 
   const com = a.commodities?.commodities;
-  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${r(com.gold?.value, 1)}${fmtTrend(trends, "gold")} · Argent ${r(com.silver?.value, 1)} · Cuivre ${r(com.copper?.value, 0)}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${r(com.wheat?.value, 1)}`);
+  const met = a.commodities?.metals;
+  if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${r(met?.gold?.value, 1)}${fmtTrend(trends, "gold")} · Argent ${r(met?.silver?.value, 1)} · Cuivre ${r(com.copper?.value, 0)}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${r(com.wheat?.value, 1)}`);
 
   const mk = a.markets?.markets;
   if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}`);

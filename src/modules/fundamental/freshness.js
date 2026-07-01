@@ -37,7 +37,7 @@ export function freshnessRows(state) {
     ["markets (S&P/Nasdaq/VIX)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
     ["markets-live (Finnhub/TD)", "temps réel (intraday)", freshest(...Object.values(a.markets?.["markets-live"] || {}).map((v) => v?.datetime))],
     ["commodities (pétrole)", "fin de séance J-1", freshest(a.commodities?.commodities?.wtiOil?.date)],
-    ["commodities (or/argent)", "temps réel", freshest(a.commodities?.commodities?.gold?.date)],
+    ["metals (or/argent)", "temps réel", freshest(a.commodities?.metals?.gold?.date, a.commodities?.metals?.silver?.date)],
     ["gdelt", "~15 min", freshest(...(a.geopolitics?.gdelt?.topHeadlines || []).map((h) => h.date))],
     // acled retiré : collecteur désactivé dans world-state (accès API 403) — il
     // ne figure pas dans buildCollectors, donc axes.geopolitics.acled n'existe

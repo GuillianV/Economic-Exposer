@@ -13,6 +13,7 @@ export function extractMetrics(state) {
   const macro = a.macro ?? {};
   const liquidity = a.liquidity?.liquidity ?? {};
   const commodities = a.commodities?.commodities ?? {};
+  const metals = a.commodities?.metals ?? {};
   const markets = a.markets?.markets ?? {};
   const cot = a.positioning?.["cftc-cot"] ?? {};
   const structure = a.structure?.coingecko ?? {};
@@ -107,8 +108,8 @@ export function extractMetrics(state) {
     natGas: num(commodities.natGas?.value),
     copper: num(commodities.copper?.value),
     wheat: num(commodities.wheat?.value),
-    gold: num(commodities.gold?.value),
-    silver: num(commodities.silver?.value),
+    gold: num(metals.gold?.value),
+    silver: num(metals.silver?.value),
     // marchés TradFi (cross-market)
     sp500: num(markets.sp500?.value),
     nasdaq: num(markets.nasdaq?.value),
