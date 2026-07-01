@@ -1,7 +1,7 @@
 import { logger } from "../../logs/index.js";
 import { extractMetrics } from "../persistence/metrics.js";
 import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
-import { loadAiState, saveAiState, saveVerdict, saveCurve } from "../persistence/store.js";
+import { loadAiState, saveAiState, saveVerdict, saveCurve, loadLatestCurve } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
 import { projectCurves } from "./curve.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
@@ -140,6 +140,24 @@ export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) ||
     }, delay);
     logger.info(`[curve] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / 60000)} min)`);
   };
+
+  // Rattrapage au démarrage : si aucune courbe n'a été générée AUJOURD'HUI, on
+  // en produit une tout de suite — sinon `latest`/l'historique resteraient vides
+  // jusqu'à la prochaine échéance (comme observé après un déploiement).
+  (async () => {
+    try {
+      const last = await loadLatestCurve();
+      const today = new Date().toISOString().slice(0, 10);
+      const lastDay = last?.baseTs ? new Date(last.baseTs).toISOString().slice(0, 10) : null;
+      if (!stopped && lastDay !== today) {
+        logger.info("[curve] rattrapage au démarrage : aucune courbe aujourd'hui, génération immédiate");
+        await generateDailyCurve();
+      }
+    } catch (err) {
+      logger.warn(`[curve] rattrapage au démarrage échoué : ${err.message}`);
+    }
+  })();
+
   scheduleNext();
   return function stop() {
     stopped = true;

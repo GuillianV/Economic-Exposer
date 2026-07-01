@@ -89,7 +89,7 @@ export function curveEvent(record) {
   const actifs = Array.isArray(record.actifs) ? record.actifs : [];
   return {
     type: "curve",
-    url: resourceUrl("/api/forecast/curve"),
+    url: resourceUrl("/api/forecast/curves/latest"),
     ts: record.baseTs,
     iso: record.baseTs != null ? new Date(record.baseTs).toISOString() : null,
     schemaVersion: record.schemaVersion ?? null,
