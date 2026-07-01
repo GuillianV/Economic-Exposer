@@ -51,7 +51,7 @@ function extremesOf(trends) {
 }
 
 // Cours majeurs projetés : clé métrique -> libellé affiché.
-const ASSETS = [
+export const ASSETS = [
   ["btcPrice", "BTC/USD"],
   ["ethPrice", "ETH/USD"],
   ["solPrice", "SOL/USD"],
@@ -212,6 +212,77 @@ function formatTrajectory(traj, horizonDays) {
   return lines.join("\n");
 }
 
+// ---- Inflexion déterministe des courbes -----------------------------------
+// Le LLM décrit bien un retournement (champ `retournement` + commentaire) mais
+// trace souvent une DROITE monotone qui le CONTREDIT. On réaligne le TRACÉ sur
+// sa propre thèse : on garde la phase 1 du modèle jusqu'au pivot (début de la
+// fenêtre), puis on replie la phase 2 vers le `biais`. On n'agit QUE sur les
+// vrais RETOURNEMENTS (biais opposé au drift) — une continuation est déjà
+// cohérente, on n'y touche pas.
+
+const norm = (s) => String(s ?? "").toLowerCase();
+
+/** "3-5" / "3–5" / "3 à 5" / "5" → { start, end } borné à l'horizon. */
+function parseWindow(raw, horizonDays) {
+  const nums = String(raw ?? "").match(/\d+/g);
+  if (!nums?.length) return null;
+  let start = Math.min(Math.max(Number(nums[0]), 1), horizonDays);
+  const end = Math.min(Math.max(nums[1] != null ? Number(nums[1]) : start, start), horizonDays);
+  return { start, end };
+}
+
+/** Valeur de la courbe à un jour donné (points quotidiens contigus → lookup). */
+function valueAtDay(courbe, day) {
+  const hit = courbe.find((p) => p.t_jours === day);
+  return hit ? hit.valeur : null;
+}
+
+/**
+ * Replie la phase 2 d'une courbe vers `retournement.biais` si c'est un vrai
+ * retournement. Retourne la courbe inchangée sinon. `pivotOut` (optionnel)
+ * reçoit le jour de pivot appliqué.
+ */
+export function inflectCurve(courbe, retournement, horizonDays, pivotOut) {
+  if (!Array.isArray(courbe) || courbe.length < 3 || !retournement?.probable) return courbe;
+  const biais = norm(retournement.biais);
+  const sign = biais === "haussier" ? 1 : biais === "baissier" ? -1 : 0;
+  if (!sign) return courbe;
+
+  const win = parseWindow(retournement.fenetre_jours, horizonDays);
+  if (!win) return courbe;
+  const pivotDay = Math.min(win.start, horizonDays - 1); // laisse ≥1 jour à plier
+  if (pivotDay < 1) return courbe;
+
+  const t0 = courbe[0].valeur;
+  const pivotVal = valueAtDay(courbe, pivotDay);
+  if (pivotVal == null) return courbe;
+
+  // Ne réécrit QUE les vrais retournements : si le biais va dans le sens du
+  // drift déjà tracé (continuation/accélération), la courbe est cohérente.
+  const drift = Math.sign(pivotVal - t0);
+  if (drift !== 0 && sign === drift) return courbe;
+
+  // Purement correctif : si la phase 2 du modèle exprime DÉJÀ le biais (il a
+  // tracé le rebond lui-même), on ne l'écrase pas.
+  const phase2Drift = Math.sign(courbe[courbe.length - 1].valeur - pivotVal);
+  if (phase2Drift !== 0 && phase2Drift === sign) return courbe;
+
+  // Pas quotidien de la phase 2 = mouvement moyen déjà tracé (plancher 0,3 % t0
+  // pour qu'un actif quasi plat s'infléchisse quand même de façon visible),
+  // amorti (un retournement est graduel), et borné pour ne pas surréagir.
+  const phase1 = Math.abs(pivotVal - t0);
+  const step = Math.max(phase1 / pivotDay, Math.abs(t0) * 0.003) * 0.7;
+  const maxMove = Math.max(phase1 * 1.5, Math.abs(t0) * 0.02);
+
+  const out = courbe.filter((p) => p.t_jours <= pivotDay).map((p) => ({ ...p }));
+  for (let d = pivotDay + 1; d <= horizonDays; d++) {
+    const move = Math.min(step * (d - pivotDay), maxMove);
+    out.push({ t_jours: d, valeur: r2(pivotVal + sign * move) });
+  }
+  if (pivotOut) pivotOut.jour = pivotDay;
+  return out;
+}
+
 /** Ancre t0 = cours réel, ordonne la courbe, garde les valeurs numériques. */
 function normalizeCurves(parsed, traj, horizonDays) {
   if (!parsed || typeof parsed !== "object") return null;
@@ -228,12 +299,17 @@ function normalizeCurves(parsed, traj, horizonDays) {
       .sort((x, y) => x.t_jours - y.t_jours);
     // Point t0 ancré sur le cours réel (pas celui du modèle).
     const full = t0 != null ? [{ t_jours: 0, valeur: r2(t0) }, ...courbe] : courbe;
+    const retournement = a.retournement && typeof a.retournement === "object" ? a.retournement : { probable: false };
+    // Réaligne le tracé sur la thèse de retournement (no-op si continuation).
+    const piv = {};
+    const shaped = inflectCurve(full, retournement, horizonDays, piv);
     out.push({
       actif: a.actif,
       direction: a.direction ?? "neutre",
       confiance: typeof a.confiance === "number" ? a.confiance : null,
-      courbe: full,
-      retournement: a.retournement && typeof a.retournement === "object" ? a.retournement : { probable: false },
+      courbe: shaped,
+      retournement,
+      inflexion: piv.jour != null ? { applique: true, jour_pivot: piv.jour } : { applique: false },
       commentaire: a.commentaire ?? "",
     });
   }

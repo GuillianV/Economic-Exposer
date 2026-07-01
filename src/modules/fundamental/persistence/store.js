@@ -168,6 +168,18 @@ export async function loadLatestCurve() {
   return last ? readJson(last.file) : null;
 }
 
+/** Historique des courbes projetées (1/jour), triées croissant : [{ts, file}]. */
+export async function listCurves(sinceMs = 0) {
+  return listRecords(CURVE_DIR, sinceMs);
+}
+
+/** Une courbe passée par son ts (= baseTs). null si absente. */
+export async function loadCurveByTs(ts, tolMs = 60000) {
+  const list = await listRecords(CURVE_DIR, 0);
+  const match = list.find((r) => r.ts === ts) || findNearestRef(list, ts, tolMs);
+  return match ? readJson(match.file) : null;
+}
+
 // ---- Corrélation snapshot <-> verdict (par ts) ----
 
 /** Le verdict produit à partir d'un snapshot (même ts). null si pas d'analyse. */

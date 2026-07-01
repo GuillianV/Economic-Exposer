@@ -11,7 +11,10 @@ import {
   getVerdictForSnapshot,
   getSnapshotForVerdict,
   loadLatestCurve,
+  listCurves,
+  loadCurveByTs,
 } from "../fundamental/persistence/store.js";
+import { computeCurveOutcome } from "../fundamental/persistence/curve-outcome.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
 import { projectCurves } from "../fundamental/ai/curve.js";
@@ -109,6 +112,9 @@ export function createApp() {
       "GET /api/verdicts/:ts/snapshot",
       "GET /api/verdicts/:ts/outcome",
       "GET /api/forecast/curve?days=&horizon=",
+      "GET /api/forecast/curves?since=&limit=",
+      "GET /api/forecast/curves/:ts",
+      "GET /api/forecast/curves/:ts/outcome",
       "GET /api/trends?lookbackDays=",
       "GET /api/metrics?since=",
       "GET /api/dictionary",
@@ -271,6 +277,48 @@ export function createApp() {
       const body = { provider, ...curves };
       curveCache.set(key, { at: Date.now(), body });
       res.json({ source: "live", cached: false, ...body });
+    }),
+  );
+
+  // HISTORIQUE des courbes projetées (1/jour). Pour vérifier a posteriori.
+  app.get(
+    "/api/forecast/curves",
+    wrap(async (req, res) => {
+      const since = parseSince(req.query.since, 30);
+      const limit = Number(req.query.limit) || 100;
+      const list = await listCurves(since);
+      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+    }),
+  );
+
+  // Suivi A POSTERIORI d'une courbe : projeté vs réalisé + justesse directionnelle
+  // (100 % déterministe, sans IA). `:ts` accepte "latest". À placer AVANT la
+  // route générique `/curves/:ts`.
+  app.get(
+    "/api/forecast/curves/:ts/outcome",
+    wrap(async (req, res) => {
+      const ts = req.params.ts === "latest" ? null : parseTs(req.params.ts);
+      if (req.params.ts !== "latest" && ts == null) return res.status(400).json({ error: "ts invalide" });
+      const out = await computeCurveOutcome(ts);
+      if (!out) return res.status(404).json({ error: "courbe introuvable" });
+      res.json(out);
+    }),
+  );
+
+  // Une courbe passée par son ts (= baseTs). `:ts` accepte "latest".
+  app.get(
+    "/api/forecast/curves/:ts",
+    wrap(async (req, res) => {
+      if (req.params.ts === "latest") {
+        const c = await loadLatestCurve();
+        if (!c) return res.status(404).json({ error: "aucune courbe" });
+        return res.json(c);
+      }
+      const ts = parseTs(req.params.ts);
+      if (ts == null) return res.status(400).json({ error: "ts invalide" });
+      const c = await loadCurveByTs(ts);
+      if (!c) return res.status(404).json({ error: "courbe introuvable" });
+      res.json(c);
     }),
   );
 
