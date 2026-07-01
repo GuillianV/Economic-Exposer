@@ -1,10 +1,11 @@
 import { logger } from "../../logs/index.js";
 import { extractMetrics } from "../persistence/metrics.js";
 import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
-import { loadAiState, saveAiState, saveVerdict } from "../persistence/store.js";
+import { loadAiState, saveAiState, saveVerdict, saveCurve } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
+import { projectCurves } from "./curve.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
-import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
+import { emitWebhook, verdictEvent, curveEvent } from "../../notify/webhook.js";
 
 /** Qualité des données ayant servi au verdict (fraîcheur des sources). */
 function dataQualityOf(state) {
@@ -89,6 +90,62 @@ export async function analyzeNow() {
   logger.info(`[ai] analyse forcée enregistrée (${verdict?.regime ?? "non parsé"}) → ${file}`);
   // Pas de webhook ici : fa:ai est une analyse manuelle/debug, pas le service.
   return { provider, verdict, raw, file, snapshotTs: state.ts };
+}
+
+// Défauts de la courbe quotidienne (fenêtre lue / horizon projeté).
+const CURVE_DAYS = Number(process.env.CURVE_DAYS) || 7;
+const CURVE_HORIZON = Number(process.env.CURVE_HORIZON) || 7;
+
+/**
+ * Génère la courbe projetée et la PERSISTE (une par jour). Ne throw jamais.
+ * @returns le record stocké, ou null si échec/non parsé.
+ */
+export async function generateDailyCurve({ windowDays = CURVE_DAYS, horizonDays = CURVE_HORIZON } = {}) {
+  try {
+    const { provider, curves } = await projectCurves({ windowDays, horizonDays });
+    if (!curves) {
+      logger.warn("[curve] génération quotidienne : projection non parsée");
+      return null;
+    }
+    const record = { provider, days: windowDays, ...curves };
+    const file = await saveCurve(record);
+    logger.info(`[curve] courbe quotidienne générée (${curves.actifs.length} actifs, ${windowDays}j→${horizonDays}j) → ${file}`);
+    // SORTIE push : notifie le rafraîchissement de courbe (no-op si non configuré).
+    await emitWebhook(curveEvent({ schemaVersion: 1, ...record }));
+    return record;
+  } catch (err) {
+    logger.warn(`[curve] génération quotidienne échouée : ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Planifie la génération de la courbe UNE FOIS par jour à `hour` (heure locale
+ * serveur). Renvoie une fonction stop. Ne bloque pas ; s'auto-replanifie.
+ */
+export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) || 12 } = {}) {
+  let timer = null;
+  let stopped = false;
+  const scheduleNext = () => {
+    if (stopped) return;
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(hour, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const delay = next - now;
+    timer = setTimeout(async () => {
+      if (stopped) return;
+      await generateDailyCurve();
+      scheduleNext();
+    }, delay);
+    logger.info(`[curve] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / 60000)} min)`);
+  };
+  scheduleNext();
+  return function stop() {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    logger.info("[curve] scheduler quotidien arrêté");
+  };
 }
 
 /** Un tour de service : collecte → tendances → analyse conditionnelle. */

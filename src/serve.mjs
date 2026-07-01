@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { startService } from "./modules/fundamental/ai/runner.js";
+import { startService, startDailyCurve } from "./modules/fundamental/ai/runner.js";
 import { HOUR_MS } from "./modules/fundamental/persistence/scheduler.js";
 import { createApp } from "./modules/api/server.js";
 import { logger } from "./modules/logs/index.js";
@@ -12,6 +12,7 @@ import { logger } from "./modules/logs/index.js";
 const PORT = Number(process.env.API_PORT) || 3000;
 
 const stop = startService({ intervalMs: HOUR_MS });
+const stopCurve = startDailyCurve(); // courbe projetée 1×/jour à 12h (CURVE_DAILY_HOUR)
 
 const server = createApp().listen(PORT, () => {
   logger.info(`[api] API publique sur http://localhost:${PORT}/api`);
@@ -23,6 +24,7 @@ server.on("error", (err) => {
 
 function shutdown() {
   stop();
+  stopCurve();
   server.close();
   process.exit(0);
 }

@@ -20,6 +20,7 @@ import path from "node:path";
 const DATA = path.resolve(process.cwd(), "data");
 const SNAP_DIR = path.join(DATA, "snapshots");
 const VERDICT_DIR = path.join(DATA, "verdicts");
+const CURVE_DIR = path.join(DATA, "curves");
 const AI_STATE_FILE = path.join(DATA, "ai-state.json");
 
 // Version du format de stockage (snapshots & verdicts). À incrémenter si la
@@ -147,6 +148,22 @@ export async function loadVerdictByTs(ts, tolMs = 60000) {
 
 export async function loadLatestVerdict() {
   const list = await listVerdicts(0);
+  const last = list[list.length - 1];
+  return last ? readJson(last.file) : null;
+}
+
+// ---- Courbes projetées (génération quotidienne) ----
+
+export async function saveCurve(record) {
+  const dayDir = path.join(CURVE_DIR, dayKey(record.baseTs));
+  await fs.mkdir(dayDir, { recursive: true });
+  const file = path.join(dayDir, tsToName(record.baseTs));
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
+  return file;
+}
+
+export async function loadLatestCurve() {
+  const list = await listRecords(CURVE_DIR, 0);
   const last = list[list.length - 1];
   return last ? readJson(last.file) : null;
 }

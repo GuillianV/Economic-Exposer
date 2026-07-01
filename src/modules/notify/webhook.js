@@ -45,14 +45,25 @@ export async function emitWebhook(event) {
 }
 
 /**
+ * URL canonique de la ressource pour le consommateur. Préfixe `API_PUBLIC_URL`
+ * (ex. https://macro-api.guillian.net) si défini, sinon chemin relatif.
+ */
+function resourceUrl(pathname) {
+  const base = process.env.API_PUBLIC_URL;
+  return base ? base.replace(/\/$/, "") + pathname : pathname;
+}
+
+/**
  * Construit le payload webhook à partir d'un record de verdict. Auto-suffisant :
  * un résumé en tête (régime/risque/confiance/résumé/déclencheurs/fraîcheur) +
  * le verdict complet, pour que le consommateur n'ait pas à rappeler l'API.
+ * `type` discrimine verdict/courbe ; `url` pointe la ressource.
  */
 export function verdictEvent(record) {
   const v = record.verdict || {};
   return {
     type: "verdict",
+    url: resourceUrl(`/api/verdicts/${record.ts}`),
     ts: record.ts,
     iso: new Date(record.ts).toISOString(),
     schemaVersion: record.schemaVersion ?? null,
@@ -66,5 +77,32 @@ export function verdictEvent(record) {
     alertes: v.alertes ?? [],
     dataQuality: record.dataQuality ?? null,
     verdict: v,
+  };
+}
+
+/**
+ * Payload webhook d'une COURBE (rafraîchissement quotidien). Auto-suffisant :
+ * un aperçu par actif (direction/retournement) + les courbes complètes.
+ * `type:"curve"` discrimine ; `url` pointe l'endpoint courbe.
+ */
+export function curveEvent(record) {
+  const actifs = Array.isArray(record.actifs) ? record.actifs : [];
+  return {
+    type: "curve",
+    url: resourceUrl("/api/forecast/curve"),
+    ts: record.baseTs,
+    iso: record.baseTs != null ? new Date(record.baseTs).toISOString() : null,
+    schemaVersion: record.schemaVersion ?? null,
+    provider: record.provider ?? null,
+    days: record.days ?? null,
+    horizonJours: record.horizonJours ?? null,
+    apercu: actifs.map((a) => ({
+      actif: a.actif,
+      direction: a.direction ?? null,
+      confiance: a.confiance ?? null,
+      retournement: a.retournement?.probable ? a.retournement : null,
+    })),
+    disclaimer: record.disclaimer ?? null,
+    actifs, // courbes complètes
   };
 }
