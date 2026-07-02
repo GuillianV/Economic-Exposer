@@ -43,6 +43,9 @@ RÈGLES STRICTES :
 - CONTEXTE HISTORIQUE : quand une métrique est annotée [pXX/5a] (rang percentile sur ~5 ans), interprète son NIVEAU via ce percentile — p<10 = extrême bas, p>90 = extrême haut. Un EXTRÊME est bien plus significatif qu'un niveau médian (mean reversion, capitulation, euphorie). FAIS REMONTER ce percentile dans le champ "valeur" de chaque signal_cle concerné (ex. "VIX 18,4 — p53/5a médian").
 - Sois concret et spécifique : cite des news/événements précis quand c'est pertinent.
 - SURPRISES ÉCO : pour un indicateur PUBLIÉ, ce qui meut les marchés est l'écart RÉEL vs PRÉVISION (consensus) — pas le niveau brut. Exploite la "surprise" fournie (ex. inflation au-dessus du consensus = pression haussière sur les taux = vent de face pour le risque ; emploi/croissance sous le consensus = ralentissement). Pour les events À VENIR, identifie les catalyseurs majeurs (FOMC, CPI, NFP) et le consensus attendu.
+- RÉACTION AUX SURPRISES (2e ordre) : croise la DERNIÈRE surprise éco majeure avec la variation 24h des taux/du dollar. Une réaction CONTRE-INTUITIVE est un signal de régime plus fort que la surprise elle-même : des taux longs qui MONTENT le jour d'une mauvaise nouvelle emploi/croissance = le marché price une PRIME (de terme/fiscale) et non la croissance — nomme-le explicitement. De même, un dollar qui ne baisse pas sur une surprise dovish = demande de refuge.
+- CORRÉLATIONS CASSÉES : vérifie les corrélations classiques — or INVERSE aux taux réels, BTC vs liquidité globale, actions vs VIX. Quand une corrélation historique est CASSÉE (ex. or qui monte AVEC des taux réels à p90+ = couverture fiscale/débasement, plus un trade de taux), c'est un changement de régime : signale-le dans "correlations" avec sa lecture.
+- PRÉCISION FACTUELLE : ne qualifie JAMAIS une tendance à contre-sens de la variation fournie (si la liquidité affiche +0.15% sur 24h, elle "se stabilise/progresse légèrement", elle ne "se contracte" pas). Si tu anticipes un retournement de tendance, distingue explicitement le CONSTAT (le chiffre) de l'ANTICIPATION (ta projection).
 - VULGARISATION : remplis "pour_debutants" dans un langage SIMPLE et synthétique — un proche non-initié doit comprendre la situation et s'il faut être serein ou prudent. Évite les chiffres bruts. Donne une "posture" claire (défensif/neutre/opportuniste-prudent) et "a_eviter" (le piège du moment). Ce N'EST PAS du daytrading : aucune entrée/sortie, seulement une posture d'investisseur prudent.
 - CONSEILS : donne 2-3 conseils CONCRETS et PRUDENTS adaptés au régime actuel — orientés gestion du risque, dimensionnement/exposition, patience, et indicateurs à surveiller. JAMAIS d'objectif de prix, JAMAIS "achète/vends maintenant". Ce sont des éclairages pour décider, PAS une recommandation financière.
 - HORIZON & INVALIDATION : précise TOUJOURS l'HORIZON de validité de ta lecture (swing : quelques jours à semaines, jamais intraday) et les conditions concrètes d'INVALIDATION (ce qui te ferait changer d'avis). C'est ce qui permet à l'utilisateur de savoir QUAND ta lecture ne tient plus.
@@ -71,7 +74,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     { "donnee": "ex. Dollar Index", "valeur": "120.4 (24h +0.3%, p53/5a médian)", "lecture": "ce que ça implique concrètement" }
   ],
   "ce_qui_a_change": ["évolutions notables des tendances 24h/7j, ou [] si pas d'historique"],
-  "correlations": ["CROSS-MARKET explicite : BTC vs S&P500/Nasdaq (alignement risk-on ?), BTC vs VIX (inverse ?), BTC vs or/DXY/10Y, et toute DIVERGENCE notable"],
+  "correlations": ["CROSS-MARKET explicite : BTC vs S&P500/Nasdaq (alignement risk-on ?), BTC vs VIX (inverse ?), BTC vs or/DXY/10Y, OR vs TAUX RÉELS (inverse classique — cassée = régime fiscal), et toute DIVERGENCE ou corrélation CASSÉE notable"],
   "scenarios": [
     { "nom": "nom court", "condition": "ce qui devrait se produire", "consequence": "ce que ça impliquerait", "surveiller": "l'indicateur à surveiller", "probabilite_relative": "faible" | "moyenne" | "élevée" }
   ],
@@ -155,6 +158,14 @@ export function formatState(state, trends) {
   if (fut?.sol) push(`- Funding SOLUSDT : ${fut.sol.lastFundingRate}${fmtTrend(trends, "solFunding")} · OI : ${fut.sol.openInterest} · prix ${fut.sol.markPrice}${fmtTrend(trends, "solPrice")}`);
   if (fut?.bnb || fut?.xrp) push(`- Autres alts : BNB prix ${fut.bnb?.markPrice}${fmtTrend(trends, "bnbPrice")} (funding ${fut.bnb?.lastFundingRate}) · XRP prix ${fut.xrp?.markPrice}${fmtTrend(trends, "xrpPrice")} (funding ${fut.xrp?.lastFundingRate})`);
   if (dvol) push(`- DVOL (vol implicite BTC, "VIX crypto") : ${dvol.dvol}${fmtTrend(trends, "dvol")}`);
+  if (dvol?.btc)
+    push(
+      `- Options BTC : skew ${dvol.btc.skew ?? "?"}${fmtTrend(trends, "btcSkew")} (>0 = puts chers = peur crash, contrarian) · Put/Call OI ${dvol.btc.putCallOI ?? "?"}${fmtTrend(trends, "btcPutCall")}`,
+    );
+  if (dvol?.eth)
+    push(
+      `- Options ETH : DVOL ${dvol.eth.dvol ?? "?"}${fmtTrend(trends, "ethDvol")} · skew ${dvol.eth.skew ?? "?"}${fmtTrend(trends, "ethSkew")} · Put/Call OI ${dvol.eth.putCallOI ?? "?"}${fmtTrend(trends, "ethPutCall")} (divergence skew BTC vs ETH = signal)`,
+    );
   if (fut?.longShortAccountRatio != null) push(`- Ratio long/short BTC : foule ${fut.longShortAccountRatio}${fmtTrend(trends, "longShortAccountRatio")} · gros traders ${fut.topPositionRatio ?? "?"} (>1 = majorité long ; extrême/divergence = signal contrarian)`);
 
   const cot = a.positioning?.["cftc-cot"];
@@ -174,11 +185,18 @@ export function formatState(state, trends) {
   const fred = a.macro?.fred;
   push(`\n## MACRO`);
   if (fred) {
-    push(`- M2 : ${fred.m2?.value}${fmtTrend(trends, "m2")} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}${fmtNorm(trends, "dxy")}`);
+    push(`- M2 : ${fred.m2?.value}${fred.m2?.yoy != null ? ` (rythme ${fred.m2.yoy > 0 ? "+" : ""}${fred.m2.yoy}%/an${fmtNorm(trends, "m2YoY")})` : ""} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}${fmtNorm(trends, "dxy")}`);
     push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value} · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
     push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")}${fmtNorm(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")}${fmtNorm(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value}${fmtNorm(trends, "yieldCurve")} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
+    if (fred.yield2y?.value != null && fred.fedFunds?.value != null) {
+      const ps = Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100;
+      push(`- Attentes de politique (2Y − Fed Funds) : ${ps > 0 ? "+" : ""}${ps} pt${fmtNorm(trends, "policySpread2y")} — < 0 = baisses pricées ; > 0 = PAS de baisses pricées. Croise avec l'éco réelle : une éco qui casse SANS baisses pricées = la Fed est perçue comme coincée (prime de terme/fiscale), vent de face durable pour le risque.`);
+    }
+    if (fred.yield10y?.value != null && fred.breakeven10y?.value != null) {
+      push(`- Décomposition du 10Y : quand les nominaux MONTENT avec des breakevens qui BAISSENT sur une mauvaise nouvelle éco, c'est un choc de taux RÉELS (prime de terme/fiscale), pas d'inflation — le régime le plus défavorable aux actifs de duration et sans rendement. Signale-le explicitement si observé dans les tendances.`);
+    }
     push(`- Conditions/risque : spread HY ${fred.highYieldSpread?.value}%${fmtTrend(trends, "highYieldSpread")}${fmtNorm(trends, "highYieldSpread")} · conditions fin. (NFCI) ${fred.financialConditions?.value} · stress (StLouis) ${fred.financialStress?.value}${fmtNorm(trends, "financialStress")} · incertitude politique (EPU) ${fred.policyUncertainty?.value}${fmtTrend(trends, "policyUncertainty")}`);
-    push(`- Éco réelle : CPI ${fred.cpi?.value} · PCE ${fred.pce?.value} · ventes détail ${fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${r(fred.foodPriceIndex?.value, 1)}`);
+    push(`- Éco réelle : inflation CPI ${fred.cpi?.yoy != null ? `${fred.cpi.yoy}%/an${fmtNorm(trends, "cpiYoY")}` : `(index ${fred.cpi?.value})`} · PCE ${fred.pce?.yoy != null ? `${fred.pce.yoy}%/an${fmtNorm(trends, "pceYoY")}` : `(index ${fred.pce?.value})`} · ventes détail ${fred.retailSales?.yoy != null ? `${fred.retailSales.yoy > 0 ? "+" : ""}${fred.retailSales.yoy}%/an${fmtNorm(trends, "retailSalesYoY")}` : fred.retailSales?.value} · sentiment conso ${fred.consumerSentiment?.value}${fmtNorm(trends, "consumerSentiment")} · chômage ${fred.unemployment?.value}% · indice prix alimentaires (IMF) ${r(fred.foodPriceIndex?.value, 1)}`);
   } else push(`- (stale)`);
 
   const liq = a.liquidity?.liquidity;
@@ -188,6 +206,13 @@ export function formatState(state, trends) {
     if (liq.globalLiquidity) {
       push(`- Liquidité GLOBALE : ${liq.globalLiquidity.value?.toFixed?.(0)} Md$${fmtTrend(trends, "globalLiquidity")} = Fed nette + BCE ${liq.ecbAssets?.value?.toFixed?.(0)} + BoJ ${liq.bojAssets?.value?.toFixed?.(0)} (le BTC suit la liquidité mondiale)`);
     }
+    // Lecture PLOMBERIE : le niveau du RRP et du TGA changent le RÉGIME de
+    // liquidité, pas seulement son niveau — donne l'interprétation à l'IA.
+    const rrp = liq.reverseRepo?.value;
+    const tga = liq.tga?.value;
+    if (rrp != null && rrp < 100) {
+      push(`- PLOMBERIE : RRP quasi épuisé (${rrp.toFixed(0)} Md$) — le coussin qui amortissait le drain de liquidité est CONSOMMÉ : tout resserrement/émission tape désormais directement les réserves (liquidité plus fragile qu'avant à niveau égal).${tga != null ? ` TGA ${tga.toFixed(0)} Md$ : ${tga > 750 ? "élevé — réserve de liquidité POTENTIELLE (un drawdown TGA = injection), mais drain s'il continue de se remplir" : "niveau moyen"}.` : ""}`);
+    }
   } else push(`- (stale)`);
 
   const com = a.commodities?.commodities;
@@ -195,7 +220,7 @@ export function formatState(state, trends) {
   if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${r(met?.gold?.value, 1)}${fmtTrend(trends, "gold")} · Argent ${r(met?.silver?.value, 1)} · Cuivre ${r(com.copper?.value, 0)}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${r(com.wheat?.value, 1)}`);
 
   const mk = a.markets?.markets;
-  if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}`);
+  if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}${mk.cboeSkew?.value != null ? ` · CBOE SKEW : ${mk.cboeSkew.value}${fmtTrend(trends, "cboeSkew")}${fmtNorm(trends, "cboeSkew")} (↑ = hedge crash)` : ""}`);
 
   const mkLive = a.markets?.["markets-live"];
   if (mkLive) {

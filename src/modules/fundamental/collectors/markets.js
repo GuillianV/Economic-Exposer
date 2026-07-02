@@ -35,16 +35,32 @@ export class MarketsCollector extends Collector {
     return { value: obs.value === "." ? null : Number(obs.value), date: obs.date };
   }
 
+  // CBOE SKEW (^SKEW via Yahoo) : prix du hedge crash sur les options S&P. ↑ =
+  // demande de protection contre un décrochage (tail risk). Sans clé.
+  async #cboeSkew() {
+    const json = await this.getJson(
+      "https://query1.finance.yahoo.com/v8/finance/chart/%5ESKEW?interval=1d&range=5d",
+      { headers: { "User-Agent": "Mozilla/5.0" }, timeout: 12000 },
+    );
+    const m = json?.chart?.result?.[0]?.meta;
+    if (m?.regularMarketPrice == null) return null;
+    return {
+      value: Number(m.regularMarketPrice),
+      date: m.regularMarketTime ? new Date(m.regularMarketTime * 1000).toISOString() : null,
+    };
+  }
+
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
     const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled(keys.map((k) => this.#latest(SERIES[k], apiKey)));
+    const settled = await Promise.allSettled([...keys.map((k) => this.#latest(SERIES[k], apiKey)), this.#cboeSkew()]);
     const out = {};
     keys.forEach((k, i) => {
       out[k] = settled[i].status === "fulfilled" ? settled[i].value : null;
     });
+    out.cboeSkew = settled[keys.length].status === "fulfilled" ? settled[keys.length].value : null;
     return out;
   }
 }

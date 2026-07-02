@@ -42,19 +42,34 @@ const SERIES = {
   foodPriceIndex: "PFOODINDEXM", // IMF Global Food Price Index
 };
 
+// Séries mensuelles en NIVEAU (index/accumulateur) : le niveau seul est un
+// non-signal (toujours au plus haut). On calcule aussi le RYTHME annuel (YoY %),
+// qui est LA lecture macro utile (inflation en rythme, croissance monétaire…).
+const YOY_KEYS = new Set(["cpi", "pce", "m2", "retailSales"]);
+
 export class FredCollector extends Collector {
   constructor() {
     super("fred", { axis: "macro" });
   }
 
-  async #latest(seriesId, apiKey) {
+  async #latest(seriesId, apiKey, { yoy = false } = {}) {
+    const limit = yoy ? 14 : 1; // 14 obs mensuelles = de quoi trouver le même mois N-1
     const url =
       `https://api.stlouisfed.org/fred/series/observations` +
-      `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1`;
+      `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=${limit}`;
     const json = await this.getJson(url);
-    const obs = json?.observations?.[0];
+    const all = (json?.observations || []).filter((o) => o.value !== ".");
+    const obs = all[0];
     if (!obs) return null;
-    return { value: obs.value === "." ? null : Number(obs.value), date: obs.date };
+    const res = { value: Number(obs.value), date: obs.date };
+    if (yoy) {
+      // même mois un an plus tôt (match AAAA-MM ; repli : 12e observation)
+      const target = `${Number(obs.date.slice(0, 4)) - 1}${obs.date.slice(4, 7)}`;
+      const prev = all.find((o) => o.date.startsWith(target)) ?? all[12];
+      const pv = prev ? Number(prev.value) : null;
+      res.yoy = pv ? Math.round(((res.value / pv - 1) * 100) * 100) / 100 : null;
+    }
+    return res;
   }
 
   async fetchData() {
@@ -62,7 +77,7 @@ export class FredCollector extends Collector {
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
     const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled(keys.map((k) => this.#latest(SERIES[k], apiKey)));
+    const settled = await Promise.allSettled(keys.map((k) => this.#latest(SERIES[k], apiKey, { yoy: YOY_KEYS.has(k) })));
     const out = {};
     keys.forEach((k, i) => {
       out[k] = settled[i].status === "fulfilled" ? settled[i].value : null;

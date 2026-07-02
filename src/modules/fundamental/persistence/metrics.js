@@ -42,6 +42,11 @@ export function extractMetrics(state) {
     openInterest: num(fut.openInterest),
     btcPrice: num(fut.markPrice) ?? num(chain.marketPriceUsd),
     dvol: num(deribit.dvol),
+    btcSkew: num(deribit.btc?.skew),
+    btcPutCall: num(deribit.btc?.putCallOI),
+    ethDvol: num(deribit.eth?.dvol),
+    ethSkew: num(deribit.eth?.skew),
+    ethPutCall: num(deribit.eth?.putCallOI),
     // positionnement de la foule (Binance long/short BTC)
     longShortAccountRatio: num(fut.longShortAccountRatio),
     topTraderPositionRatio: num(fut.topPositionRatio),
@@ -89,8 +94,18 @@ export function extractMetrics(state) {
     financialStress: num(fred.financialStress?.value),
     policyUncertainty: num(fred.policyUncertainty?.value),
     cpi: num(fred.cpi?.value),
+    cpiYoY: num(fred.cpi?.yoy), // inflation en RYTHME annuel (le niveau seul est un non-signal)
     pce: num(fred.pce?.value),
+    pceYoY: num(fred.pce?.yoy),
+    m2YoY: num(fred.m2?.yoy),
     retailSales: num(fred.retailSales?.value),
+    retailSalesYoY: num(fred.retailSales?.yoy),
+    // Attentes de politique monétaire (dérivée) : 2Y − Fed Funds. > 0 = le marché
+    // ne price PAS de baisses (voire des hausses/prime) ; < 0 = baisses pricées.
+    policySpread2y:
+      num(fred.yield2y?.value) != null && num(fred.fedFunds?.value) != null
+        ? Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100
+        : null,
     consumerSentiment: num(fred.consumerSentiment?.value),
     unemployment: num(fred.unemployment?.value),
     foodPriceIndex: num(fred.foodPriceIndex?.value),
@@ -115,6 +130,7 @@ export function extractMetrics(state) {
     nasdaq: num(markets.nasdaq?.value),
     djia: num(markets.djia?.value),
     vix: num(markets.vix?.value),
+    cboeSkew: num(markets.cboeSkew?.value),
     // structure crypto
     btcDominance: num(structure.btcDominance),
     ethBtcRatio: num(structure.ethBtcRatio),

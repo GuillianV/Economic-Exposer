@@ -92,6 +92,7 @@ RÈGLES :
 - RETOURNEMENTS (crucial) : ne te contente PAS d'extrapoler le régime en ligne droite. EXPLOITE les SIGNAUX D'EXTRÊME et les DIVERGENCES fournis pour anticiper un point de bascule. Un extrême de peur/positionnement lessivé (percentile bas) dans un actif risqué peut précéder un CREUX puis un REBOND — la courbe doit alors s'INFLÉCHIR (baisse qui ralentit puis se retourne), pas continuer tout droit. À l'inverse un extrême d'euphorie/sur-achat (percentile haut) plaide pour un essoufflement/repli. N'invente pas le timing : ancre le retournement sur un extrême ou une divergence RÉELLEMENT fourni, sinon n'en mets pas.
 - CONFLIT PRIX vs POSITIONNEMENT : quand un actif a un PRIX à un extrême (percentile de prix très haut/bas) ET un POSITIONNEMENT spéculatif (COT) à l'extrême OPPOSÉ, le POSITIONNEMENT prime à COURT TERME. Le débouclement (squeeze) pousse le prix dans le sens qui fait le plus mal aux positions lessivées AVANT tout essoufflement. Ex. actions chères (prix p99) mais shorts extrêmes (COT p5) → biais SQUEEZE HAUSSIER d'abord, pas baisse immédiate ; ne sois pas franchement baissier tant que le short n'est pas purgé.
 - ÉVÉNEMENTS BINAIRES : si un CATALYSEUR IMMINENT (≤48h) est listé, un mouvement directionnel FRANC avant sa publication est peu probable — le marché attend. BAISSE la confiance et ÉLARGIS/aplatis la fourchette autour de cette date ; ne projette pas une tendance nette qui traverse l'événement comme s'il n'existait pas. Après l'événement, l'incertitude s'ouvre dans les deux sens.
+- GÉOPOLITIQUE : la section GÉOPOLITIQUE décrit le stress géopolitique ACTUEL. Un choc géopolitique est IMPRÉVISIBLE — ne prétends pas prédire une frappe ou un cessez-le-feu. En revanche : un stress géopolitique ÉLEVÉ/qui s'aggrave = prime de risque, biais vers la baisse du risque (crypto/actions) et la hausse des refuges (or, dollar) + confiance PLUS BASSE (plus de queue de risque) ; une DÉSESCALADE = soulagement (risk-on, pétrole/refuges qui refluent). Reflète le stress décrit, ne l'invente pas.
 - Plus l'horizon est lointain, plus l'incertitude est grande (confiance décroît).
 - Horizon en jours (swing), JAMAIS d'intraday.
 - Réponds en français.
@@ -156,6 +157,7 @@ export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
         changements: lastVerdict.ce_qui_a_change ?? [],
         divergences: lastVerdict.correlations ?? [],
         catalyseurs: imminentCatalysts(lastVerdict),
+        geopolitique: lastVerdict.lecture_par_axe?.geopolitique ?? null,
       }
     : null;
 
@@ -206,6 +208,7 @@ function formatTrajectory(traj, horizonDays) {
         "\n# CATALYSEURS IMMINENTS (≤3j — événements BINAIRES, le marché attend)\n- " +
           s.catalyseurs.map((c) => `${c.date} : ${c.evenement} — ${c.enjeu}`).join("\n- "),
       );
+    if (s.geopolitique) lines.push("\n# GÉOPOLITIQUE (lecture du dernier verdict)\n" + s.geopolitique);
   }
 
   lines.push(`\n# HORIZON : ${horizonDays} jours`);

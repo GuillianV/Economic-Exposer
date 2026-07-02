@@ -26,7 +26,7 @@ export function freshnessRows(state) {
   return [
     ["fear-greed", "quotidien", freshest(a.sentiment?.["fear-greed"]?.ts)],
     ["binance-futures", "temps réel", now],
-    ["deribit (DVOL)", "temps réel (~h)", freshest(a.sentiment?.deribit?.ts)],
+    ["deribit (DVOL/skew/P-C BTC+ETH)", "temps réel (~h)", freshest(a.sentiment?.deribit?.ts)],
     ["cftc-cot", "HEBDO (mar., publié ven.)", toMs(a.positioning?.["cftc-cot"]?.date)],
     ["coingecko", "temps réel", now],
     ["blockchain-info", "temps réel (~10 min)", now],
@@ -34,7 +34,7 @@ export function freshnessRows(state) {
     ["fred (quotidien: DXY/taux)", "fin de séance J-1", freshest(a.macro?.fred?.dollarIndex?.date, a.macro?.fred?.yield10y?.date, a.macro?.fred?.yield2y?.date)],
     ["fred (mensuel: M2/CPI/PCE)", "MENSUEL", freshest(a.macro?.fred?.m2?.date, a.macro?.fred?.cpi?.date, a.macro?.fred?.pce?.date)],
     ["liquidity (Fed/RRP/TGA)", "hebdo/quotidien", freshest(a.liquidity?.liquidity?.fedBalanceSheet?.date, a.liquidity?.liquidity?.tga?.date)],
-    ["markets (S&P/Nasdaq/VIX)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
+    ["markets (S&P/Nasdaq/VIX/SKEW)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
     ["markets-live (Finnhub/TD)", "temps réel (intraday)", freshest(...Object.values(a.markets?.["markets-live"] || {}).map((v) => v?.datetime))],
     ["commodities (pétrole)", "fin de séance J-1", freshest(a.commodities?.commodities?.wtiOil?.date)],
     ["metals (or/argent)", "temps réel", freshest(a.commodities?.metals?.gold?.date, a.commodities?.metals?.silver?.date)],
