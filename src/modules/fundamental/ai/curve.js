@@ -92,6 +92,8 @@ RÈGLES :
 - RETOURNEMENTS (crucial) : ne te contente PAS d'extrapoler le régime en ligne droite. EXPLOITE les SIGNAUX D'EXTRÊME et les DIVERGENCES fournis pour anticiper un point de bascule. Un extrême de peur/positionnement lessivé (percentile bas) dans un actif risqué peut précéder un CREUX puis un REBOND — la courbe doit alors s'INFLÉCHIR (baisse qui ralentit puis se retourne), pas continuer tout droit. À l'inverse un extrême d'euphorie/sur-achat (percentile haut) plaide pour un essoufflement/repli. N'invente pas le timing : ancre le retournement sur un extrême ou une divergence RÉELLEMENT fourni, sinon n'en mets pas.
 - CONFLIT PRIX vs POSITIONNEMENT : quand un actif a un PRIX à un extrême (percentile de prix très haut/bas) ET un POSITIONNEMENT spéculatif (COT) à l'extrême OPPOSÉ, le POSITIONNEMENT prime à COURT TERME. Le débouclement (squeeze) pousse le prix dans le sens qui fait le plus mal aux positions lessivées AVANT tout essoufflement. Ex. actions chères (prix p99) mais shorts extrêmes (COT p5) → biais SQUEEZE HAUSSIER d'abord, pas baisse immédiate ; ne sois pas franchement baissier tant que le short n'est pas purgé.
 - ÉVÉNEMENTS BINAIRES : si un CATALYSEUR IMMINENT (≤48h) est listé, un mouvement directionnel FRANC avant sa publication est peu probable — le marché attend. BAISSE la confiance et ÉLARGIS/aplatis la fourchette autour de cette date ; ne projette pas une tendance nette qui traverse l'événement comme s'il n'existait pas. Après l'événement, l'incertitude s'ouvre dans les deux sens.
+- CONTEXTE MACRO (le POURQUOI) : le régime a une CAUSE — utilise-la pour différencier les actifs. Une STAGFLATION (inflation haute + croissance qui casse + PAS de baisses pricées) CAPPE les rallyes du risque (crypto/actions) mais SOUTIENT l'or (couverture débasement/fiscale) — surtout si une corrélation or/taux réels CASSÉE est signalée dans les divergences : dans ce cas les taux réels hauts ne freinent PLUS l'or, ne le projette pas "neutre" par réflexe. À l'inverse, désinflation + baisses pricées = soutien au risque, frein sur l'or.
+- OPTIONS : le skew (> 0 = puts chers = peur crash) et les put/call sont du positionnement TEMPS RÉEL. Skew très élevé qui se détend = la peur reflue (support, début de rebond) ; skew bas avec prix à des extrêmes hauts = complaisance (fragilité). Un CBOE SKEW élevé = les institutionnels paient cher la protection crash actions malgré des indices au sommet — fragilité sous la surface.
 - GÉOPOLITIQUE : la section GÉOPOLITIQUE décrit le stress géopolitique ACTUEL. Un choc géopolitique est IMPRÉVISIBLE — ne prétends pas prédire une frappe ou un cessez-le-feu. En revanche : un stress géopolitique ÉLEVÉ/qui s'aggrave = prime de risque, biais vers la baisse du risque (crypto/actions) et la hausse des refuges (or, dollar) + confiance PLUS BASSE (plus de queue de risque) ; une DÉSESCALADE = soulagement (risk-on, pétrole/refuges qui refluent). Reflète le stress décrit, ne l'invente pas.
 - Plus l'horizon est lointain, plus l'incertitude est grande (confiance décroît).
 - Horizon en jours (swing), JAMAIS d'intraday.
@@ -144,12 +146,17 @@ export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
   for (const [key] of ASSETS) if (latest[key] != null) current[key] = latest[key];
 
   // Signaux de RETOURNEMENT : extrêmes de percentile (via tendances) +
-  // divergences/alertes/bascules du dernier verdict.
+  // divergences/alertes/bascules du dernier verdict. Et CONTEXTE macro/options :
+  // les dérivées (cpiYoY, policySpread2y) et le skew n'ont pas de baseline 5 ans
+  // (pas de pctRank) — sans injection directe, la courbe ne les verrait JAMAIS.
   let extremes = [];
+  let macroCtx = null;
   try {
-    extremes = extremesOf(await getTrends());
+    const trends = await getTrends();
+    extremes = extremesOf(trends);
+    macroCtx = macroContextOf(trends);
   } catch (err) {
-    logger.warn(`[curve] extrêmes indisponibles : ${err.message}`);
+    logger.warn(`[curve] extrêmes/contexte indisponibles : ${err.message}`);
   }
   const signals = lastVerdict
     ? {
@@ -166,8 +173,42 @@ export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
     prices: downsample(prices),
     current,
     extremes,
+    macroCtx,
     signals,
     span: { fromTs: since, toTs: Date.now(), verdicts: regimes.length, snapshots: prices.length },
+  };
+}
+
+/**
+ * Contexte macro & options depuis les tendances : le POURQUOI du régime
+ * (inflation en rythme, attentes Fed, taux réels, plomberie) + le positionnement
+ * options (skew/put-call). Valeurs brutes — pas besoin de baseline.
+ */
+function macroContextOf(trends) {
+  const g = (k) => trends?.metrics?.[k]?.value ?? null;
+  const d = (k) => {
+    const p = trends?.metrics?.[k]?.d24h?.pct;
+    return typeof p === "number" ? Math.round(p * 100) / 100 : null;
+  };
+  return {
+    cpiYoY: g("cpiYoY"),
+    pceYoY: g("pceYoY"),
+    m2YoY: g("m2YoY"),
+    policySpread2y: g("policySpread2y"),
+    realYield10y: g("realYield10y"),
+    realYield10yD24: d("realYield10y"),
+    breakeven10y: g("breakeven10y"),
+    breakeven10yD24: d("breakeven10y"),
+    reverseRepo: g("reverseRepo"),
+    tga: g("tga"),
+    netLiquidityD24: d("netLiquidity"),
+    globalLiquidityD24: d("globalLiquidity"),
+    dvol: g("dvol"),
+    btcSkew: g("btcSkew"),
+    ethSkew: g("ethSkew"),
+    btcPutCall: g("btcPutCall"),
+    ethPutCall: g("ethPutCall"),
+    cboeSkew: g("cboeSkew"),
   };
 }
 
@@ -188,6 +229,32 @@ function formatTrajectory(traj, horizonDays) {
   }
   lines.push("\n# COURS ACTUELS (ancre t0)");
   for (const [k, l] of cols) lines.push(`- ${l} : ${r2(traj.current[k])}`);
+
+  // Le POURQUOI du régime + positionnement options (pas de baseline -> injection directe).
+  const mc = traj.macroCtx;
+  if (mc) {
+    const macroLines = [];
+    if (mc.cpiYoY != null || mc.pceYoY != null)
+      macroLines.push(`- Inflation en rythme annuel : CPI ${mc.cpiYoY ?? "?"}% · PCE ${mc.pceYoY ?? "?"}%${mc.m2YoY != null ? ` · M2 ${mc.m2YoY > 0 ? "+" : ""}${mc.m2YoY}%` : ""} (cible Fed 2%)`);
+    if (mc.policySpread2y != null)
+      macroLines.push(`- Attentes de politique (2Y − Fed Funds) : ${mc.policySpread2y > 0 ? "+" : ""}${mc.policySpread2y} pt (> 0 = PAS de baisses pricées ; croisé avec une éco qui casse = Fed coincée)`);
+    if (mc.realYield10y != null)
+      macroLines.push(`- Taux réel 10Y : ${mc.realYield10y}%${mc.realYield10yD24 != null ? ` (24h ${mc.realYield10yD24 > 0 ? "+" : ""}${mc.realYield10yD24}%)` : ""} · breakeven ${mc.breakeven10y ?? "?"}%${mc.breakeven10yD24 != null ? ` (24h ${mc.breakeven10yD24 > 0 ? "+" : ""}${mc.breakeven10yD24}%)` : ""} — réels qui montent avec breakevens qui baissent = choc de taux RÉELS (prime fiscale), pas d'inflation`);
+    if (mc.reverseRepo != null && mc.reverseRepo < 100)
+      macroLines.push(`- Plomberie : RRP ${r2(mc.reverseRepo)} Md$ (coussin ÉPUISÉ — liquidité plus fragile)${mc.tga != null ? ` · TGA ${r2(mc.tga)} Md$${mc.tga > 750 ? " (réserve potentielle si drawdown)" : ""}` : ""}`);
+    if (mc.netLiquidityD24 != null || mc.globalLiquidityD24 != null)
+      macroLines.push(`- Liquidité 24h : nette Fed ${mc.netLiquidityD24 ?? "?"}% · globale ${mc.globalLiquidityD24 ?? "?"}%`);
+    if (macroLines.length) lines.push("\n# CONTEXTE MACRO (le POURQUOI du régime)\n" + macroLines.join("\n"));
+
+    const optLines = [];
+    if (mc.btcSkew != null || mc.ethSkew != null)
+      optLines.push(`- Skew (put−call IV, ~30j) : BTC ${mc.btcSkew ?? "?"} · ETH ${mc.ethSkew ?? "?"} (> 0 = puts chers = peur crash, lecture contrarian ; divergence BTC/ETH = signal)`);
+    if (mc.btcPutCall != null || mc.ethPutCall != null)
+      optLines.push(`- Put/Call OI : BTC ${mc.btcPutCall ?? "?"} · ETH ${mc.ethPutCall ?? "?"} (↑ = couverture/peur)`);
+    if (mc.cboeSkew != null) optLines.push(`- CBOE SKEW (actions) : ${mc.cboeSkew} (↑ = demande de hedge crash sur le S&P)`);
+    if (mc.dvol != null) optLines.push(`- DVOL BTC : ${mc.dvol} (vol implicite, "VIX crypto")`);
+    if (optLines.length) lines.push("\n# OPTIONS (positionnement temps réel)\n" + optLines.join("\n"));
+  }
 
   // Signaux de retournement — les plus prédictifs.
   if (traj.extremes?.length) {
