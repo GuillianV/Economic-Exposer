@@ -10,10 +10,24 @@
 // --- Détecteurs (1) objectifs de prix ---------------------------------------
 // Fourchette type "55k-62k" / "55 k à 62 k" / "57k et 60k".
 const PRICE_RANGE = /\b\d{2,3}\s?k\s?(?:[-–]|à|et|and)\s?\d{2,3}\s?k\b/gi;
-// Niveau chiffré + verbe de cible : "vers 65k", "test des 50k", "casse 55k",
-// "remonter vers 60k", "objectif 70k"… (le k de milliers est l'indice fort).
-const PRICE_TRIGGER =
-  /\b(?:vers|test(?:er|e|ent)?|objectif|cible|fourchette|remont\w+|retomb\w+|chut\w+|tomb\w+|cass\w+|atteind\w+|vise\w*|rebond\w*\s+(?:vers|à|jusqu))\b[^.;:\n]{0,25}?\b\d{2,3}\s?k\b/gi;
+// Exclusions communes aux nombres EN CLAIR (4-6 chiffres) : pas une année 20xx,
+// pas un montant suivi d'une unité (Md$/M$/%/pt/pb), pas le début d'un nombre
+// plus long ("94918217772" ne doit pas matcher sur ses 6 premiers chiffres).
+const NOT_YEAR = "(?!20\\d{2}\\b)";
+const NOT_UNIT = "(?!\\s?(?:Md|M\\$|M\\b|%|pts?\\b|pb\\b))(?![\\d.,]\\d)";
+// Fourchette en clair "58000-62000" / "60000 à 65000" (mais PAS "entre 2024 et 2026").
+const PRICE_RANGE_PLAIN = new RegExp(
+  `\\b${NOT_YEAR}\\d{4,6}${NOT_UNIT}\\s?(?:[-–]|à|et|and)\\s?${NOT_YEAR}\\d{4,6}${NOT_UNIT}\\b`,
+  "gi",
+);
+// Niveau chiffré + verbe de cible : "vers 65k", "casse 55k", "franchit 65000",
+// "repasse sous 60000"… Deux formats : milliers en "k" (2-3 chiffres) OU nombre
+// en clair 4-6 chiffres (mêmes exclusions années/unités).
+const PRICE_TRIGGER = new RegExp(
+  "\\b(?:vers|test(?:er|e|ent)?|objectif|cible|fourchette|remont\\w+|retomb\\w+|chut\\w+|tomb\\w+|cass\\w+|franch\\w+|repass\\w+|dépass\\w+|atteind\\w+|vise\\w*|rebond\\w*\\s+(?:vers|à|jusqu))\\b" +
+    `[^.;:\\n]{0,25}?\\b(?:\\d{2,3}\\s?k\\b|${NOT_YEAR}\\d{4,6}${NOT_UNIT}\\b)`,
+  "gi",
+);
 // Prix en dollars explicite à 4-6 chiffres : "$58,000" / "$58 000".
 const PRICE_DOLLAR = /\$\s?\d{2,3}[\s.,]\d{3}\b/g;
 
@@ -74,7 +88,7 @@ export function validateVerdict(verdict, { state, trends } = {}) {
   let priceSample = null;
   walkStrings(verdict, (s) => {
     let out = s;
-    for (const re of [PRICE_RANGE, PRICE_TRIGGER, PRICE_DOLLAR]) {
+    for (const re of [PRICE_RANGE, PRICE_RANGE_PLAIN, PRICE_TRIGGER, PRICE_DOLLAR]) {
       out = out.replace(re, (mm) => {
         priceHits++;
         if (!priceSample) priceSample = mm.trim();
