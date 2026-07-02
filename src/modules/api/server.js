@@ -20,6 +20,7 @@ import { freshnessPayload } from "../fundamental/freshness.js";
 import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
 import { buildCalendar } from "../fundamental/calendar.js";
 import { METRIC_DICTIONARY, GLOSSARY } from "../fundamental/dictionary.js";
+import * as groq from "../fundamental/ai/providers/groq.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
 import { SCHEMA_VERSION } from "../fundamental/persistence/store.js";
 
@@ -114,6 +115,7 @@ export function createApp() {
       "GET /api/metrics?since=",
       "GET /api/dictionary",
       "GET /api/glossary",
+      "POST /api/explain",
       "GET /api/calendar",
     ],
   };
@@ -126,6 +128,52 @@ export function createApp() {
     res.json({ schemaVersion: SCHEMA_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY }),
   );
   app.get("/api/glossary", (req, res) => res.json({ count: GLOSSARY.length, terms: GLOSSARY }));
+
+  // --- EXPLIQUE-MOI : vulgarisation à la demande, UNIQUEMENT via Groq --------
+  // Le client envoie une phrase du verdict qu'il n'a pas comprise ; Groq (palier
+  // gratuit, rapide) la reformule en langage simple. Pas de fallback DeepSeek :
+  // feature de confort, si Groq est down on renvoie 503 (le contenu de base
+  // reste lisible). Cache borné (mêmes phrases re-demandées par les visiteurs).
+  const EXPLAIN_SYSTEM =
+    "Tu es un vulgarisateur financier. On te donne une phrase issue d'une analyse " +
+    "de marché. Explique-la en français TRÈS simple (comme à un proche non-initié), " +
+    "en 2-3 phrases maximum, sans jargon, sans chiffre inutile, sans conseil " +
+    "d'investissement, sans prédiction de prix. Si la phrase contient un terme " +
+    "technique, explique-le en une proposition. Réponds UNIQUEMENT par un objet " +
+    'JSON : {"explication": "..."}';
+  const explainCache = new Map(); // texte normalisé -> explication (borné à 300)
+
+  app.post(
+    "/api/explain",
+    express.json({ limit: "4kb" }),
+    wrap(async (req, res) => {
+      const texte = typeof req.body?.texte === "string" ? req.body.texte.trim() : "";
+      if (texte.length < 8) return res.status(400).json({ error: "texte manquant ou trop court (min 8 caractères)" });
+      if (texte.length > 600) return res.status(400).json({ error: "texte trop long (max 600 caractères)" });
+
+      const key = texte.toLowerCase().replace(/\s+/g, " ");
+      if (explainCache.has(key)) return res.json({ provider: "groq", cached: true, explication: explainCache.get(key) });
+
+      let raw;
+      try {
+        raw = await groq.complete({ system: EXPLAIN_SYSTEM, user: texte, timeout: 20000 });
+      } catch (err) {
+        return res.status(503).json({ error: `vulgarisation indisponible (Groq) : ${err.message}` });
+      }
+      let explication = null;
+      try {
+        explication = JSON.parse(raw)?.explication ?? null;
+      } catch {
+        const m = raw?.match(/\{[\s\S]*\}/);
+        if (m) try { explication = JSON.parse(m[0])?.explication ?? null; } catch { /* non parsé */ }
+      }
+      if (!explication) return res.status(502).json({ error: "réponse Groq non exploitable" });
+
+      if (explainCache.size >= 300) explainCache.delete(explainCache.keys().next().value); // FIFO borné
+      explainCache.set(key, explication);
+      res.json({ provider: "groq", cached: false, explication });
+    }),
+  );
 
   // --- Calendrier économique unifié (format type investing.com) ---
   // Source riche : investing.com (scrapé) en primaire, FairEconomy en repli. Lit
