@@ -17,6 +17,7 @@ export function extractMetrics(state) {
   const markets = a.markets?.markets ?? {};
   const cot = a.positioning?.["cftc-cot"] ?? {};
   const structure = a.structure?.coingecko ?? {};
+  const etf = a.structure?.["etf-flows"] ?? {};
   const defillama = a.onchain?.defillama ?? {};
   const chain = a.onchain?.["blockchain-info"] ?? {};
   const mempool = a.onchain?.mempool ?? {};
@@ -81,6 +82,7 @@ export function extractMetrics(state) {
     mxnusd: num(fred.mxnusd?.value),
     inrusd: num(fred.inrusd?.value),
     zarusd: num(fred.zarusd?.value),
+    usdcny: num(fred.usdcny?.value), // yuan : dévaluation = stress/dévaluation compétitive Chine
     yield2y: num(fred.yield2y?.value),
     yield10y: num(fred.yield10y?.value),
     realYield10y: num(fred.realYield10y?.value),
@@ -133,6 +135,10 @@ export function extractMetrics(state) {
     cboeSkew: num(markets.cboeSkew?.value),
     // structure crypto
     btcDominance: num(structure.btcDominance),
+    btcEtfFlowUsdM: num(etf.btc?.dayFlowUsdM), // flux net ETF spot BTC du dernier jour (M$)
+    btcEtfFlow7dUsdM: num(etf.btc?.flow7dUsdM),
+    ethEtfFlowUsdM: num(etf.eth?.dayFlowUsdM),
+    ethEtfFlow7dUsdM: num(etf.eth?.flow7dUsdM),
     ethBtcRatio: num(structure.ethBtcRatio),
     totalMarketCapUsd: num(structure.totalMarketCapUsd),
     totalVolume24hUsd: num(structure.totalVolume24hUsd),

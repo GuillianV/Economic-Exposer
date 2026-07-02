@@ -29,6 +29,7 @@ export function freshnessRows(state) {
     ["deribit (DVOL/skew/P-C BTC+ETH)", "temps réel (~h)", freshest(a.sentiment?.deribit?.ts)],
     ["cftc-cot", "HEBDO (mar., publié ven.)", toMs(a.positioning?.["cftc-cot"]?.date)],
     ["coingecko", "temps réel", now],
+    ["etf-flows (BTC/ETH spot US)", "quotidien (J-1, clôture US)", freshest(a.structure?.["etf-flows"]?.btc?.date, a.structure?.["etf-flows"]?.eth?.date)],
     ["blockchain-info", "temps réel (~10 min)", now],
     ["defillama", "quotidien", freshest(a.onchain?.defillama?.tvlDate)],
     ["fred (quotidien: DXY/taux)", "fin de séance J-1", freshest(a.macro?.fred?.dollarIndex?.date, a.macro?.fred?.yield10y?.date, a.macro?.fred?.yield2y?.date)],

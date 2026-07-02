@@ -203,6 +203,10 @@ function macroContextOf(trends) {
     tga: g("tga"),
     netLiquidityD24: d("netLiquidity"),
     globalLiquidityD24: d("globalLiquidity"),
+    btcEtfFlowUsdM: g("btcEtfFlowUsdM"),
+    btcEtfFlow7dUsdM: g("btcEtfFlow7dUsdM"),
+    ethEtfFlowUsdM: g("ethEtfFlowUsdM"),
+    ethEtfFlow7dUsdM: g("ethEtfFlow7dUsdM"),
     dvol: g("dvol"),
     btcSkew: g("btcSkew"),
     ethSkew: g("ethSkew"),
@@ -244,6 +248,9 @@ function formatTrajectory(traj, horizonDays) {
       macroLines.push(`- Plomberie : RRP ${r2(mc.reverseRepo)} Md$ (coussin ÉPUISÉ — liquidité plus fragile)${mc.tga != null ? ` · TGA ${r2(mc.tga)} Md$${mc.tga > 750 ? " (réserve potentielle si drawdown)" : ""}` : ""}`);
     if (mc.netLiquidityD24 != null || mc.globalLiquidityD24 != null)
       macroLines.push(`- Liquidité 24h : nette Fed ${mc.netLiquidityD24 ?? "?"}% · globale ${mc.globalLiquidityD24 ?? "?"}%`);
+    const fm = (v) => (v == null ? "?" : `${v > 0 ? "+" : ""}${v} M$`);
+    if (mc.btcEtfFlowUsdM != null || mc.ethEtfFlowUsdM != null)
+      macroLines.push(`- Flux ETF spot US (l'acheteur marginal, J-1) : BTC jour ${fm(mc.btcEtfFlowUsdM)} / 7j ${fm(mc.btcEtfFlow7dUsdM)} · ETH jour ${fm(mc.ethEtfFlowUsdM)} / 7j ${fm(mc.ethEtfFlow7dUsdM)} — sorties soutenues = distribution institutionnelle (plafonne les rebonds) ; retour d'entrées = demande réelle (valide un creux)`);
     if (macroLines.length) lines.push("\n# CONTEXTE MACRO (le POURQUOI du régime)\n" + macroLines.join("\n"));
 
     const optLines = [];

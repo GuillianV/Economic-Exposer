@@ -57,6 +57,7 @@ export const METRIC_DICTIONARY = {
   mxnusd: { label: "MXN/USD", unit: "taux", axis: "macro", source: "FRED", sens: "devise émergente (risque EM)" },
   inrusd: { label: "INR/USD", unit: "taux", axis: "macro", source: "FRED", sens: "devise émergente (risque EM)" },
   zarusd: { label: "ZAR/USD", unit: "taux", axis: "macro", source: "FRED", sens: "rand = baromètre risque EM très sensible" },
+  usdcny: { label: "USD/CNY (yuan)", unit: "taux", axis: "macro", source: "FRED", sens: "↑ (yuan qui dévalue) = stress Chine / dévaluation compétitive — historiquement corrélé aux fuites de capitaux vers BTC mais risk-off global" },
   yield2y: { label: "Taux US 2 ans", unit: "%", axis: "macro", source: "FRED", sens: "anticipations de politique Fed" },
   yield10y: { label: "Taux US 10 ans (nominal)", unit: "%", axis: "macro", source: "FRED", sens: "↑ = conditions plus restrictives" },
   realYield10y: { label: "Taux US 10 ans RÉEL", unit: "%", axis: "macro", source: "FRED", sens: "↑ pénalise fortement les actifs sans rendement (or, BTC)" },
@@ -108,6 +109,10 @@ export const METRIC_DICTIONARY = {
 
   // --- structure crypto ---
   btcDominance: { label: "Dominance BTC", unit: "%", axis: "structure", source: "CoinGecko", sens: "↑ = fuite vers BTC (défensif) ; ↓ = appétit alts (risk-on crypto)" },
+  btcEtfFlowUsdM: { label: "Flux ETF spot BTC (jour)", unit: "M$", axis: "structure", source: "SoSoValue", sens: "l'ACHETEUR MARGINAL : entrées = demande institutionnelle réelle ; sorties massives = distribution" },
+  btcEtfFlow7dUsdM: { label: "Flux ETF spot BTC (7j cumulés)", unit: "M$", axis: "structure", source: "SoSoValue", sens: "tendance de fond de la demande ETF, lisse le bruit quotidien" },
+  ethEtfFlowUsdM: { label: "Flux ETF spot ETH (jour)", unit: "M$", axis: "structure", source: "SoSoValue", sens: "demande institutionnelle ETH ; divergence vs BTC = rotation" },
+  ethEtfFlow7dUsdM: { label: "Flux ETF spot ETH (7j cumulés)", unit: "M$", axis: "structure", source: "SoSoValue", sens: "tendance de fond de la demande ETF ETH" },
   ethBtcRatio: { label: "Ratio ETH/BTC", unit: "ratio", axis: "structure", source: "CoinGecko", sens: "↑ = surperformance ETH (appétit risque crypto)" },
   totalMarketCapUsd: { label: "Cap. marché crypto totale", unit: "USD", axis: "structure", source: "CoinGecko", sens: "taille globale du marché" },
   totalVolume24hUsd: { label: "Volume crypto 24h", unit: "USD", axis: "structure", source: "CoinGecko", sens: "la CONVICTION derrière les mouvements : un prix qui bouge sans volume est suspect" },

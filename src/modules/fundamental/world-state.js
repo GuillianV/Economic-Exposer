@@ -2,6 +2,7 @@ import { logger } from "../logs/index.js";
 import { FearGreedCollector } from "./collectors/fear-greed.js";
 import { FredCollector } from "./collectors/fred.js";
 import { CoinGeckoCollector } from "./collectors/coingecko.js";
+import { EtfFlowsCollector } from "./collectors/etf-flows.js";
 import { DefiLlamaCollector } from "./collectors/defillama.js";
 import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
 import { OnChainCollector } from "./collectors/onchain.js";
@@ -26,7 +27,7 @@ import { CftcCotCollector } from "./collectors/cftc-cot.js";
  *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
- *   structure   : coingecko
+ *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal)
  *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC)
  *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
@@ -44,6 +45,7 @@ export function buildCollectors() {
     new MarketsCollector(),
     new MarketsLiveCollector(),
     new CoinGeckoCollector(),
+    new EtfFlowsCollector(),
     new DefiLlamaCollector(),
     new BinanceFuturesCollector(),
     new OnChainCollector(),

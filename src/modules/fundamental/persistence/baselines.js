@@ -22,7 +22,7 @@ const FRED = "https://api.stlouisfed.org/fred/series/observations";
 
 // metricKey -> série FRED (la distribution se lit sur ~WINDOW_YEARS ans).
 const FRED_SERIES = {
-  m2: "M2SL", dxy: "DTWEXBGS", eurusd: "DEXUSEU", usdjpy: "DEXJPUS",
+  m2: "M2SL", dxy: "DTWEXBGS", eurusd: "DEXUSEU", usdjpy: "DEXJPUS", usdcny: "DEXCHUS",
   brlusd: "DEXBZUS", mxnusd: "DEXMXUS", inrusd: "DEXINUS", zarusd: "DEXSFUS",
   yield2y: "DGS2", yield10y: "DGS10", realYield10y: "DFII10", breakeven10y: "T10YIE",
   yieldCurve: "T10Y2Y", fedFunds: "FEDFUNDS", sofr: "SOFR", mortgage30y: "MORTGAGE30US",

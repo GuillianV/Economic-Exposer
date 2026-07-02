@@ -186,7 +186,7 @@ export function formatState(state, trends) {
   push(`\n## MACRO`);
   if (fred) {
     push(`- M2 : ${fred.m2?.value}${fred.m2?.yoy != null ? ` (rythme ${fred.m2.yoy > 0 ? "+" : ""}${fred.m2.yoy}%/an${fmtNorm(trends, "m2YoY")})` : ""} · Dollar Index : ${fred.dollarIndex?.value}${fmtTrend(trends, "dxy")}${fmtNorm(trends, "dxy")}`);
-    push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value} · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
+    push(`- FX : EUR/USD ${fred.eurusd?.value} · USD/JPY ${fred.usdjpy?.value} · USD/CNY ${fred.usdcny?.value}${fmtTrend(trends, "usdcny")}${fmtNorm(trends, "usdcny")} (yuan qui dévalue = stress Chine) · émergents BRL ${fred.brlusd?.value}/MXN ${fred.mxnusd?.value}/INR ${fred.inrusd?.value}/ZAR ${fred.zarusd?.value}`);
     push(`- Taux : 2Y ${fred.yield2y?.value}% · 10Y nominal ${fred.yield10y?.value}%${fmtTrend(trends, "yield10y")}${fmtNorm(trends, "yield10y")} · 10Y réel ${fred.realYield10y?.value}%${fmtTrend(trends, "realYield10y")}${fmtNorm(trends, "realYield10y")} · point mort inflation ${fred.breakeven10y?.value}% · courbe 10Y-2Y ${fred.yieldCurve?.value}${fmtNorm(trends, "yieldCurve")} · Fed Funds ${fred.fedFunds?.value}% · SOFR ${fred.sofr?.value}% · mortgage 30Y ${fred.mortgage30y?.value}%`);
     if (fred.yield2y?.value != null && fred.fedFunds?.value != null) {
       const ps = Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100;
@@ -236,6 +236,16 @@ export function formatState(state, trends) {
     push(`- Dominance BTC : ${cg.btcDominance?.toFixed?.(2)}%${fmtTrend(trends, "btcDominance")} · ETH : ${cg.ethDominance?.toFixed?.(2)}% · ETH/BTC : ${r(cg.ethBtcRatio, 4)}${fmtTrend(trends, "ethBtcRatio")}`);
     push(`- Mcap total : ${big(cg.totalMarketCapUsd)} $${fmtTrend(trends, "totalMarketCapUsd")} · TOTAL2 (alts hors BTC) : ${big(cg.altMarketCapUsd)} $${fmtTrend(trends, "altMarketCapUsd")} · TOTAL3 (hors BTC+ETH) : ${big(cg.total3MarketCapUsd)} $${fmtTrend(trends, "total3MarketCapUsd")}`);
     if (cg.totalVolume24hUsd != null) push(`- Volume 24h global : ${big(cg.totalVolume24hUsd)} $${fmtTrend(trends, "totalVolume24hUsd")} (conviction : un mouvement sans volume est suspect)`);
+  }
+
+  // Flux ETF spot US : l'ACHETEUR MARGINAL du BTC depuis 2024 — pondère fort.
+  const ef = a.structure?.["etf-flows"];
+  if (ef?.btc || ef?.eth) {
+    const fm = (v) => (v == null ? "?" : `${v > 0 ? "+" : ""}${v} M$`);
+    if (ef.btc)
+      push(`- Flux ETF spot BTC (${ef.btc.date}) : jour ${fm(ef.btc.dayFlowUsdM)}${fmtTrend(trends, "btcEtfFlowUsdM")} · 7j cumulés ${fm(ef.btc.flow7dUsdM)} · encours ${ef.btc.totalAssetsUsdM != null ? Math.round(ef.btc.totalAssetsUsdM / 1000) + " Md$" : "?"} (entrées = demande institutionnelle RÉELLE ; sorties massives = distribution)`);
+    if (ef.eth)
+      push(`- Flux ETF spot ETH (${ef.eth.date}) : jour ${fm(ef.eth.dayFlowUsdM)}${fmtTrend(trends, "ethEtfFlowUsdM")} · 7j cumulés ${fm(ef.eth.flow7dUsdM)} (divergence vs BTC = rotation institutionnelle)`);
   }
 
   const dl = a.onchain?.defillama;
