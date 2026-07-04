@@ -110,6 +110,8 @@ export function extractMetrics(state) {
         : null,
     consumerSentiment: num(fred.consumerSentiment?.value),
     unemployment: num(fred.unemployment?.value),
+    initialClaims: num(fred.initialClaims?.value), // hebdo — signal récession temps réel
+
     foodPriceIndex: num(fred.foodPriceIndex?.value),
     // liquidité (Md$) — driver clé : Fed nette + globale (Fed+BCE+BoJ)
     netLiquidity: num(liquidity.netLiquidity?.value),
@@ -133,6 +135,7 @@ export function extractMetrics(state) {
     djia: num(markets.djia?.value),
     vix: num(markets.vix?.value),
     cboeSkew: num(markets.cboeSkew?.value),
+    move: num(markets.move?.value), // vol implicite Treasuries — le "VIX des taux"
     // structure crypto
     btcDominance: num(structure.btcDominance),
     btcEtfFlowUsdM: num(etf.btc?.dayFlowUsdM), // flux net ETF spot BTC du dernier jour (M$)

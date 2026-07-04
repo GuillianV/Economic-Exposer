@@ -80,6 +80,7 @@ export const METRIC_DICTIONARY = {
   policySpread2y: { label: "Spread 2Y − Fed Funds", unit: "pts", axis: "macro", source: "FRED (dérivé)", sens: "attentes de politique monétaire : < 0 = baisses pricées ; > 0 = pas de baisses pricées (ou prime) — divergence avec une éco qui casse = signal fort" },
   consumerSentiment: { label: "Confiance des ménages (UMich)", unit: "index", axis: "macro", source: "FRED", sens: "anticipation de consommation" },
   unemployment: { label: "Taux de chômage US", unit: "%", axis: "macro", source: "FRED", sens: "↑ = ralentissement (mais peut appeler des baisses de taux)" },
+  initialClaims: { label: "Inscriptions chômage (hebdo)", unit: "count", axis: "macro", source: "FRED (ICSA)", sens: "signal récession temps réel : tendance ↑ soutenue = marché du travail qui casse, visible AVANT le NFP mensuel" },
   foodPriceIndex: { label: "Indice prix alimentaires (IMF)", unit: "index", axis: "macro", source: "FRED", sens: "pression inflationniste / tension sociale" },
 
   // --- liquidité (driver clé) ---
@@ -106,6 +107,7 @@ export const METRIC_DICTIONARY = {
   djia: { label: "Dow Jones", unit: "index", axis: "markets", source: "FRED", sens: "actions value/industrielles" },
   vix: { label: "VIX (peur actions)", unit: "index", axis: "markets", source: "FRED", sens: "↑ = peur (risk-off, corrèle inversement au BTC)" },
   cboeSkew: { label: "CBOE SKEW (tail risk actions)", unit: "index", axis: "markets", source: "CBOE (Yahoo)", sens: "↑ = demande de hedge crash sur le S&P (protection tail) ; extrême = nervosité institutionnelle" },
+  move: { label: "MOVE (vol des taux US)", unit: "index", axis: "markets", source: "ICE BofAML (Yahoo)", sens: "le \"VIX des Treasuries\" : ↑ = stress obligataire ; MOVE haut + VIX bas = stress caché dans les taux, pas encore transmis aux actions" },
 
   // --- structure crypto ---
   btcDominance: { label: "Dominance BTC", unit: "%", axis: "structure", source: "CoinGecko", sens: "↑ = fuite vers BTC (défensif) ; ↓ = appétit alts (risk-on crypto)" },

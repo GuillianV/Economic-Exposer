@@ -28,7 +28,7 @@ const FRED_SERIES = {
   yieldCurve: "T10Y2Y", fedFunds: "FEDFUNDS", sofr: "SOFR", mortgage30y: "MORTGAGE30US",
   highYieldSpread: "BAMLH0A0HYM2", financialConditions: "NFCI", financialStress: "STLFSI4",
   policyUncertainty: "USEPUINDXD", cpi: "CPIAUCSL", pce: "PCEPI", retailSales: "RSAFS",
-  consumerSentiment: "UMCSENT", unemployment: "UNRATE", foodPriceIndex: "PFOODINDEXM",
+  consumerSentiment: "UMCSENT", unemployment: "UNRATE", initialClaims: "ICSA", foodPriceIndex: "PFOODINDEXM",
   wtiOil: "DCOILWTICO", brentOil: "DCOILBRENTEU", natGas: "DHHNGSP", copper: "PCOPPUSDM", wheat: "PWHEAMTUSDM",
   sp500: "SP500", nasdaq: "NASDAQCOM", djia: "DJIA", vix: "VIXCLS",
 };

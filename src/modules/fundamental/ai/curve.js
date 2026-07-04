@@ -215,6 +215,17 @@ function macroContextOf(trends) {
     btcPutCall: g("btcPutCall"),
     ethPutCall: g("ethPutCall"),
     cboeSkew: g("cboeSkew"),
+    // crédit & vol taux & emploi temps réel
+    highYieldSpread: g("highYieldSpread"),
+    highYieldSpreadD24: d("highYieldSpread"),
+    move: g("move"),
+    moveD24: d("move"),
+    vix: g("vix"),
+    initialClaims: g("initialClaims"),
+    initialClaimsD7: (() => {
+      const p = trends?.metrics?.initialClaims?.d7d?.pct;
+      return p == null ? null : Math.round(p * 100) / 100;
+    })(),
   };
 }
 
@@ -250,6 +261,12 @@ function formatTrajectory(traj, horizonDays) {
       macroLines.push(`- Plomberie : RRP ${r2(mc.reverseRepo)} Md$ (coussin ÉPUISÉ — liquidité plus fragile)${mc.tga != null ? ` · TGA ${r2(mc.tga)} Md$${mc.tga > 750 ? " (réserve potentielle si drawdown)" : ""}` : ""}`);
     if (mc.netLiquidityD24 != null || mc.globalLiquidityD24 != null)
       macroLines.push(`- Liquidité 24h : nette Fed ${mc.netLiquidityD24 ?? "?"}% · globale ${mc.globalLiquidityD24 ?? "?"}%`);
+    if (mc.highYieldSpread != null)
+      macroLines.push(`- Crédit HY (OAS) : ${mc.highYieldSpread}%${mc.highYieldSpreadD24 != null ? ` (24h ${mc.highYieldSpreadD24 > 0 ? "+" : ""}${mc.highYieldSpreadD24}%)` : ""} — le crédit casse AVANT les actions : HY qui s'écarte pendant que les actions tiennent = fragilité réelle ; HY serré = pas de stress systémique`);
+    if (mc.move != null)
+      macroLines.push(`- MOVE (vol des taux) : ${mc.move}${mc.moveD24 != null ? ` (24h ${mc.moveD24 > 0 ? "+" : ""}${mc.moveD24}%)` : ""}${mc.vix != null ? ` vs VIX ${mc.vix}` : ""} — MOVE élevé avec VIX bas = stress logé dans les TAUX (régime fiscal), risque de transmission aux actions`);
+    if (mc.initialClaims != null)
+      macroLines.push(`- Claims hebdo : ${mc.initialClaims}${mc.initialClaimsD7 != null ? ` (7j ${mc.initialClaimsD7 > 0 ? "+" : ""}${mc.initialClaimsD7}%)` : ""} — tendance haussière soutenue = la faiblesse de l'emploi se CONFIRME en temps réel (renforce le scénario récession) ; stables = l'à-coup NFP n'est pas confirmé`);
     const fm = (v) => (v == null ? "?" : `${v > 0 ? "+" : ""}${v} M$`);
     if (mc.btcEtfFlowUsdM != null || mc.ethEtfFlowUsdM != null)
       macroLines.push(`- Flux ETF spot US (l'acheteur marginal, J-1) : BTC jour ${fm(mc.btcEtfFlowUsdM)} / 7j ${fm(mc.btcEtfFlow7dUsdM)} · ETH jour ${fm(mc.ethEtfFlowUsdM)} / 7j ${fm(mc.ethEtfFlow7dUsdM)} — sorties soutenues = distribution institutionnelle (plafonne les rebonds) ; retour d'entrées = demande réelle (valide un creux)`);

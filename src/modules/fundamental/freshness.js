@@ -35,7 +35,7 @@ export function freshnessRows(state) {
     ["fred (quotidien: DXY/taux)", "fin de séance J-1", freshest(a.macro?.fred?.dollarIndex?.date, a.macro?.fred?.yield10y?.date, a.macro?.fred?.yield2y?.date)],
     ["fred (mensuel: M2/CPI/PCE)", "MENSUEL", freshest(a.macro?.fred?.m2?.date, a.macro?.fred?.cpi?.date, a.macro?.fred?.pce?.date)],
     ["liquidity (Fed/RRP/TGA)", "hebdo/quotidien", freshest(a.liquidity?.liquidity?.fedBalanceSheet?.date, a.liquidity?.liquidity?.tga?.date)],
-    ["markets (S&P/Nasdaq/VIX/SKEW)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
+    ["markets (S&P/Nasdaq/VIX/SKEW/MOVE)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
     ["markets-live (Finnhub/TD)", "temps réel (intraday)", freshest(...Object.values(a.markets?.["markets-live"] || {}).map((v) => v?.datetime))],
     ["commodities (pétrole)", "fin de séance J-1", freshest(a.commodities?.commodities?.wtiOil?.date)],
     ["metals (or/argent)", "temps réel", freshest(a.commodities?.metals?.gold?.date, a.commodities?.metals?.silver?.date)],
