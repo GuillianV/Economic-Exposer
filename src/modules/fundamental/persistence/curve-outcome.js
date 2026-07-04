@@ -17,6 +17,11 @@ import { ASSETS } from "../ai/curve.js";
  */
 const DAY = 86400000;
 const TOL = 6 * 3600000; // appariement du prix réalisé au jour cible (snapshots ~horaires)
+// ZONE NEUTRE : sous ce mouvement réalisé (en % vs t0), le point n'est PAS noté
+// en direction. Couvre le bruit de cotation (FX bouge de ±0.05 %/j) ET les
+// marchés fermés (week-end, jours fériés US : prix figé = 0.00 %). Sans ça, on
+// comptait des "mauvaises directions" sur des jours sans aucun mouvement.
+const FLAT_PCT = 0.15;
 const round = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 1000) / 1000);
 
 const LABEL_TO_KEY = new Map(ASSETS.map(([k, l]) => [l, k]));
@@ -61,17 +66,29 @@ function scoreAsset(a, baseTs, series) {
     }
     const dirProj = Math.sign(p.valeur - t0);
     const dirReal = Math.sign(realise - t0);
-    const bonneDirection = dirProj === 0 ? null : dirProj === dirReal;
+    const mouvementPct = t0 !== 0 ? round(((realise - t0) / Math.abs(t0)) * 100) : null;
+    // Marché plat (|mouvement| < FLAT_PCT) : direction non notée — juger un
+    // sens sur un non-mouvement (marché fermé, bruit FX) ne mesure rien.
+    const flat = mouvementPct != null && Math.abs(mouvementPct) < FLAT_PCT;
+    const bonneDirection = dirProj === 0 || flat ? null : dirProj === dirReal;
     const erreurPct = realise !== 0 ? round(((p.valeur - realise) / Math.abs(realise)) * 100) : null;
     if (bonneDirection != null) {
       scored++;
       if (bonneDirection) hits++;
     }
-    if (erreurPct != null) {
+    if (erreurPct != null && !flat) {
       errSum += Math.abs(erreurPct);
       errCount++;
     }
-    points.push({ t_jours: p.t_jours, projete: p.valeur, realise: round(realise), erreurPct, bonneDirection });
+    points.push({
+      t_jours: p.t_jours,
+      projete: p.valeur,
+      realise: round(realise),
+      mouvementPct,
+      plat: flat || undefined,
+      erreurPct,
+      bonneDirection,
+    });
   }
 
   return {
@@ -125,6 +142,7 @@ export async function computeCurveOutcome(curveTs) {
     mapeGlobal, // erreur absolue moyenne en % (tous actifs)
     note:
       "Comparaison FACTUELLE projeté vs réalisé (prix repris des snapshots), sans IA. Le score directionnel = % de points partis du bon côté vs le cours de départ. " +
+      `Points "plats" (mouvement réalisé < ${FLAT_PCT} % : bruit, marché fermé) non notés en direction. ` +
       "Projections illustratives : juger la DIRECTION, pas le point exact.",
     actifs,
   };
