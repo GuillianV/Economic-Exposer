@@ -9,9 +9,11 @@ if (process.argv.includes("--prompt")) {
   const { getWorldState } = await import("./modules/fundamental/index.js");
   const { getTrends } = await import("./modules/fundamental/persistence/scheduler.js");
   const { formatState } = await import("./modules/fundamental/ai/index.js");
+  const { loadLatestVerdict } = await import("./modules/fundamental/persistence/store.js");
   const state = await getWorldState();
   const trends = await getTrends();
-  console.log(formatState(state, trends));
+  const previous = await loadLatestVerdict().catch(() => null);
+  console.log(formatState(state, trends, previous));
   process.exit(0);
 }
 

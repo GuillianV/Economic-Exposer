@@ -1,7 +1,7 @@
 import { logger } from "../../logs/index.js";
 import { extractMetrics } from "../persistence/metrics.js";
 import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
-import { loadAiState, saveAiState, saveVerdict, saveCurve, loadLatestCurve } from "../persistence/store.js";
+import { loadAiState, saveAiState, saveVerdict, saveCurve, loadLatestCurve, loadLatestVerdict } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
 import { projectCurves } from "./curve.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
@@ -45,7 +45,9 @@ export async function maybeAnalyze(state, trends) {
   }
 
   logger.info(`[ai] déclenchement → ${reasons.join(" | ")}`);
-  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  // Hystérésis : le dernier verdict est passé comme hypothèse à tester (anti flip-flop).
+  const previous = await loadLatestVerdict().catch(() => null);
+  const { provider, verdict, raw, violations } = await analyze(state, trends, { previous });
   const record = {
     ts: now,
     snapshotTs: now, // corrélation : même ts que le snapshot de cette collecte
@@ -75,7 +77,8 @@ export async function maybeAnalyze(state, trends) {
 export async function analyzeNow() {
   const { state } = await collectOnce();
   const trends = await getTrends();
-  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  const previous = await loadLatestVerdict().catch(() => null);
+  const { provider, verdict, raw, violations } = await analyze(state, trends, { previous });
   const record = {
     ts: state.ts,
     snapshotTs: state.ts,

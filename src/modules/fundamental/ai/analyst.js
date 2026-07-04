@@ -35,6 +35,8 @@ LIQUIDITÉ (driver prioritaire) : la LIQUIDITÉ NETTE Fed (bilan Fed − RRP −
 
 POSITIONNEMENT MULTI-ACTIFS (CFTC COT) : le net spéculatif est fourni pour le BTC mais aussi le forex (EUR/JPY/GBP), les actions (S&P500/Nasdaq) et les matières (or/WTI). Croise-les : un positionnement extrême (cf. percentile) sur plusieurs actifs révèle le régime de risque global et d'éventuels retournements (capitulation/euphorie).
 
+HIÉRARCHIE DES DRIVERS (arbitrage des signaux contradictoires) : quand les axes se contredisent, pondère dans cet ordre — 1) taux RÉELS + liquidité globale (le coût de l'argent), 2) crédit HY + MOVE (le stress systémique — le crédit casse avant les actions), 3) flux ETF spot (l'acheteur marginal du BTC), 4) extrêmes de positionnement/sentiment (percentiles p≤10 / p≥90), 5) news & géopolitique (du contexte — ne renverse JAMAIS à elle seule une lecture ancrée sur 1-3). Les tensions que tu ne peux pas trancher vont dans "signaux_contradictoires" — ne les moyenne pas artificiellement dans le régime.
+
 RÈGLES STRICTES :
 - NE PRÉDIS PAS le prix : aucun objectif de cours, aucun "BTC va monter/baisser". Les marchés sont imprévisibles à court terme. Raisonne en SCÉNARIOS CONDITIONNELS et en ASYMÉTRIE.
 - INTERPRÈTE, ne répète pas. Ne dis jamais juste "DXY à 120" : dis ce que ça SIGNIFIE ("dollar fort = conditions restrictives, vent de face pour le risque"). Chaque chiffre doit être accompagné de sa lecture.
@@ -74,7 +76,9 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
     { "donnee": "ex. Dollar Index", "valeur": "120.4 (24h +0.3%, p53/5a médian)", "lecture": "ce que ça implique concrètement" }
   ],
   "ce_qui_a_change": ["évolutions notables des tendances 24h/7j, ou [] si pas d'historique"],
+  "test_invalidation": { "conditions_remplies": false, "detail": "UNIQUEMENT si un VERDICT PRÉCÉDENT est fourni : évalue CHAQUE condition d'invalidation déclarée avec le chiffre actuel (ex. 'VIX<20 : rempli (16.6) ; HY>4% : non rempli (2.75%)') — omets ce champ sinon" },
   "correlations": ["CROSS-MARKET explicite : BTC vs S&P500/Nasdaq (alignement risk-on ?), BTC vs VIX (inverse ?), BTC vs or/DXY/10Y, OR vs TAUX RÉELS (inverse classique — cassée = régime fiscal), et toute DIVERGENCE ou corrélation CASSÉE notable"],
+  "signaux_contradictoires": ["les tensions RÉELLES non résolues entre données majeures, avec la question qu'elles posent (ex. 'actions p99 vs NFP 57k vs crédit HY p14 serré — le marché ignore-t-il le ralentissement ou le crédit a-t-il raison ?') — liste-les honnêtement au lieu de les trancher artificiellement ; [] si le tableau est cohérent"],
   "scenarios": [
     { "nom": "nom court", "condition": "ce qui devrait se produire", "consequence": "ce que ça impliquerait", "surveiller": "l'indicateur à surveiller", "probabilite_relative": "faible" | "moyenne" | "élevée" }
   ],
@@ -104,7 +108,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   }
 }
 
-Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
+Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, 1-3 signaux_contradictoires si le tableau est tendu, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];
@@ -140,7 +144,7 @@ function big(n) {
 }
 
 /** Met en forme le world-state + tendances en texte compact pour le LLM. */
-export function formatState(state, trends) {
+export function formatState(state, trends, previous = null) {
   const a = state.axes ?? {};
   const L = [];
   const push = (s) => L.push(s);
@@ -167,6 +171,10 @@ export function formatState(state, trends) {
       `- Options ETH : DVOL ${dvol.eth.dvol ?? "?"}${fmtTrend(trends, "ethDvol")} · skew ${dvol.eth.skew ?? "?"}${fmtTrend(trends, "ethSkew")} · Put/Call OI ${dvol.eth.putCallOI ?? "?"}${fmtTrend(trends, "ethPutCall")} (divergence skew BTC vs ETH = signal)`,
     );
   if (fut?.longShortAccountRatio != null) push(`- Ratio long/short BTC : foule ${fut.longShortAccountRatio}${fmtTrend(trends, "longShortAccountRatio")} · gros traders ${fut.topPositionRatio ?? "?"} (>1 = majorité long ; extrême/divergence = signal contrarian)`);
+  if (fut?.basis?.annualizedPct != null)
+    push(
+      `- Basis futures BTC (trimestriel, annualisé) : ${fut.basis.annualizedPct > 0 ? "+" : ""}${fut.basis.annualizedPct}%/an${fmtTrend(trends, "btcBasisAnnualized")}${fmtNorm(trends, "btcBasisAnnualized")} — jauge de levier/demande spéculative plus propre que le funding : >10%/an = euphorie (levier long en excès), ~0 = désintérêt, NÉGATIF (backwardation) = capitulation/stress. Croise avec le funding : basis bas + funding neutre = marché purgé (terrain de creux) ; basis haut + funding chaud = excès.`,
+    );
 
   const cot = a.positioning?.["cftc-cot"];
   push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
@@ -326,6 +334,36 @@ export function formatState(state, trends) {
     }
   }
 
+  const prev = formatPrevious(previous, state.ts);
+  if (prev) push(prev);
+
+  return L.join("\n");
+}
+
+// Le verdict précédent n'est utilisable comme hypothèse que s'il est récent :
+// au-delà, le monde a trop bougé et l'hystérésis deviendrait de l'inertie.
+const HYSTERESIS_MAX_AGE_MS = 48 * 3600000;
+
+/**
+ * Bloc HYSTÉRÉSIS : le verdict précédent comme HYPOTHÈSE À FALSIFIER, pas à
+ * confirmer. Anti flip-flop (changer de régime exige une donnée nouvelle) ET
+ * anti auto-persuasion (si ses propres conditions d'invalidation sont remplies,
+ * le changement est OBLIGATOIRE). Placé en FIN de prompt, après toutes les
+ * données, pour que le test se fasse contre le tableau complet.
+ */
+function formatPrevious(previous, nowTs) {
+  const v = previous?.verdict;
+  if (!v?.regime || previous.ts == null) return null;
+  const ageMs = nowTs - previous.ts;
+  if (!(ageMs >= 0) || ageMs > HYSTERESIS_MAX_AGE_MS) return null;
+  const ageH = Math.round((ageMs / 3600000) * 10) / 10;
+  const L = [`\n## VERDICT PRÉCÉDENT (il y a ${ageH} h) — HYPOTHÈSE À TESTER, PAS UNE CIBLE À CONFIRMER`];
+  L.push(`- Régime : ${v.regime} · confiance ${v.confiance}`);
+  if (v.invalidation) L.push(`- Ses conditions d'invalidation déclarées : ${v.invalidation}`);
+  if (v.resume) L.push(`- Son résumé : ${v.resume}`);
+  L.push(
+    `RÈGLE D'HYSTÉRÉSIS : confronte ces conditions d'invalidation aux données ACTUELLES ci-dessus et consigne le résultat CHIFFRÉ dans "test_invalidation" (chaque condition : remplie ou non, avec la valeur actuelle). Si les conditions sont REMPLIES, ou si une donnée NOUVELLE majeure contredit ce régime, tu DOIS changer de régime — et citer dans "ce_qui_a_change" la donnée précise qui a basculé. Exception UNIQUE : si les conditions sont remplies mais que les drivers prioritaires (taux réels, liquidité, crédit) justifient ENCORE ce régime, tu peux le conserver À CONDITION de le dire explicitement dans "test_invalidation.detail" (les conditions étaient mal calibrées — reformule-les dans "invalidation"). SINON, CONSERVE ce régime : exprime ton évolution par la CONFIANCE (baisse-la si les signaux s'effritent). INTERDIT de changer de régime sur une simple relecture différente des MÊMES données — la stabilité entre deux analyses sur données inchangées fait partie de la qualité.`,
+  );
   return L.join("\n");
 }
 
@@ -347,11 +385,12 @@ function parseVerdict(raw) {
 
 /**
  * Lance l'analyse : formate l'état, appelle le fournisseur, parse le verdict.
+ * `previous` (dernier verdict persisté) active l'hystérésis de régime.
  * @returns { provider, verdict, raw, prompt }
  */
-export async function analyze(state, trends, { provider } = {}) {
+export async function analyze(state, trends, { provider, previous } = {}) {
   const chain = provider ? [provider] : getProviderChain();
-  const user = formatState(state, trends);
+  const user = formatState(state, trends, previous);
   const errors = [];
   for (const p of chain) {
     try {
@@ -359,7 +398,7 @@ export async function analyze(state, trends, { provider } = {}) {
       const verdict = parseVerdict(raw);
       // Garde-fous déterministes : nettoie objectifs de prix / percentiles non
       // sourcés et signale toute extrapolation de source stale.
-      const violations = verdict ? validateVerdict(verdict, { state, trends }) : [];
+      const violations = verdict ? validateVerdict(verdict, { state, trends, previous }) : [];
       if (violations.length) {
         logger.warn(`[ai] garde-fous "${p.name}" : ${violations.map((v) => `${v.type}${v.count ? `×${v.count}` : ""}`).join(", ")}`);
       }

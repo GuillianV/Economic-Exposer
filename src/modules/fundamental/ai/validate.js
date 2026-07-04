@@ -76,10 +76,10 @@ function hasAnyPctRank(trends) {
 /**
  * Valide et NETTOIE un verdict en place.
  * @param {object} verdict - objet verdict parsé (muté en place)
- * @param {{ state?: object, trends?: object }} ctx
+ * @param {{ state?: object, trends?: object, previous?: object }} ctx
  * @returns {Array<{type:string, count?:number, sample?:string, axis?:string}>} manquements
  */
-export function validateVerdict(verdict, { state, trends } = {}) {
+export function validateVerdict(verdict, { state, trends, previous } = {}) {
   const violations = [];
   if (!verdict || typeof verdict !== "object") return violations;
 
@@ -133,6 +133,26 @@ export function validateVerdict(verdict, { state, trends } = {}) {
     if (!admitsStale && hasNumber) {
       flaggedAxes.add(axis);
       violations.push({ type: "stale_extrapolation", axis, sources: stale.filter((s) => STALE_AXIS[s] === axis) });
+    }
+  }
+
+  // (4) Hystérésis — signalements seuls, pour suivi qualité :
+  //   a. flip de régime avec "ce_qui_a_change" vide = relecture différente des
+  //      mêmes données (ce que l'hystérésis interdit) ;
+  //   b. conditions d'invalidation reconnues REMPLIES par l'IA elle-même
+  //      (test_invalidation) mais régime conservé = auto-persuasion possible
+  //      (toléré par l'exception drivers prioritaires, mais à auditer).
+  const prevRegime = previous?.verdict?.regime;
+  if (prevRegime && verdict.regime) {
+    if (verdict.regime !== prevRegime) {
+      const changed = Array.isArray(verdict.ce_qui_a_change)
+        ? verdict.ce_qui_a_change.filter((s) => typeof s === "string" && s.trim())
+        : [];
+      if (!changed.length) {
+        violations.push({ type: "regime_flip_unjustified", from: prevRegime, to: verdict.regime });
+      }
+    } else if (verdict.test_invalidation?.conditions_remplies === true) {
+      violations.push({ type: "invalidation_met_regime_kept", regime: verdict.regime });
     }
   }
 

@@ -215,6 +215,7 @@ function macroContextOf(trends) {
     btcPutCall: g("btcPutCall"),
     ethPutCall: g("ethPutCall"),
     cboeSkew: g("cboeSkew"),
+    btcBasisAnnualized: g("btcBasisAnnualized"),
     // crédit & vol taux & emploi temps réel
     highYieldSpread: g("highYieldSpread"),
     highYieldSpreadD24: d("highYieldSpread"),
@@ -279,6 +280,8 @@ function formatTrajectory(traj, horizonDays) {
       optLines.push(`- Put/Call OI : BTC ${mc.btcPutCall ?? "?"} · ETH ${mc.ethPutCall ?? "?"} (↑ = couverture/peur)`);
     if (mc.cboeSkew != null) optLines.push(`- CBOE SKEW (actions) : ${mc.cboeSkew} (↑ = demande de hedge crash sur le S&P)`);
     if (mc.dvol != null) optLines.push(`- DVOL BTC : ${mc.dvol} (vol implicite, "VIX crypto")`);
+    if (mc.btcBasisAnnualized != null)
+      optLines.push(`- Basis futures BTC (annualisé) : ${mc.btcBasisAnnualized > 0 ? "+" : ""}${mc.btcBasisAnnualized}%/an — >10% = levier long en excès (rebonds fragiles) ; ~0 = marché purgé/désintérêt ; négatif = capitulation (terrain de creux)`);
     if (optLines.length) lines.push("\n# OPTIONS (positionnement temps réel)\n" + optLines.join("\n"));
   }
 

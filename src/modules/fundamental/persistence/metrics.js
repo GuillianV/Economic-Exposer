@@ -51,6 +51,7 @@ export function extractMetrics(state) {
     // positionnement de la foule (Binance long/short BTC)
     longShortAccountRatio: num(fut.longShortAccountRatio),
     topTraderPositionRatio: num(fut.topPositionRatio),
+    btcBasisAnnualized: num(fut.basis?.annualizedPct), // basis trimestriel annualisé (%) — levier/demande spéculative
     // ETH / SOL (breadth crypto)
     ethPrice: num(eth.markPrice),
     ethFunding: num(eth.lastFundingRate),

@@ -23,6 +23,7 @@ export const METRIC_DICTIONARY = {
   ethDvol: { label: "DVOL (vol. implicite ETH)", unit: "index", axis: "sentiment", source: "Deribit", sens: "↑ = stress/volatilité anticipée sur ETH" },
   ethSkew: { label: "Skew options ETH (25Δ RR)", unit: "pts d'IV", axis: "sentiment", source: "Deribit", sens: "> 0 = peur crash ETH ; divergence vs skew BTC = signal" },
   ethPutCall: { label: "Put/Call ETH (OI)", unit: "ratio", axis: "sentiment", source: "Deribit", sens: "↑ = couverture/peur options ETH" },
+  btcBasisAnnualized: { label: "Basis futures BTC (annualisé)", unit: "%/an", axis: "sentiment", source: "Binance Futures (trimestriel)", sens: "contango >10%/an = euphorie/levier spéculatif ; proche de 0 = désintérêt ; négatif (backwardation) = capitulation/stress" },
   longShortAccountRatio: { label: "Ratio long/short BTC (tous comptes)", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "positionnement de la FOULE ; >1 = majorité long, extrême = risque de retournement (contrarian)" },
   topTraderPositionRatio: { label: "Ratio long/short BTC (gros traders)", unit: "ratio", axis: "sentiment", source: "Binance Futures", sens: "positionnement des GROS comptes ; une divergence avec la foule est instructive" },
   ethPrice: { label: "Prix ETH", unit: "USD", axis: "sentiment", source: "Binance Futures", sens: "référence (breadth crypto)" },
