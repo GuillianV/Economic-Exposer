@@ -276,13 +276,31 @@ export function createApp() {
   );
 
   // --- Verdicts ---
+  // ?summary=1 : renvoie régime/confiance/contradictions de CHAQUE verdict en
+  // UNE requête (sinon un client doit faire N appels /:ts et tape le rate-limit).
   app.get(
     "/api/verdicts",
     wrap(async (req, res) => {
       const since = parseSince(req.query.since, 30);
       const limit = Number(req.query.limit) || 100;
       const list = await listVerdicts(since);
-      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+      const items = list.slice(-limit);
+      if (req.query.summary === "1") {
+        const out = [];
+        for (const it of items) {
+          const r = await loadVerdictByTs(it.ts).catch(() => null);
+          const v = r?.verdict ?? {};
+          out.push({
+            ts: it.ts,
+            iso: new Date(it.ts).toISOString(),
+            regime: v.regime ?? null,
+            confiance: v.confiance ?? null,
+            contradictions: Array.isArray(v.signaux_contradictoires) ? v.signaux_contradictoires.length : 0,
+          });
+        }
+        return res.json({ count: list.length, items: out });
+      }
+      res.json({ count: list.length, items: items.map(withIso) });
     }),
   );
 
