@@ -21,6 +21,7 @@ const DATA = path.resolve(process.cwd(), "data");
 const SNAP_DIR = path.join(DATA, "snapshots");
 const VERDICT_DIR = path.join(DATA, "verdicts");
 const CURVE_DIR = path.join(DATA, "curves");
+const PREVISION_DIR = path.join(DATA, "previsions");
 const AI_STATE_FILE = path.join(DATA, "ai-state.json");
 
 // Version du format de stockage (snapshots & verdicts). À incrémenter si la
@@ -152,15 +153,7 @@ export async function loadLatestVerdict() {
   return last ? readJson(last.file) : null;
 }
 
-// ---- Courbes projetées (génération quotidienne) ----
-
-export async function saveCurve(record) {
-  const dayDir = path.join(CURVE_DIR, dayKey(record.baseTs));
-  await fs.mkdir(dayDir, { recursive: true });
-  const file = path.join(dayDir, tsToName(record.baseTs));
-  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
-  return file;
-}
+// ---- Courbes projetées (ARCHIVE — génération retirée 2026-07-08, lecture seule) ----
 
 export async function loadLatestCurve() {
   const list = await listRecords(CURVE_DIR, 0);
@@ -176,6 +169,37 @@ export async function listCurves(sinceMs = 0) {
 /** Une courbe passée par son ts (= baseTs). null si absente. */
 export async function loadCurveByTs(ts, tolMs = 60000) {
   const list = await listRecords(CURVE_DIR, 0);
+  const match = list.find((r) => r.ts === ts) || findNearestRef(list, ts, tolMs);
+  return match ? readJson(match.file) : null;
+}
+
+// ---- Prévisions directionnelles 24h (remplaçantes des courbes) ----
+
+export async function savePrevision(record) {
+  const dayDir = path.join(PREVISION_DIR, dayKey(record.baseTs));
+  await fs.mkdir(dayDir, { recursive: true });
+  const file = path.join(dayDir, tsToName(record.baseTs));
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
+  return file;
+}
+
+/** Réécrit un record de prévision en place (ajout du réalisé/outcome). */
+export async function rewritePrevision(record) {
+  return savePrevision(record);
+}
+
+export async function listPrevisions(sinceMs = 0) {
+  return listRecords(PREVISION_DIR, sinceMs);
+}
+
+export async function loadLatestPrevision() {
+  const list = await listRecords(PREVISION_DIR, 0);
+  const last = list[list.length - 1];
+  return last ? readJson(last.file) : null;
+}
+
+export async function loadPrevisionByTs(ts, tolMs = 60000) {
+  const list = await listRecords(PREVISION_DIR, 0);
   const match = list.find((r) => r.ts === ts) || findNearestRef(list, ts, tolMs);
   return match ? readJson(match.file) : null;
 }

@@ -79,30 +79,3 @@ export function verdictEvent(record) {
     verdict: v,
   };
 }
-
-/**
- * Payload webhook d'une COURBE (rafraîchissement quotidien). Auto-suffisant :
- * un aperçu par actif (direction/retournement) + les courbes complètes.
- * `type:"curve"` discrimine ; `url` pointe l'endpoint courbe.
- */
-export function curveEvent(record) {
-  const actifs = Array.isArray(record.actifs) ? record.actifs : [];
-  return {
-    type: "curve",
-    url: resourceUrl("/api/forecast/curves/latest"),
-    ts: record.baseTs,
-    iso: record.baseTs != null ? new Date(record.baseTs).toISOString() : null,
-    schemaVersion: record.schemaVersion ?? null,
-    provider: record.provider ?? null,
-    days: record.days ?? null,
-    horizonJours: record.horizonJours ?? null,
-    apercu: actifs.map((a) => ({
-      actif: a.actif,
-      direction: a.direction ?? null,
-      confiance: a.confiance ?? null,
-      retournement: a.retournement?.probable ? a.retournement : null,
-    })),
-    disclaimer: record.disclaimer ?? null,
-    actifs, // courbes complètes
-  };
-}

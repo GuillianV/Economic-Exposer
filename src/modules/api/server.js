@@ -13,8 +13,13 @@ import {
   loadLatestCurve,
   listCurves,
   loadCurveByTs,
+  listPrevisions,
+  loadLatestPrevision,
+  loadPrevisionByTs,
 } from "../fundamental/persistence/store.js";
 import { computeCurveOutcome } from "../fundamental/persistence/curve-outcome.js";
+import { statsOf } from "../fundamental/ai/prevision.js";
+import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
 import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
@@ -111,6 +116,10 @@ export function createApp() {
       "GET /api/forecast/curves/latest",
       "GET /api/forecast/curves/:ts",
       "GET /api/forecast/curves/:ts/outcome",
+      "GET /api/forecast/previsions?since=&limit=",
+      "GET /api/forecast/previsions/latest",
+      "GET /api/forecast/previsions/stats?since=",
+      "GET /api/forecast/previsions/:ts",
       "GET /api/trends?lookbackDays=",
       "GET /api/metrics?since=",
       "GET /api/dictionary",
@@ -359,6 +368,67 @@ export function createApp() {
       const c = await loadCurveByTs(ts);
       if (!c) return res.status(404).json({ error: "courbe introuvable" });
       res.json(c);
+    }),
+  );
+
+  // Prévisions directionnelles 24h (remplaçantes des courbes chiffrées).
+  // L'évaluation des échues est déclenchée paresseusement à la lecture.
+
+  app.get(
+    "/api/forecast/previsions",
+    wrap(async (req, res) => {
+      await evaluateDuePrevisions();
+      const since = parseSince(req.query.since, 30);
+      const limit = Number(req.query.limit) || 100;
+      const list = await listPrevisions(since);
+      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+    }),
+  );
+
+  app.get(
+    "/api/forecast/previsions/latest",
+    wrap(async (req, res) => {
+      await evaluateDuePrevisions();
+      const p = await loadLatestPrevision();
+      if (!p) return res.status(404).json({ error: "aucune prévision" });
+      // joint la précédente ÉVALUÉE : le Reader affiche "hier : prédit vs réalisé"
+      const refs = await listPrevisions(Date.now() - 7 * 86400000);
+      let previous = null;
+      for (let i = refs.length - 1; i >= 0; i--) {
+        if (refs[i].ts >= p.baseTs) continue;
+        const rec = await loadPrevisionByTs(refs[i].ts);
+        if (rec?.actifs?.some((a) => a.realise)) {
+          previous = rec;
+          break;
+        }
+      }
+      res.json({ ...p, precedente: previous });
+    }),
+  );
+
+  app.get(
+    "/api/forecast/previsions/stats",
+    wrap(async (req, res) => {
+      await evaluateDuePrevisions();
+      const since = parseSince(req.query.since, 90);
+      const refs = await listPrevisions(since);
+      const records = [];
+      for (const ref of refs) {
+        const rec = await loadPrevisionByTs(ref.ts);
+        if (rec) records.push(rec);
+      }
+      res.json({ since, count: records.length, ...statsOf(records) });
+    }),
+  );
+
+  app.get(
+    "/api/forecast/previsions/:ts",
+    wrap(async (req, res) => {
+      const ts = parseTs(req.params.ts);
+      if (ts == null) return res.status(400).json({ error: "ts invalide" });
+      const p = await loadPrevisionByTs(ts);
+      if (!p) return res.status(404).json({ error: "prévision introuvable" });
+      res.json(p);
     }),
   );
 

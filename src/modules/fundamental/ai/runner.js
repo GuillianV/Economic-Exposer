@@ -1,11 +1,19 @@
 import { logger } from "../../logs/index.js";
 import { extractMetrics } from "../persistence/metrics.js";
 import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
-import { loadAiState, saveAiState, saveVerdict, saveCurve, loadLatestCurve, loadLatestVerdict } from "../persistence/store.js";
+import {
+  loadAiState,
+  saveAiState,
+  saveVerdict,
+  loadLatestVerdict,
+  savePrevision,
+  listPrevisions,
+  rewritePrevision,
+} from "../persistence/store.js";
 import { analyze } from "./analyst.js";
-import { projectCurves } from "./curve.js";
+import { projectPrevisions, evaluatePrevision } from "./prevision.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
-import { emitWebhook, verdictEvent, curveEvent } from "../../notify/webhook.js";
+import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
 
 /** Qualité des données ayant servi au verdict (fraîcheur des sources). */
 function dataQualityOf(state) {
@@ -95,29 +103,50 @@ export async function analyzeNow() {
   return { provider, verdict, raw, file, snapshotTs: state.ts };
 }
 
-// Défauts de la courbe quotidienne (fenêtre lue / horizon projeté).
-const CURVE_DAYS = Number(process.env.CURVE_DAYS) || 7;
-const CURVE_HORIZON = Number(process.env.CURVE_HORIZON) || 7;
+/**
+ * Évalue les prévisions arrivées à échéance (classe réalisée vs prédite, avec
+ * les seuils stockés à l'émission). Idempotent, ne throw jamais.
+ */
+export async function evaluateDuePrevisions() {
+  let done = 0;
+  try {
+    const refs = await listPrevisions(Date.now() - 7 * 86400000);
+    for (const ref of refs) {
+      const rec = await import("../persistence/store.js").then((s) => s.loadPrevisionByTs(ref.ts));
+      if (!rec || rec.outcome) continue;
+      const before = JSON.stringify(rec);
+      const after = await evaluatePrevision(rec);
+      if (JSON.stringify(after) !== before) {
+        await rewritePrevision(after);
+        done++;
+      }
+    }
+    if (done) logger.info(`[prevision] ${done} prévision(s) évaluée(s) contre le réalisé`);
+  } catch (err) {
+    logger.warn(`[prevision] évaluation échouée : ${err.message}`);
+  }
+  return done;
+}
 
 /**
- * Génère la courbe projetée et la PERSISTE (une par jour). Ne throw jamais.
- * @returns le record stocké, ou null si échec/non parsé.
+ * Génère la prévision directionnelle 24h et la PERSISTE (remplace les courbes
+ * de prix chiffrées — choix produit 2026-07-07). Évalue d'abord les prévisions
+ * échues (track record). Ne throw jamais.
  */
-export async function generateDailyCurve({ windowDays = CURVE_DAYS, horizonDays = CURVE_HORIZON } = {}) {
+export async function generateDailyPrevision() {
+  await evaluateDuePrevisions();
   try {
-    const { provider, curves } = await projectCurves({ windowDays, horizonDays });
-    if (!curves) {
-      logger.warn("[curve] génération quotidienne : projection non parsée");
+    const { provider, previsions } = await projectPrevisions();
+    if (!previsions) {
+      logger.warn("[prevision] génération quotidienne : JSON non parsé");
       return null;
     }
-    const record = { provider, days: windowDays, ...curves };
-    const file = await saveCurve(record);
-    logger.info(`[curve] courbe quotidienne générée (${curves.actifs.length} actifs, ${windowDays}j→${horizonDays}j) → ${file}`);
-    // SORTIE push : notifie le rafraîchissement de courbe (no-op si non configuré).
-    await emitWebhook(curveEvent({ schemaVersion: 1, ...record }));
+    const record = { provider, ...previsions };
+    const file = await savePrevision(record);
+    logger.info(`[prevision] prévision 24h générée (${previsions.actifs.length} actifs) → ${file}`);
     return record;
   } catch (err) {
-    logger.warn(`[curve] génération quotidienne échouée : ${err.message}`);
+    logger.warn(`[prevision] génération quotidienne échouée : ${err.message}`);
     return null;
   }
 }
@@ -138,26 +167,31 @@ export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) ||
     const delay = next - now;
     timer = setTimeout(async () => {
       if (stopped) return;
-      await generateDailyCurve();
+      // Prévisions directionnelles 24h (remplaçantes des courbes chiffrées,
+      // choix produit 2026-07-07). L'évaluation des échues est incluse.
+      await generateDailyPrevision();
       scheduleNext();
     }, delay);
-    logger.info(`[curve] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / 60000)} min)`);
+    logger.info(`[prevision] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / 60000)} min)`);
   };
 
-  // Rattrapage au démarrage : si aucune courbe n'a été générée AUJOURD'HUI, on
-  // en produit une tout de suite — sinon `latest`/l'historique resteraient vides
-  // jusqu'à la prochaine échéance (comme observé après un déploiement).
+  // Rattrapage au démarrage : si aucune prévision n'a été générée AUJOURD'HUI,
+  // on en produit une tout de suite — sinon `latest` resterait vide jusqu'à la
+  // prochaine échéance (comme observé après un déploiement).
   (async () => {
     try {
-      const last = await loadLatestCurve();
+      const { loadLatestPrevision } = await import("../persistence/store.js");
+      const last = await loadLatestPrevision();
       const today = new Date().toISOString().slice(0, 10);
       const lastDay = last?.baseTs ? new Date(last.baseTs).toISOString().slice(0, 10) : null;
       if (!stopped && lastDay !== today) {
-        logger.info("[curve] rattrapage au démarrage : aucune courbe aujourd'hui, génération immédiate");
-        await generateDailyCurve();
+        logger.info("[prevision] rattrapage au démarrage : aucune prévision aujourd'hui, génération immédiate");
+        await generateDailyPrevision();
+      } else if (!stopped) {
+        await evaluateDuePrevisions(); // même sans nouvelle génération, on évalue les échues
       }
     } catch (err) {
-      logger.warn(`[curve] rattrapage au démarrage échoué : ${err.message}`);
+      logger.warn(`[prevision] rattrapage au démarrage échoué : ${err.message}`);
     }
   })();
 
@@ -165,7 +199,7 @@ export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) ||
   return function stop() {
     stopped = true;
     if (timer) clearTimeout(timer);
-    logger.info("[curve] scheduler quotidien arrêté");
+    logger.info("[prevision] scheduler quotidien arrêté");
   };
 }
 
