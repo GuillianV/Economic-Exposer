@@ -7,8 +7,8 @@ import {
   saveVerdict,
   loadLatestVerdict,
   savePrevision,
-  listPrevisions,
-  rewritePrevision,
+  loadPrevisionsSince,
+  loadLatestPrevision,
 } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
 import { projectPrevisions, evaluatePrevision } from "./prevision.js";
@@ -103,21 +103,26 @@ export async function analyzeNow() {
   return { provider, verdict, raw, file, snapshotTs: state.ts };
 }
 
+// Throttle : l'évaluation est aussi déclenchée par les lectures API (lazy-eval) —
+// inutile de rescanner le répertoire plus d'une fois toutes les 10 min.
+const EVAL_THROTTLE_MS = 10 * 60000;
+let lastEvalTs = 0;
+
 /**
  * Évalue les prévisions arrivées à échéance (classe réalisée vs prédite, avec
  * les seuils stockés à l'émission). Idempotent, ne throw jamais.
  */
-export async function evaluateDuePrevisions() {
+export async function evaluateDuePrevisions({ force = false } = {}) {
+  if (!force && Date.now() - lastEvalTs < EVAL_THROTTLE_MS) return 0;
+  lastEvalTs = Date.now();
   let done = 0;
   try {
-    const refs = await listPrevisions(Date.now() - 7 * 86400000);
-    for (const ref of refs) {
-      const rec = await import("../persistence/store.js").then((s) => s.loadPrevisionByTs(ref.ts));
-      if (!rec || rec.outcome) continue;
-      const before = JSON.stringify(rec);
-      const after = await evaluatePrevision(rec);
-      if (JSON.stringify(after) !== before) {
-        await rewritePrevision(after);
+    const recs = await loadPrevisionsSince(Date.now() - 7 * 86400000);
+    for (const rec of recs) {
+      if (rec.outcome) continue;
+      const { evaluated } = await evaluatePrevision(rec);
+      if (evaluated) {
+        await savePrevision(rec); // même baseTs → réécrit le même fichier
         done++;
       }
     }
@@ -134,7 +139,7 @@ export async function evaluateDuePrevisions() {
  * échues (track record). Ne throw jamais.
  */
 export async function generateDailyPrevision() {
-  await evaluateDuePrevisions();
+  await evaluateDuePrevisions({ force: true });
   try {
     const { provider, previsions } = await projectPrevisions();
     if (!previsions) {
@@ -155,7 +160,7 @@ export async function generateDailyPrevision() {
  * Planifie la génération de la courbe UNE FOIS par jour à `hour` (heure locale
  * serveur). Renvoie une fonction stop. Ne bloque pas ; s'auto-replanifie.
  */
-export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) || 12 } = {}) {
+export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || 12 } = {}) {
   let timer = null;
   let stopped = false;
   const scheduleNext = () => {
@@ -180,7 +185,6 @@ export function startDailyCurve({ hour = Number(process.env.CURVE_DAILY_HOUR) ||
   // prochaine échéance (comme observé après un déploiement).
   (async () => {
     try {
-      const { loadLatestPrevision } = await import("../persistence/store.js");
       const last = await loadLatestPrevision();
       const today = new Date().toISOString().slice(0, 10);
       const lastDay = last?.baseTs ? new Date(last.baseTs).toISOString().slice(0, 10) : null;

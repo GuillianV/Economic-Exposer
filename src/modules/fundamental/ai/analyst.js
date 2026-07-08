@@ -367,7 +367,9 @@ function formatPrevious(previous, nowTs) {
   return L.join("\n");
 }
 
-function parseVerdict(raw) {
+/** JSON.parse tolérant : extrait le premier bloc {...} si le modèle a bavardé autour. */
+export function parseJsonLoose(raw) {
+  if (!raw) return null;
   try {
     return JSON.parse(raw);
   } catch {
@@ -395,7 +397,7 @@ export async function analyze(state, trends, { provider, previous } = {}) {
   for (const p of chain) {
     try {
       const raw = await p.complete({ system: SYSTEM, user });
-      const verdict = parseVerdict(raw);
+      const verdict = parseJsonLoose(raw);
       // Garde-fous déterministes : nettoie objectifs de prix / percentiles non
       // sourcés et signale toute extrapolation de source stale.
       const violations = verdict ? validateVerdict(verdict, { state, trends, previous }) : [];

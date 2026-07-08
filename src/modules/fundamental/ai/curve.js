@@ -62,7 +62,7 @@ export const ASSETS = [
   ["gold", "Or (XAU/USD)"],
 ];
 
-const r2 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) / 100 : n);
+export const r2 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) / 100 : n);
 
 /**
  * Construit la trajectoire depuis le store : timeline régime (verdicts) +

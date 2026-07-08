@@ -14,6 +14,7 @@ import {
   listCurves,
   loadCurveByTs,
   listPrevisions,
+  loadPrevisionsSince,
   loadLatestPrevision,
   loadPrevisionByTs,
 } from "../fundamental/persistence/store.js";
@@ -372,12 +373,15 @@ export function createApp() {
   );
 
   // Prévisions directionnelles 24h (remplaçantes des courbes chiffrées).
-  // L'évaluation des échues est déclenchée paresseusement à la lecture.
+  // Lazy-eval commun à TOUTES les lectures previsions (y compris /:ts) : les
+  // échues sont évaluées avant de servir — throttlé côté runner (10 min).
+  app.use("/api/forecast/previsions", (req, res, next) => {
+    evaluateDuePrevisions().then(() => next(), next);
+  });
 
   app.get(
     "/api/forecast/previsions",
     wrap(async (req, res) => {
-      await evaluateDuePrevisions();
       const since = parseSince(req.query.since, 30);
       const limit = Number(req.query.limit) || 100;
       const list = await listPrevisions(since);
@@ -388,17 +392,15 @@ export function createApp() {
   app.get(
     "/api/forecast/previsions/latest",
     wrap(async (req, res) => {
-      await evaluateDuePrevisions();
       const p = await loadLatestPrevision();
       if (!p) return res.status(404).json({ error: "aucune prévision" });
       // joint la précédente ÉVALUÉE : le Reader affiche "hier : prédit vs réalisé"
-      const refs = await listPrevisions(Date.now() - 7 * 86400000);
+      const recs = await loadPrevisionsSince(Date.now() - 7 * 86400000);
       let previous = null;
-      for (let i = refs.length - 1; i >= 0; i--) {
-        if (refs[i].ts >= p.baseTs) continue;
-        const rec = await loadPrevisionByTs(refs[i].ts);
-        if (rec?.actifs?.some((a) => a.realise)) {
-          previous = rec;
+      for (let i = recs.length - 1; i >= 0; i--) {
+        if (recs[i].baseTs >= p.baseTs) continue;
+        if (recs[i].actifs?.some((a) => a.realise)) {
+          previous = recs[i];
           break;
         }
       }
@@ -409,14 +411,8 @@ export function createApp() {
   app.get(
     "/api/forecast/previsions/stats",
     wrap(async (req, res) => {
-      await evaluateDuePrevisions();
       const since = parseSince(req.query.since, 90);
-      const refs = await listPrevisions(since);
-      const records = [];
-      for (const ref of refs) {
-        const rec = await loadPrevisionByTs(ref.ts);
-        if (rec) records.push(rec);
-      }
+      const records = await loadPrevisionsSince(since);
       res.json({ since, count: records.length, ...statsOf(records) });
     }),
   );

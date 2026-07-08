@@ -183,13 +183,15 @@ export async function savePrevision(record) {
   return file;
 }
 
-/** Réécrit un record de prévision en place (ajout du réalisé/outcome). */
-export async function rewritePrevision(record) {
-  return savePrevision(record);
-}
-
 export async function listPrevisions(sinceMs = 0) {
   return listRecords(PREVISION_DIR, sinceMs);
+}
+
+/** Records complets depuis sinceMs — lit chaque ref.file directement (un seul scan du répertoire). */
+export async function loadPrevisionsSince(sinceMs = 0) {
+  const refs = await listRecords(PREVISION_DIR, sinceMs);
+  const recs = await Promise.all(refs.map((r) => readJson(r.file)));
+  return recs.filter(Boolean);
 }
 
 export async function loadLatestPrevision() {

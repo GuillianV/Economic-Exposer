@@ -1,7 +1,7 @@
 import { logger } from "../../logs/index.js";
-import { getProviderChain } from "./analyst.js";
+import { getProviderChain, parseJsonLoose } from "./analyst.js";
 import { loadMetricsSince } from "../persistence/store.js";
-import { buildTrajectory, ASSETS } from "./curve.js";
+import { buildTrajectory, ASSETS, r2 } from "./curve.js";
 
 /**
  * PRÉVISIONS DIRECTIONNELLES 24h — remplace les courbes de prix chiffrées.
@@ -25,8 +25,6 @@ const DISCLAIMER =
   "Prévision directionnelle IA à 24h, évaluée publiquement contre le réalisé le " +
   "lendemain. PAS un conseil financier : même un bon système se trompe souvent — " +
   "le score affiché fait foi, pas la promesse.";
-
-const r2 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) / 100 : n);
 
 // Repli si moins de 8 jours d'historique : σ quotidien typique par famille (%).
 const FALLBACK_SIGMA = {
@@ -140,26 +138,14 @@ function formatUser(traj, vols) {
   return lines.join("\n");
 }
 
-function parseJson(raw) {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) try { return JSON.parse(m[0]); } catch { return null; }
-    return null;
-  }
-}
-
 /**
  * Génère la prévision 24h : une classe par actif, ancrée sur le cours actuel,
  * seuils stockés avec le record (l'évaluation du lendemain réutilise EXACTEMENT
  * les seuils de l'émission — pas ceux du jour suivant).
  */
 export async function projectPrevisions({ provider } = {}) {
-  const traj = await buildTrajectory(7 * 86400000);
+  const [traj, vols] = await Promise.all([buildTrajectory(7 * 86400000), dailyVolatility()]);
   if (!traj.regimes.length) throw new Error("aucun verdict sur la fenêtre — trajectoire vide");
-  const vols = await dailyVolatility();
   const chain = provider ? [provider] : getProviderChain();
   const user = formatUser(traj, vols);
   const labelToKey = new Map(ASSETS.map(([k, l]) => [l, k]));
@@ -167,7 +153,7 @@ export async function projectPrevisions({ provider } = {}) {
   for (const p of chain) {
     try {
       const raw = await p.complete({ system: SYSTEM, user, timeout: 90000 });
-      const parsed = parseJson(raw);
+      const parsed = parseJsonLoose(raw);
       if (!parsed || !Array.isArray(parsed.actifs)) {
         logger.warn(`[prevision] "${p.name}" : JSON non parsé`);
         return { provider: p.name, previsions: null, raw };
@@ -210,9 +196,8 @@ export async function projectPrevisions({ provider } = {}) {
 
 // ---- Évaluation (le lendemain) ---------------------------------------------
 
-/** Prix d'un actif au plus près de `ts` (premier snapshot ≥ ts, tolérance 6h). */
-async function priceAt(metricKey, ts) {
-  const series = await loadMetricsSince(ts - 3600000);
+/** Prix d'un actif au plus près de `ts` dans une série déjà chargée (premier snapshot ≥ ts, tolérance 6h). */
+function priceAt(series, metricKey, ts) {
   for (const s of series) {
     if (s.ts >= ts && s.ts <= ts + 6 * 3600000) {
       const v = s.metrics?.[metricKey];
@@ -225,15 +210,17 @@ async function priceAt(metricKey, ts) {
 /**
  * Évalue un record de prévision si son échéance est passée : classe réalisée
  * par actif (avec LES SEUILS STOCKÉS), outcome exact/adjacent/faux + direction.
- * Renvoie le record MUTÉ (ou inchangé si trop tôt / déjà évalué / prix manquant).
+ * Mute le record ; renvoie { record, evaluated } (0 si trop tôt / déjà évalué).
  */
 export async function evaluatePrevision(record) {
-  if (!record?.actifs?.length || record.outcome) return record;
-  if (Date.now() < record.targetTs) return record;
+  if (!record?.actifs?.length || record.outcome) return { record, evaluated: 0 };
+  if (Date.now() < record.targetTs) return { record, evaluated: 0 };
+  // Une seule lecture de la série : même fenêtre pour les 8+ actifs du record.
+  const series = await loadMetricsSince(record.targetTs);
   let evaluated = 0;
   for (const a of record.actifs) {
     if (a.realise) continue;
-    const px = await priceAt(a.metricKey, record.targetTs);
+    const px = priceAt(series, a.metricKey, record.targetTs);
     if (!px || a.prixBase == null || a.prixBase === 0) continue;
     const retPct = r2(((px.v - a.prixBase) / a.prixBase) * 100);
     const classeReelle = classify(retPct, a.seuils);
@@ -252,8 +239,12 @@ export async function evaluatePrevision(record) {
   if (evaluated && record.actifs.every((a) => a.realise)) {
     record.outcome = { evaluatedAt: Date.now() };
   }
-  return record;
+  return { record, evaluated };
 }
+
+// Rodage : le front ne montre le track record qu'à partir de ~7 jours
+// d'évaluations. Seuil calculé ICI (côté données) pour suivre ASSETS.
+const MIN_EVALS = ASSETS.length * 7;
 
 /** Statistiques agrégées sur une liste de records évalués. */
 export function statsOf(records) {
@@ -281,7 +272,6 @@ export function statsOf(records) {
     global: pct(global),
     parActif: Object.fromEntries(Object.entries(parActif).map(([k, v]) => [k, pct(v)])),
     reperes: { hasardExact: 20, hasardDirection: 50 },
+    rodage: { minEvals: MIN_EVALS, pret: global.n >= MIN_EVALS },
   };
 }
-
-export { DISCLAIMER as PREVISION_DISCLAIMER };
