@@ -187,10 +187,12 @@ export async function listPrevisions(sinceMs = 0) {
   return listRecords(PREVISION_DIR, sinceMs);
 }
 
-/** Records complets depuis sinceMs — lit chaque ref.file directement (un seul scan du répertoire). */
+/** Records complets depuis sinceMs — lit chaque ref.file directement (un seul scan du répertoire).
+ * Un fichier corrompu (écriture interrompue) est ignoré, pas propagé : sinon un
+ * seul JSON tronqué mettrait /latest et /stats en 500 permanent. */
 export async function loadPrevisionsSince(sinceMs = 0) {
   const refs = await listRecords(PREVISION_DIR, sinceMs);
-  const recs = await Promise.all(refs.map((r) => readJson(r.file)));
+  const recs = await Promise.all(refs.map((r) => readJson(r.file).catch(() => null)));
   return recs.filter(Boolean);
 }
 
