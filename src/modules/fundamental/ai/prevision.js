@@ -53,7 +53,11 @@ export async function dailyVolatility() {
     }
     if (rets.length >= 8) {
       const m = rets.reduce((a, b) => a + b, 0) / rets.length;
-      out[key] = Math.sqrt(rets.reduce((s, x) => s + (x - m) ** 2, 0) / rets.length);
+      const sigma = Math.sqrt(rets.reduce((s, x) => s + (x - m) ** 2, 0) / rets.length);
+      // PLANCHER : un historique court en période calme sous-estime σ de moitié
+      // (constaté 2026-07-09 : EUR/USD « envolée » à +0.42%). On ne descend
+      // jamais sous la moitié du σ typique de l'actif.
+      out[key] = Math.max(sigma, (FALLBACK_SIGMA[key] ?? 1.5) * 0.5);
     } else out[key] = FALLBACK_SIGMA[key] ?? 1.5;
   }
   return out;
@@ -135,6 +139,17 @@ function formatUser(traj, vols) {
     lines.push(`\n# CATALYSEURS IMMINENTS (≤3j)\n- ` + traj.signals.catalyseurs.map((c) => `${c.date} : ${c.evenement}`).join("\n- "));
   }
   if (traj.signals?.changements?.length) lines.push(`\n# CE QUI A CHANGÉ\n- ` + traj.signals.changements.join("\n- "));
+  // Sections perdues lors de la migration courbes → prévisions (constaté
+  // 2026-07-09 : « or baisse » prédit avec un conflit Iran/US actif — la
+  // lecture géopolitique du verdict n'était plus transmise au modèle).
+  if (traj.signals?.divergences?.length) lines.push(`\n# DIVERGENCES CROSS-MARKET\n- ` + traj.signals.divergences.join("\n- "));
+  if (traj.signals?.alertes?.length) lines.push(`\n# ALERTES\n- ` + traj.signals.alertes.join("\n- "));
+  if (traj.signals?.geopolitique) {
+    lines.push(
+      `\n# GÉOPOLITIQUE (lecture du dernier verdict)\n${traj.signals.geopolitique}\n` +
+        `Rappel : un stress géopolitique ÉLEVÉ ou qui s'aggrave soutient les REFUGES (or, dollar) et pèse sur le risque — ne prédis pas une baisse de l'or avec un conflit actif sans moteur précis qui la justifie.`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -240,6 +255,61 @@ export async function evaluatePrevision(record) {
     record.outcome = { evaluatedAt: Date.now() };
   }
   return { record, evaluated };
+}
+
+// ---- Post-mortem (autopsie publique des prévisions ratées) ------------------
+
+// Les providers forcent response_format json_object : le paragraphe est
+// donc demandé DANS un objet JSON (pas de texte brut possible par ce chemin).
+const AUTOPSY_SYSTEM = `Tu es un analyste quantitatif qui rédige le post-mortem PUBLIC d'une prévision de la veille. On te donne, par actif, la classe prédite (avec la raison d'origine) contre le réalisé, plus le contexte du jour écoulé. Explique POURQUOI les prévisions ratées ont raté : cite le moteur concret qui a joué (événement, flux, extrême contrarian, catalyseur) et ce que la raison d'origine avait sous-estimé. Factuel, pas d'excuses, pas de promesses. En français.
+Réponds UNIQUEMENT par un objet JSON valide : {"texte": "un seul paragraphe de 2 à 4 phrases couvrant l'essentiel — pas un commentaire par actif, pas de liste"}.`;
+
+/**
+ * Post-mortem LLM d'un record ENTIÈREMENT évalué : pourquoi les ratés ont raté.
+ * Narratif seulement — n'influence aucune règle (protocole anti-overfitting).
+ * Renvoie { texte, provider, ts } ou null (tout exact, ou LLM indisponible).
+ */
+export async function autopsyPrevision(record) {
+  const rates = (record.actifs ?? []).filter((a) => a.realise && a.realise.resultat !== "exact");
+  if (!rates.length) return null;
+  const lines = [`# PRÉVISION ÉMISE LE ${new Date(record.baseTs).toISOString().slice(0, 16).replace("T", " ")} — PRÉDIT vs RÉALISÉ 24h`];
+  for (const a of record.actifs) {
+    if (!a.realise) continue;
+    lines.push(
+      `- ${a.actif} : prédit ${a.classe} (conviction ${a.conviction ?? "?"}) → réalisé ${a.realise.classe} (${a.realise.retPct > 0 ? "+" : ""}${a.realise.retPct}%) — ${a.realise.resultat}` +
+        (a.raison ? ` · raison d'origine : ${a.raison}` : ""),
+    );
+  }
+  // Contexte du jour écoulé : même lecture que la génération (best-effort).
+  try {
+    const traj = await buildTrajectory(2 * 86400000);
+    const s = traj.signals ?? {};
+    if (s.changements?.length) lines.push(`\n# CE QUI A CHANGÉ SUR LA FENÊTRE\n- ` + s.changements.join("\n- "));
+    if (s.alertes?.length) lines.push(`\n# ALERTES\n- ` + s.alertes.join("\n- "));
+    if (s.geopolitique) lines.push(`\n# GÉOPOLITIQUE\n${s.geopolitique}`);
+  } catch {
+    /* le post-mortem reste possible sans contexte */
+  }
+  for (const p of getProviderChain()) {
+    try {
+      const raw = await p.complete({ system: AUTOPSY_SYSTEM, user: lines.join("\n"), timeout: 60000 });
+      const parsed = parseJsonLoose(raw);
+      let texte = typeof parsed?.texte === "string" ? parsed.texte.trim() : "";
+      // Rattrapage : modèle qui répond {actif: phrase, …} malgré la consigne
+      // (constaté 2026-07-09 avec DeepSeek) → on aplatit en paragraphe.
+      if (!texte && parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        texte = Object.entries(parsed)
+          .filter(([, v]) => typeof v === "string" && v.trim())
+          .map(([k, v]) => `${k} : ${v.trim()}`)
+          .join(" ");
+      }
+      texte = texte.slice(0, 900);
+      if (texte) return { texte, provider: p.name, ts: Date.now() };
+    } catch (err) {
+      logger.warn(`[prevision] autopsie "${p.name}" en échec → fournisseur suivant (${err.message})`);
+    }
+  }
+  return null;
 }
 
 // Rodage : le front ne montre le track record qu'à partir de ~7 jours

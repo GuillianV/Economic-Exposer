@@ -11,7 +11,7 @@ import {
   loadLatestPrevision,
 } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
-import { projectPrevisions, evaluatePrevision } from "./prevision.js";
+import { projectPrevisions, evaluatePrevision, autopsyPrevision } from "./prevision.js";
 import { detectChanges, formatChange, calendarToday } from "./triggers.js";
 import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
 
@@ -122,6 +122,13 @@ export async function evaluateDuePrevisions({ force = false } = {}) {
       if (rec.outcome) continue;
       const { evaluated } = await evaluatePrevision(rec);
       if (evaluated) {
+        // Post-mortem public des ratés, UNE fois, quand tout est évalué.
+        // Best-effort : si le LLM échoue, le record part sans autopsie
+        // (pas de retry — outcome posé, la boucle ne repassera pas ici).
+        if (rec.outcome && !rec.autopsie) {
+          const autopsie = await autopsyPrevision(rec).catch(() => null);
+          if (autopsie) rec.autopsie = autopsie;
+        }
         await savePrevision(rec); // même baseTs → réécrit le même fichier
         done++;
       }

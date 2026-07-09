@@ -384,6 +384,12 @@ export function createApp() {
     wrap(async (req, res) => {
       const since = parseSince(req.query.since, 30);
       const limit = Number(req.query.limit) || 100;
+      // full=1 : records complets (le graph "prédit vs réel" du Reader en a
+      // besoin — un aller-retour par ts serait un N+1 côté client).
+      if (req.query.full === "1") {
+        const records = await loadPrevisionsSince(since);
+        return res.json({ count: records.length, items: records.slice(-limit) });
+      }
       const list = await listPrevisions(since);
       res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
     }),
