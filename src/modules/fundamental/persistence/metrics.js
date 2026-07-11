@@ -7,159 +7,182 @@
  * Chaque entrée = un accès défensif (optional chaining) -> null si la source
  * est stale/absente. L'ordre/les clés sont stables = format de stockage figé.
  */
-export function extractMetrics(state) {
-  const a = state?.axes ?? {};
-  const sentiment = a.sentiment ?? {};
-  const macro = a.macro ?? {};
-  const liquidity = a.liquidity?.liquidity ?? {};
-  const commodities = a.commodities?.commodities ?? {};
-  const metals = a.commodities?.metals ?? {};
-  const markets = a.markets?.markets ?? {};
-  const cot = a.positioning?.["cftc-cot"] ?? {};
-  const structure = a.structure?.coingecko ?? {};
-  const etf = a.structure?.["etf-flows"] ?? {};
-  const defillama = a.onchain?.defillama ?? {};
-  const chain = a.onchain?.["blockchain-info"] ?? {};
-  const mempool = a.onchain?.mempool ?? {};
-  const gdelt = a.geopolitics?.gdelt ?? {};
-  const acled = a.geopolitics?.acled ?? {};
 
-  const fg = sentiment["fear-greed"] ?? {};
-  const fut = sentiment["binance-futures"] ?? {};
-  const eth = fut.eth ?? {};
-  const sol = fut.sol ?? {};
-  const bnb = fut.bnb ?? {};
-  const xrp = fut.xrp ?? {};
+/**
+ * Garde un nombre fini, sinon null.
+ * @param {*} value Valeur candidate.
+ * @returns {number|null} Nombre fini ou null.
+ */
+function toFiniteNumber(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Spread 2Y − Fed Funds arrondi à 2 décimales : > 0 = le marché ne price PAS
+ * de baisses (voire des hausses/prime) ; < 0 = baisses pricées.
+ * @param {object} fred Bloc FRED du world-state.
+ * @returns {number|null} Spread en points, ou null si une jambe manque.
+ */
+function policySpread(fred) {
+  const yield2y = toFiniteNumber(fred.yield2y?.value);
+  const fedFunds = toFiniteNumber(fred.fedFunds?.value);
+  if (yield2y == null || fedFunds == null) return null;
+  return Math.round((yield2y - fedFunds) * 100) / 100;
+}
+
+/**
+ * Aplati un world-state en métriques numériques stables (clés figées).
+ * @param {object} state World-state complet ({ axes, … }).
+ * @returns {object} Dictionnaire { métrique: nombre|null } — mêmes clés à
+ *   chaque appel (format de stockage).
+ */
+export function extractMetrics(state) {
+  const axes = state?.axes ?? {};
+  const sentiment = axes.sentiment ?? {};
+  const macro = axes.macro ?? {};
+  const liquidity = axes.liquidity?.liquidity ?? {};
+  const commodities = axes.commodities?.commodities ?? {};
+  const metals = axes.commodities?.metals ?? {};
+  const markets = axes.markets?.markets ?? {};
+  const cot = axes.positioning?.["cftc-cot"] ?? {};
+  const structure = axes.structure?.coingecko ?? {};
+  const etf = axes.structure?.["etf-flows"] ?? {};
+  const defillama = axes.onchain?.defillama ?? {};
+  const chain = axes.onchain?.["blockchain-info"] ?? {};
+  const mempool = axes.onchain?.mempool ?? {};
+  const gdelt = axes.geopolitics?.gdelt ?? {};
+  const acled = axes.geopolitics?.acled ?? {};
+
+  const fearGreed = sentiment["fear-greed"] ?? {};
+  const futures = sentiment["binance-futures"] ?? {};
+  const eth = futures.eth ?? {};
+  const sol = futures.sol ?? {};
+  const bnb = futures.bnb ?? {};
+  const xrp = futures.xrp ?? {};
   const deribit = sentiment.deribit ?? {};
   const fred = macro.fred ?? {};
-  const cotMk = cot.markets ?? {};
-
-  const num = (v) => (Number.isFinite(v) ? v : null);
+  const cotMarkets = cot.markets ?? {};
 
   return {
     // sentiment
-    fearGreed: num(fg.value),
-    funding: num(fut.lastFundingRate),
-    openInterest: num(fut.openInterest),
-    btcPrice: num(fut.markPrice) ?? num(chain.marketPriceUsd),
-    dvol: num(deribit.dvol),
-    btcSkew: num(deribit.btc?.skew),
-    btcPutCall: num(deribit.btc?.putCallOI),
-    ethDvol: num(deribit.eth?.dvol),
-    ethSkew: num(deribit.eth?.skew),
-    ethPutCall: num(deribit.eth?.putCallOI),
+    fearGreed: toFiniteNumber(fearGreed.value),
+    funding: toFiniteNumber(futures.lastFundingRate),
+    openInterest: toFiniteNumber(futures.openInterest),
+    btcPrice: toFiniteNumber(futures.markPrice) ?? toFiniteNumber(chain.marketPriceUsd),
+    dvol: toFiniteNumber(deribit.dvol),
+    btcSkew: toFiniteNumber(deribit.btc?.skew),
+    btcPutCall: toFiniteNumber(deribit.btc?.putCallOI),
+    ethDvol: toFiniteNumber(deribit.eth?.dvol),
+    ethSkew: toFiniteNumber(deribit.eth?.skew),
+    ethPutCall: toFiniteNumber(deribit.eth?.putCallOI),
     // positionnement de la foule (Binance long/short BTC)
-    longShortAccountRatio: num(fut.longShortAccountRatio),
-    topTraderPositionRatio: num(fut.topPositionRatio),
-    btcBasisAnnualized: num(fut.basis?.annualizedPct), // basis trimestriel annualisé (%) — levier/demande spéculative
+    longShortAccountRatio: toFiniteNumber(futures.longShortAccountRatio),
+    topTraderPositionRatio: toFiniteNumber(futures.topPositionRatio),
+    btcBasisAnnualized: toFiniteNumber(futures.basis?.annualizedPct), // basis trimestriel annualisé (%) — levier/demande spéculative
     // ETH / SOL (breadth crypto)
-    ethPrice: num(eth.markPrice),
-    ethFunding: num(eth.lastFundingRate),
-    ethOpenInterest: num(eth.openInterest),
-    solPrice: num(sol.markPrice),
-    solFunding: num(sol.lastFundingRate),
-    solOpenInterest: num(sol.openInterest),
-    bnbPrice: num(bnb.markPrice),
-    bnbFunding: num(bnb.lastFundingRate),
-    xrpPrice: num(xrp.markPrice),
-    xrpFunding: num(xrp.lastFundingRate),
+    ethPrice: toFiniteNumber(eth.markPrice),
+    ethFunding: toFiniteNumber(eth.lastFundingRate),
+    ethOpenInterest: toFiniteNumber(eth.openInterest),
+    solPrice: toFiniteNumber(sol.markPrice),
+    solFunding: toFiniteNumber(sol.lastFundingRate),
+    solOpenInterest: toFiniteNumber(sol.openInterest),
+    bnbPrice: toFiniteNumber(bnb.markPrice),
+    bnbFunding: toFiniteNumber(bnb.lastFundingRate),
+    xrpPrice: toFiniteNumber(xrp.markPrice),
+    xrpFunding: toFiniteNumber(xrp.lastFundingRate),
     // positionnement (CFTC COT) — BTC + multi-actifs (net spéculatif)
-    cotHedgeFundsNet: num(cot.hedgeFundsNet),
-    cotAssetMgrNet: num(cot.assetMgrNet),
-    cotOpenInterest: num(cot.openInterest),
-    cotEurNet: num(cotMk.eurFx?.specNet),
-    cotJpyNet: num(cotMk.jpy?.specNet),
-    cotGbpNet: num(cotMk.gbp?.specNet),
-    cotSp500Net: num(cotMk.sp500?.specNet),
-    cotNasdaqNet: num(cotMk.nasdaq?.specNet),
-    cotGoldNet: num(cotMk.gold?.specNet),
-    cotWtiNet: num(cotMk.wti?.specNet),
+    cotHedgeFundsNet: toFiniteNumber(cot.hedgeFundsNet),
+    cotAssetMgrNet: toFiniteNumber(cot.assetMgrNet),
+    cotOpenInterest: toFiniteNumber(cot.openInterest),
+    cotEurNet: toFiniteNumber(cotMarkets.eurFx?.specNet),
+    cotJpyNet: toFiniteNumber(cotMarkets.jpy?.specNet),
+    cotGbpNet: toFiniteNumber(cotMarkets.gbp?.specNet),
+    cotSp500Net: toFiniteNumber(cotMarkets.sp500?.specNet),
+    cotNasdaqNet: toFiniteNumber(cotMarkets.nasdaq?.specNet),
+    cotGoldNet: toFiniteNumber(cotMarkets.gold?.specNet),
+    cotWtiNet: toFiniteNumber(cotMarkets.wti?.specNet),
     // macro
-    m2: num(fred.m2?.value),
-    dxy: num(fred.dollarIndex?.value),
-    eurusd: num(fred.eurusd?.value),
-    usdjpy: num(fred.usdjpy?.value),
-    brlusd: num(fred.brlusd?.value),
-    mxnusd: num(fred.mxnusd?.value),
-    inrusd: num(fred.inrusd?.value),
-    zarusd: num(fred.zarusd?.value),
-    usdcny: num(fred.usdcny?.value), // yuan : dévaluation = stress/dévaluation compétitive Chine
-    yield2y: num(fred.yield2y?.value),
-    yield10y: num(fred.yield10y?.value),
-    realYield10y: num(fred.realYield10y?.value),
-    breakeven10y: num(fred.breakeven10y?.value),
-    yieldCurve: num(fred.yieldCurve?.value),
-    fedFunds: num(fred.fedFunds?.value),
-    sofr: num(fred.sofr?.value),
-    mortgage30y: num(fred.mortgage30y?.value),
-    highYieldSpread: num(fred.highYieldSpread?.value),
-    financialConditions: num(fred.financialConditions?.value),
-    financialStress: num(fred.financialStress?.value),
-    policyUncertainty: num(fred.policyUncertainty?.value),
-    cpi: num(fred.cpi?.value),
-    cpiYoY: num(fred.cpi?.yoy), // inflation en RYTHME annuel (le niveau seul est un non-signal)
-    pce: num(fred.pce?.value),
-    pceYoY: num(fred.pce?.yoy),
-    m2YoY: num(fred.m2?.yoy),
-    retailSales: num(fred.retailSales?.value),
-    retailSalesYoY: num(fred.retailSales?.yoy),
-    // Attentes de politique monétaire (dérivée) : 2Y − Fed Funds. > 0 = le marché
-    // ne price PAS de baisses (voire des hausses/prime) ; < 0 = baisses pricées.
-    policySpread2y:
-      num(fred.yield2y?.value) != null && num(fred.fedFunds?.value) != null
-        ? Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100
-        : null,
-    consumerSentiment: num(fred.consumerSentiment?.value),
-    unemployment: num(fred.unemployment?.value),
-    initialClaims: num(fred.initialClaims?.value), // hebdo — signal récession temps réel
+    m2: toFiniteNumber(fred.m2?.value),
+    dxy: toFiniteNumber(fred.dollarIndex?.value),
+    eurusd: toFiniteNumber(fred.eurusd?.value),
+    usdjpy: toFiniteNumber(fred.usdjpy?.value),
+    brlusd: toFiniteNumber(fred.brlusd?.value),
+    mxnusd: toFiniteNumber(fred.mxnusd?.value),
+    inrusd: toFiniteNumber(fred.inrusd?.value),
+    zarusd: toFiniteNumber(fred.zarusd?.value),
+    usdcny: toFiniteNumber(fred.usdcny?.value), // yuan : dévaluation = stress/dévaluation compétitive Chine
+    yield2y: toFiniteNumber(fred.yield2y?.value),
+    yield10y: toFiniteNumber(fred.yield10y?.value),
+    realYield10y: toFiniteNumber(fred.realYield10y?.value),
+    breakeven10y: toFiniteNumber(fred.breakeven10y?.value),
+    yieldCurve: toFiniteNumber(fred.yieldCurve?.value),
+    fedFunds: toFiniteNumber(fred.fedFunds?.value),
+    sofr: toFiniteNumber(fred.sofr?.value),
+    mortgage30y: toFiniteNumber(fred.mortgage30y?.value),
+    highYieldSpread: toFiniteNumber(fred.highYieldSpread?.value),
+    financialConditions: toFiniteNumber(fred.financialConditions?.value),
+    financialStress: toFiniteNumber(fred.financialStress?.value),
+    policyUncertainty: toFiniteNumber(fred.policyUncertainty?.value),
+    cpi: toFiniteNumber(fred.cpi?.value),
+    cpiYoY: toFiniteNumber(fred.cpi?.yoy), // inflation en RYTHME annuel (le niveau seul est un non-signal)
+    pce: toFiniteNumber(fred.pce?.value),
+    pceYoY: toFiniteNumber(fred.pce?.yoy),
+    m2YoY: toFiniteNumber(fred.m2?.yoy),
+    retailSales: toFiniteNumber(fred.retailSales?.value),
+    retailSalesYoY: toFiniteNumber(fred.retailSales?.yoy),
+    policySpread2y: policySpread(fred),
+    consumerSentiment: toFiniteNumber(fred.consumerSentiment?.value),
+    unemployment: toFiniteNumber(fred.unemployment?.value),
+    initialClaims: toFiniteNumber(fred.initialClaims?.value), // hebdo — signal récession temps réel
 
-    foodPriceIndex: num(fred.foodPriceIndex?.value),
+    foodPriceIndex: toFiniteNumber(fred.foodPriceIndex?.value),
     // liquidité (Md$) — driver clé : Fed nette + globale (Fed+BCE+BoJ)
-    netLiquidity: num(liquidity.netLiquidity?.value),
-    fedBalanceSheet: num(liquidity.fedBalanceSheet?.value),
-    reverseRepo: num(liquidity.reverseRepo?.value),
-    tga: num(liquidity.tga?.value),
-    ecbAssets: num(liquidity.ecbAssets?.value),
-    bojAssets: num(liquidity.bojAssets?.value),
-    globalLiquidity: num(liquidity.globalLiquidity?.value),
+    netLiquidity: toFiniteNumber(liquidity.netLiquidity?.value),
+    fedBalanceSheet: toFiniteNumber(liquidity.fedBalanceSheet?.value),
+    reverseRepo: toFiniteNumber(liquidity.reverseRepo?.value),
+    tga: toFiniteNumber(liquidity.tga?.value),
+    ecbAssets: toFiniteNumber(liquidity.ecbAssets?.value),
+    bojAssets: toFiniteNumber(liquidity.bojAssets?.value),
+    globalLiquidity: toFiniteNumber(liquidity.globalLiquidity?.value),
     // commodités
-    wtiOil: num(commodities.wtiOil?.value),
-    brentOil: num(commodities.brentOil?.value),
-    natGas: num(commodities.natGas?.value),
-    copper: num(commodities.copper?.value),
-    wheat: num(commodities.wheat?.value),
-    gold: num(metals.gold?.value),
-    silver: num(metals.silver?.value),
+    wtiOil: toFiniteNumber(commodities.wtiOil?.value),
+    brentOil: toFiniteNumber(commodities.brentOil?.value),
+    natGas: toFiniteNumber(commodities.natGas?.value),
+    copper: toFiniteNumber(commodities.copper?.value),
+    wheat: toFiniteNumber(commodities.wheat?.value),
+    gold: toFiniteNumber(metals.gold?.value),
+    silver: toFiniteNumber(metals.silver?.value),
     // marchés TradFi (cross-market)
-    sp500: num(markets.sp500?.value),
-    nasdaq: num(markets.nasdaq?.value),
-    djia: num(markets.djia?.value),
-    vix: num(markets.vix?.value),
-    cboeSkew: num(markets.cboeSkew?.value),
-    move: num(markets.move?.value), // vol implicite Treasuries — le "VIX des taux"
+    sp500: toFiniteNumber(markets.sp500?.value),
+    nasdaq: toFiniteNumber(markets.nasdaq?.value),
+    djia: toFiniteNumber(markets.djia?.value),
+    vix: toFiniteNumber(markets.vix?.value),
+    cboeSkew: toFiniteNumber(markets.cboeSkew?.value),
+    move: toFiniteNumber(markets.move?.value), // vol implicite Treasuries — le "VIX des taux"
     // structure crypto
-    btcDominance: num(structure.btcDominance),
-    btcEtfFlowUsdM: num(etf.btc?.dayFlowUsdM), // flux net ETF spot BTC du dernier jour (M$)
-    btcEtfFlow7dUsdM: num(etf.btc?.flow7dUsdM),
-    ethEtfFlowUsdM: num(etf.eth?.dayFlowUsdM),
-    ethEtfFlow7dUsdM: num(etf.eth?.flow7dUsdM),
-    ethBtcRatio: num(structure.ethBtcRatio),
-    totalMarketCapUsd: num(structure.totalMarketCapUsd),
-    totalVolume24hUsd: num(structure.totalVolume24hUsd),
-    altMarketCapUsd: num(structure.altMarketCapUsd),
-    total3MarketCapUsd: num(structure.total3MarketCapUsd),
+    btcDominance: toFiniteNumber(structure.btcDominance),
+    btcEtfFlowUsdM: toFiniteNumber(etf.btc?.dayFlowUsdM), // flux net ETF spot BTC du dernier jour (M$)
+    btcEtfFlow7dUsdM: toFiniteNumber(etf.btc?.flow7dUsdM),
+    ethEtfFlowUsdM: toFiniteNumber(etf.eth?.dayFlowUsdM),
+    ethEtfFlow7dUsdM: toFiniteNumber(etf.eth?.flow7dUsdM),
+    ethBtcRatio: toFiniteNumber(structure.ethBtcRatio),
+    totalMarketCapUsd: toFiniteNumber(structure.totalMarketCapUsd),
+    totalVolume24hUsd: toFiniteNumber(structure.totalVolume24hUsd),
+    altMarketCapUsd: toFiniteNumber(structure.altMarketCapUsd),
+    total3MarketCapUsd: toFiniteNumber(structure.total3MarketCapUsd),
     // on-chain
-    totalTvlUsd: num(defillama.totalTvlUsd),
-    stablecoinMcapUsd: num(defillama.stablecoinMcapUsd),
-    hashRate: num(chain.hashRate),
-    txCount24h: num(chain.nTx),
-    mempoolFeeFast: num(mempool.feeFast),
-    mempoolCount: num(mempool.mempoolCount),
+    totalTvlUsd: toFiniteNumber(defillama.totalTvlUsd),
+    stablecoinMcapUsd: toFiniteNumber(defillama.stablecoinMcapUsd),
+    hashRate: toFiniteNumber(chain.hashRate),
+    txCount24h: toFiniteNumber(chain.nTx),
+    mempoolFeeFast: toFiniteNumber(mempool.feeFast),
+    mempoolCount: toFiniteNumber(mempool.mempoolCount),
     // géopolitique (volumes = proxy d'intensité)
-    gdeltHeadlines: num(gdelt.headlineCount),
-    acledEvents: num(acled.totalEvents),
-    acledFatalities: num(acled.totalFatalities),
+    gdeltHeadlines: toFiniteNumber(gdelt.headlineCount),
+    acledEvents: toFiniteNumber(acled.totalEvents),
+    acledFatalities: toFiniteNumber(acled.totalFatalities),
   };
 }
 
+/** Clés stables du format de stockage (dérivées d'une extraction à vide). */
 export const METRIC_KEYS = Object.keys(extractMetrics({}));
