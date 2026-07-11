@@ -1,26 +1,26 @@
 import { logger } from "../logs/index.js";
+import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
+import { CftcCotCollector } from "./collectors/cftc-cot.js";
+import { CoinGeckoCollector } from "./collectors/coingecko.js";
+import { CommoditiesCollector } from "./collectors/commodities.js";
+import { DefiLlamaCollector } from "./collectors/defillama.js";
+import { DeribitCollector } from "./collectors/deribit.js";
+import { EtfFlowsCollector } from "./collectors/etf-flows.js";
 import { FearGreedCollector } from "./collectors/fear-greed.js";
 import { FredCollector } from "./collectors/fred.js";
-import { CoinGeckoCollector } from "./collectors/coingecko.js";
-import { EtfFlowsCollector } from "./collectors/etf-flows.js";
-import { DefiLlamaCollector } from "./collectors/defillama.js";
-import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
-import { OnChainCollector } from "./collectors/onchain.js";
-import { MempoolCollector } from "./collectors/mempool.js";
-import { NewsCollector } from "./collectors/news.js";
-import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
-import { CommoditiesCollector } from "./collectors/commodities.js";
-import { MetalsCollector } from "./collectors/metals.js";
-import { MarketsCollector } from "./collectors/markets.js";
-import { MarketsLiveCollector } from "./collectors/markets-live.js";
-import { LiquidityCollector } from "./collectors/liquidity.js";
 import { GdeltCollector } from "./collectors/gdelt.js";
 import { GoogleNewsCollector } from "./collectors/google-news.js";
-import { DeribitCollector } from "./collectors/deribit.js";
-import { CftcCotCollector } from "./collectors/cftc-cot.js";
+import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
+import { LiquidityCollector } from "./collectors/liquidity.js";
+import { MarketsCollector } from "./collectors/markets.js";
+import { MarketsLiveCollector } from "./collectors/markets-live.js";
+import { MempoolCollector } from "./collectors/mempool.js";
+import { MetalsCollector } from "./collectors/metals.js";
+import { NewsCollector } from "./collectors/news.js";
+import { OnChainCollector } from "./collectors/onchain.js";
 
 /**
- * Liste des collecteurs :
+ * Instancie la liste complète des collecteurs, par axe :
  *   sentiment   : fear-greed, binance-futures, deribit (DVOL)
  *   positioning : cftc-cot (positionnement futures BTC : hedge funds / institutionnels)
  *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), investing-calendar (calendrier riche scrapé, repli FairEconomy interne)
@@ -31,6 +31,7 @@ import { CftcCotCollector } from "./collectors/cftc-cot.js";
  *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC)
  *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
+ * @returns {Array<object>} Collecteurs prêts à l'emploi.
  */
 export function buildCollectors() {
   return [
@@ -63,28 +64,27 @@ export function buildCollectors() {
  * Lance tous les collecteurs en parallèle et assemble un snapshot du
  * "monde", rangé par axe. Une source en panne devient `stale` sans casser
  * le reste.
- *
- * Forme renvoyée :
- * {
- *   ts,
- *   axes: { sentiment:{...}, macro:{...}, onchain:{...}, structure:{...} },
- *   sources: { <name>: { ok, stale, ts, error } },
- *   meta: { total, ok, stale, staleSources: [...] }
- * }
+ * @param {Array<object>} [collectors] Collecteurs à interroger (défaut :
+ *   buildCollectors()).
+ * @returns {Promise<{ts: number, axes: object, sources: object,
+ *   meta: {total: number, ok: number, stale: number,
+ *   staleSources: Array<string>}}>} World-state complet
+ *   (axes = { sentiment: {...}, macro: {...}, … },
+ *   sources = { nom: { ok, stale, ts, error } }).
  */
 export async function getWorldState(collectors = buildCollectors()) {
   const ts = Date.now();
-  const results = await Promise.all(collectors.map((c) => c.collect()));
+  const results = await Promise.all(collectors.map((collector) => collector.collect()));
 
   const axes = {};
   const sources = {};
   const staleSources = [];
 
-  for (const r of results) {
-    const axis = r.axis ?? "misc";
-    (axes[axis] ??= {})[r.source] = r.data;
-    sources[r.source] = { ok: r.ok, stale: r.stale, ts: r.ts, error: r.error };
-    if (r.stale) staleSources.push(r.source);
+  for (const result of results) {
+    const axis = result.axis ?? "misc";
+    (axes[axis] ??= {})[result.source] = result.data;
+    sources[result.source] = { ok: result.ok, stale: result.stale, ts: result.ts, error: result.error };
+    if (result.stale) staleSources.push(result.source);
   }
 
   const state = {

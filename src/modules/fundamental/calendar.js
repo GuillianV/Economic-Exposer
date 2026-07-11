@@ -9,9 +9,13 @@
  */
 
 /**
- * Construit la vue calendrier unifiée depuis une source RICHE (`richSrc` :
- * investing.com ou FairEconomy). Renvoie
- * { rich, provider, currencies, minImpact, events }.
+ * Construit la vue calendrier unifiée depuis une source RICHE (investing.com
+ * ou FairEconomy), events triés chronologiquement.
+ * @param {object|null} richSrc Données du collecteur calendrier
+ *   ({ source, currencies, minImpact, events }).
+ * @returns {{rich: boolean, provider: string, currencies: Array<string>,
+ *   minImpact: string, events: Array<object>}} Vue unifiée (provider "none"
+ *   et events vides si la source n'a rien fourni).
  */
 export function buildCalendar(richSrc) {
   const events = (richSrc?.events || []).slice().sort((a, b) => a.datetime - b.datetime);

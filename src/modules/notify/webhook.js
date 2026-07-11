@@ -16,6 +16,14 @@ import { logger } from "../logs/index.js";
  *
  * TOLÉRANT : un échec d'envoi est loggé en warn et ne casse JAMAIS la boucle.
  */
+const DEFAULT_TIMEOUT_MS = 10000;
+
+/**
+ * POST le payload d'un événement vers WEBHOOK_URL (signé si WEBHOOK_SECRET).
+ * @param {object} event Payload sérialisable (doit porter `type`).
+ * @returns {Promise<{sent: boolean, reason?: string}>} Résultat d'envoi —
+ *   jamais de throw.
+ */
 export async function emitWebhook(event) {
   const url = process.env.WEBHOOK_URL;
   if (!url) return { sent: false, reason: "WEBHOOK_URL absent (push désactivé)" };
@@ -24,13 +32,13 @@ export async function emitWebhook(event) {
   const headers = { "Content-Type": "application/json", "User-Agent": "crypto-fundamental-radar" };
   const secret = process.env.WEBHOOK_SECRET;
   if (secret) {
-    const sig = crypto.createHmac("sha256", secret).update(body).digest("hex");
-    headers["X-Signature-256"] = `sha256=${sig}`;
+    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
+    headers["X-Signature-256"] = `sha256=${signature}`;
   }
 
-  const timeout = Number(process.env.WEBHOOK_TIMEOUT_MS) || 10000;
+  const timeoutMs = Number(process.env.WEBHOOK_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { method: "POST", headers, body, signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -47,6 +55,8 @@ export async function emitWebhook(event) {
 /**
  * URL canonique de la ressource pour le consommateur. Préfixe `API_PUBLIC_URL`
  * (ex. https://macro-api.guillian.net) si défini, sinon chemin relatif.
+ * @param {string} pathname Chemin de la ressource (ex. /api/verdicts/123).
+ * @returns {string} URL absolue ou chemin relatif.
  */
 function resourceUrl(pathname) {
   const base = process.env.API_PUBLIC_URL;
@@ -57,7 +67,10 @@ function resourceUrl(pathname) {
  * Construit le payload webhook à partir d'un record de verdict. Auto-suffisant :
  * un résumé en tête (régime/risque/confiance/résumé/déclencheurs/fraîcheur) +
  * le verdict complet, pour que le consommateur n'ait pas à rappeler l'API.
- * `type` discrimine verdict/courbe ; `url` pointe la ressource.
+ * @param {object} record Record de verdict persisté ({ ts, verdict, triggers,
+ *   dataQuality… }).
+ * @returns {object} Payload webhook (`type` discrimine, `url` pointe la
+ *   ressource).
  */
 export function verdictEvent(record) {
   const v = record.verdict || {};

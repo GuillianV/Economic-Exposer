@@ -1,10 +1,14 @@
-// fa:ai — force une analyse IA MAINTENANT, enregistre snapshot + verdict, et
-// imprime le verdict en JSON pur sur stdout (logs coupés avant tout import).
 import { config } from "dotenv";
 config({ quiet: true });
 process.env.LOG_LEVEL = "silent";
 
-// Debug : --prompt affiche le prompt envoyé au LLM (sans rien enregistrer).
+/**
+ * Harness CLI `fa:ai` : force une analyse IA MAINTENANT, enregistre
+ * snapshot + verdict, et imprime le verdict en JSON pur sur stdout (logs
+ * coupés avant tout import — sortie stdout voulue).
+ *
+ * Option --prompt : affiche le prompt envoyé au LLM, sans rien enregistrer.
+ */
 if (process.argv.includes("--prompt")) {
   const { getWorldState } = await import("./modules/fundamental/index.js");
   const { getTrends } = await import("./modules/fundamental/persistence/scheduler.js");
