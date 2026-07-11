@@ -12,22 +12,28 @@ export class DefiLlamaCollector extends Collector {
     super("defillama", { axis: "onchain" });
   }
 
+  /**
+   * TVL DeFi et offre de stablecoins, en parallèle.
+   * @returns {Promise<{totalTvlUsd: number|null, tvlDate: number|null,
+   *   stablecoinMcapUsd: number|null, stablecoinCount: number}>} TVL (USD),
+   *   date du point TVL (ms epoch), market cap stablecoins (USD), nb d'actifs.
+   */
   async fetchData() {
     const [tvlHistory, stablecoins] = await Promise.all([
       this.getJson("https://api.llama.fi/v2/historicalChainTvl"),
       this.getJson("https://stablecoins.llama.fi/stablecoins?includePrices=false"),
     ]);
 
-    const lastTvl = Array.isArray(tvlHistory) && tvlHistory.length ? tvlHistory[tvlHistory.length - 1] : null;
+    const lastTvlPoint = Array.isArray(tvlHistory) && tvlHistory.length ? tvlHistory[tvlHistory.length - 1] : null;
 
-    const assets = Array.isArray(stablecoins?.peggedAssets) ? stablecoins.peggedAssets : [];
-    const stablecoinMcap = assets.reduce((sum, a) => sum + (a.circulating?.peggedUSD ?? 0), 0);
+    const peggedAssets = Array.isArray(stablecoins?.peggedAssets) ? stablecoins.peggedAssets : [];
+    const stablecoinMcapUsd = peggedAssets.reduce((sum, asset) => sum + (asset.circulating?.peggedUSD ?? 0), 0);
 
     return {
-      totalTvlUsd: lastTvl?.tvl ?? null,
-      tvlDate: lastTvl?.date ? Number(lastTvl.date) * 1000 : null,
-      stablecoinMcapUsd: stablecoinMcap || null,
-      stablecoinCount: assets.length,
+      totalTvlUsd: lastTvlPoint?.tvl ?? null,
+      tvlDate: lastTvlPoint?.date ? Number(lastTvlPoint.date) * 1000 : null,
+      stablecoinMcapUsd: stablecoinMcapUsd || null,
+      stablecoinCount: peggedAssets.length,
     };
   }
 }

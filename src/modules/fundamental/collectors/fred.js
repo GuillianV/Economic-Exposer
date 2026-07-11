@@ -43,44 +43,79 @@ const SERIES = {
 };
 
 // Séries mensuelles en NIVEAU (index/accumulateur) : le niveau seul est un
-// non-signal (toujours au plus haut). On calcule aussi le RYTHME annuel (YoY %),
-// qui est LA lecture macro utile (inflation en rythme, croissance monétaire…).
+// non-signal, on calcule aussi le rythme annuel YoY % (la lecture macro utile).
 const YOY_KEYS = new Set(["cpi", "pce", "m2", "retailSales"]);
+
+// 14 observations mensuelles = de quoi retrouver le même mois un an plus tôt.
+const YOY_OBSERVATION_COUNT = 14;
 
 export class FredCollector extends Collector {
   constructor() {
     super("fred", { axis: "macro" });
   }
 
+  /**
+   * Dernière observation valide d'une série FRED, avec option rythme annuel.
+   * @param {string} seriesId Identifiant de série FRED (ex. "CPIAUCSL").
+   * @param {string} apiKey Clé API FRED.
+   * @param {{ yoy?: boolean }} [options] `yoy` ajoute la variation annuelle en %.
+   * @returns {Promise<{value: number, date: string, yoy?: number|null}|null>}
+   *   Observation la plus récente, ou null si la série est vide.
+   */
   async #latest(seriesId, apiKey, { yoy = false } = {}) {
-    const limit = yoy ? 14 : 1; // 14 obs mensuelles = de quoi trouver le même mois N-1
+    const limit = yoy ? YOY_OBSERVATION_COUNT : 1;
     const url =
       `https://api.stlouisfed.org/fred/series/observations` +
       `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=${limit}`;
     const json = await this.getJson(url);
-    const all = (json?.observations || []).filter((o) => o.value !== ".");
-    const obs = all[0];
-    if (!obs) return null;
-    const res = { value: Number(obs.value), date: obs.date };
+
+    const observations = (json?.observations || []).filter((o) => o.value !== ".");
+    const latest = observations[0];
+    if (!latest) return null;
+
+    const result = { value: Number(latest.value), date: latest.date };
     if (yoy) {
-      // même mois un an plus tôt (match AAAA-MM ; repli : 12e observation)
-      const target = `${Number(obs.date.slice(0, 4)) - 1}${obs.date.slice(4, 7)}`;
-      const prev = all.find((o) => o.date.startsWith(target)) ?? all[12];
-      const pv = prev ? Number(prev.value) : null;
-      res.yoy = pv ? Math.round(((res.value / pv - 1) * 100) * 100) / 100 : null;
+      result.yoy = this.#yearOverYear(observations, result.value);
     }
-    return res;
+    return result;
   }
 
+  /**
+   * Variation annuelle (%) : compare la dernière observation au même mois un
+   * an plus tôt (match AAAA-MM ; repli : 12e observation en arrière).
+   * @param {Array<{value: string, date: string}>} observations Observations
+   *   triées de la plus récente à la plus ancienne.
+   * @param {number} latestValue Valeur de l'observation la plus récente.
+   * @returns {number|null} Variation YoY arrondie à 2 décimales, ou null.
+   */
+  #yearOverYear(observations, latestValue) {
+    const latestDate = observations[0].date;
+    const sameMonthLastYear = `${Number(latestDate.slice(0, 4)) - 1}${latestDate.slice(4, 7)}`;
+    const previous = observations.find((o) => o.date.startsWith(sameMonthLastYear)) ?? observations[12];
+    const previousValue = previous ? Number(previous.value) : null;
+    if (!previousValue) return null;
+
+    const yoyPct = (latestValue / previousValue - 1) * 100;
+    return Math.round(yoyPct * 100) / 100;
+  }
+
+  /**
+   * Récupère toutes les séries en parallèle, tolérant aux pannes par série.
+   * @returns {Promise<object>} Une entrée par clé de SERIES ({value, date,
+   *   yoy?} ou null si la série a échoué).
+   */
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
     const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled(keys.map((k) => this.#latest(SERIES[k], apiKey, { yoy: YOY_KEYS.has(k) })));
+    const settled = await Promise.allSettled(
+      keys.map((k) => this.#latest(SERIES[k], apiKey, { yoy: YOY_KEYS.has(k) })),
+    );
+
     const out = {};
-    keys.forEach((k, i) => {
-      out[k] = settled[i].status === "fulfilled" ? settled[i].value : null;
+    keys.forEach((key, i) => {
+      out[key] = settled[i].status === "fulfilled" ? settled[i].value : null;
     });
     return out;
   }

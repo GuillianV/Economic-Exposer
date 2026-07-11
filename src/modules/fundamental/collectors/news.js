@@ -1,18 +1,15 @@
 import Parser from "rss-parser";
-import { Collector } from "./base.js";
 import { logger } from "../../logs/index.js";
+import { Collector } from "./base.js";
 
 /**
- * Agrégateur de news (Tier 3) — flux RSS/Atom crypto + macro.
+ * Agrégateur de news (Tier 3) — flux RSS/Atom crypto + macro + monde.
  * Sans clé, gratuit. Axe : news.
  *
- * Chaque flux est tolérant : un flux KO n'empêche pas les autres.
- * Le collecteur n'échoue que si AUCUN flux ne répond.
- * Sortie : items normalisés { source, category, title, link, date },
- * dédupliqués (titre+lien) et triés du plus récent au plus ancien.
- *
- * Le bruit/biais des sources (ex. ZeroHedge bearish) est volontairement
- * conservé : c'est l'IA (phase C) qui en tirera le sentiment.
+ * Chaque flux est tolérant : un flux KO n'empêche pas les autres ; le
+ * collecteur n'échoue que si AUCUN flux ne répond. Le bruit/biais des sources
+ * (ex. ZeroHedge bearish) est volontairement conservé : c'est l'IA qui en
+ * tirera le sentiment.
  */
 const FEEDS = [
   // --- Crypto ---
@@ -44,6 +41,10 @@ const FEEDS = [
 ];
 
 export class NewsCollector extends Collector {
+  /**
+   * @param {{ maxItems?: number, perFeedTimeout?: number }} [options] Nombre
+   *   maximal d'items conservés et timeout par flux (ms).
+   */
   constructor({ maxItems = 80, perFeedTimeout = 12000 } = {}) {
     super("news", { axis: "news" });
     this.maxItems = maxItems;
@@ -56,49 +57,62 @@ export class NewsCollector extends Collector {
     });
   }
 
+  /**
+   * Items d'un flux, normalisés.
+   * @param {{name: string, category: string, url: string}} feed Flux à lire.
+   * @returns {Promise<Array<{source: string, category: string, title: string,
+   *   link: string, date: number|null}>>} Items normalisés.
+   */
   async #fetchFeed(feed) {
     const parsed = await this.parser.parseURL(feed.url);
-    return (parsed.items || []).map((it) => {
-      const rawDate = it.isoDate || it.pubDate || null;
+    return (parsed.items || []).map((item) => {
+      const rawDate = item.isoDate || item.pubDate || null;
       const date = rawDate ? new Date(rawDate).getTime() : null;
       return {
         source: feed.name,
         category: feed.category,
-        title: (it.title || "").trim(),
-        link: it.link || it.guid || "",
+        title: (item.title || "").trim(),
+        link: item.link || item.guid || "",
         date: Number.isFinite(date) ? date : null,
       };
     });
   }
 
+  /**
+   * Tous les flux en parallèle, puis déduplication (titre normalisé + lien)
+   * et tri du plus récent au plus ancien.
+   * @returns {Promise<{items: Array<object>, feedCount: number,
+   *   feedsOk: number, totalCollected: number, kept: number, feeds: object}>}
+   *   Items retenus + état par flux ({ok, count, error?}).
+   * @throws {Error} Si AUCUN flux n'a répondu.
+   */
   async fetchData() {
     const feedStatus = {};
-    const all = [];
+    const collected = [];
 
-    const results = await Promise.allSettled(FEEDS.map((f) => this.#fetchFeed(f)));
-    results.forEach((r, i) => {
-      const f = FEEDS[i];
-      if (r.status === "fulfilled") {
-        feedStatus[f.name] = { ok: true, count: r.value.length };
-        all.push(...r.value);
+    const results = await Promise.allSettled(FEEDS.map((feed) => this.#fetchFeed(feed)));
+    results.forEach((result, i) => {
+      const feed = FEEDS[i];
+      if (result.status === "fulfilled") {
+        feedStatus[feed.name] = { ok: true, count: result.value.length };
+        collected.push(...result.value);
       } else {
-        const error = r.reason?.message ?? String(r.reason);
-        feedStatus[f.name] = { ok: false, count: 0, error };
-        logger.warn(`[fundamental] flux RSS "${f.name}" KO : ${error}`);
+        const error = result.reason?.message ?? String(result.reason);
+        feedStatus[feed.name] = { ok: false, count: 0, error };
+        logger.warn(`[fundamental] flux RSS "${feed.name}" KO : ${error}`);
       }
     });
 
-    const okFeeds = Object.values(feedStatus).filter((s) => s.ok).length;
-    if (okFeeds === 0) throw new Error("aucun flux RSS disponible");
+    const feedsOk = Object.values(feedStatus).filter((status) => status.ok).length;
+    if (feedsOk === 0) throw new Error("aucun flux RSS disponible");
 
-    // Déduplication (titre normalisé + lien) puis tri récent -> ancien.
-    const seen = new Set();
+    const seenKeys = new Set();
     const deduped = [];
-    for (const item of all) {
+    for (const item of collected) {
       if (!item.title) continue;
-      const key = `${item.title.toLowerCase()}|${item.link}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const dedupKey = `${item.title.toLowerCase()}|${item.link}`;
+      if (seenKeys.has(dedupKey)) continue;
+      seenKeys.add(dedupKey);
       deduped.push(item);
     }
     deduped.sort((a, b) => (b.date ?? 0) - (a.date ?? 0));
@@ -106,8 +120,8 @@ export class NewsCollector extends Collector {
     return {
       items: deduped.slice(0, this.maxItems),
       feedCount: FEEDS.length,
-      feedsOk: okFeeds,
-      totalCollected: all.length,
+      feedsOk,
+      totalCollected: collected.length,
       kept: Math.min(deduped.length, this.maxItems),
       feeds: feedStatus,
     };

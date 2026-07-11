@@ -1,15 +1,14 @@
 import Parser from "rss-parser";
-import { Collector } from "./base.js";
 import { logger } from "../../logs/index.js";
+import { Collector } from "./base.js";
 
 /**
  * Google News RSS — surveillance thématique ciblée.
  * Sans clé, gratuit. Axe : news.
  *
  * Chaque thème = une requête RSS Google News (fenêtre récente). Permet de
- * cibler des sujets précis qui ne ressortent pas forcément des flux génériques
- * (Fed, régulation crypto, géopolitique, tarifs douaniers...).
- *
+ * cibler des sujets précis qui ne ressortent pas des flux génériques (Fed,
+ * régulation crypto, géopolitique, tarifs douaniers…).
  * Pour ajouter/retirer un thème : éditer THEMES.
  */
 const THEMES = {
@@ -25,11 +24,20 @@ const THEMES = {
   foodSecurity: "global food security crisis",
 };
 
-function gnUrl(query) {
+/**
+ * URL du flux RSS Google News d'une requête (fenêtre de 2 jours).
+ * @param {string} query Requête de recherche.
+ * @returns {string} URL du flux RSS.
+ */
+function googleNewsUrl(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(`${query} when:2d`)}&hl=en-US&gl=US&ceid=US:en`;
 }
 
 export class GoogleNewsCollector extends Collector {
+  /**
+   * @param {{ perThemeMax?: number, perFeedTimeout?: number }} [options]
+   *   Articles gardés par thème et timeout par flux (ms).
+   */
   constructor({ perThemeMax = 6, perFeedTimeout = 12000 } = {}) {
     super("google-news", { axis: "news" });
     this.perThemeMax = perThemeMax;
@@ -39,40 +47,53 @@ export class GoogleNewsCollector extends Collector {
     });
   }
 
+  /**
+   * Articles récents d'un thème, normalisés.
+   * @param {string} query Requête du thème.
+   * @returns {Promise<Array<{title: string, link: string, date: number|null}>>}
+   *   Articles (au plus perThemeMax).
+   */
   async #fetchTheme(query) {
-    const parsed = await this.parser.parseURL(gnUrl(query));
-    return (parsed.items || []).slice(0, this.perThemeMax).map((it) => {
-      const rawDate = it.isoDate || it.pubDate || null;
+    const parsed = await this.parser.parseURL(googleNewsUrl(query));
+    return (parsed.items || []).slice(0, this.perThemeMax).map((item) => {
+      const rawDate = item.isoDate || item.pubDate || null;
       const date = rawDate ? new Date(rawDate).getTime() : null;
       return {
-        title: (it.title || "").trim(),
-        link: it.link || "",
+        title: (item.title || "").trim(),
+        link: item.link || "",
         date: Number.isFinite(date) ? date : null,
       };
     });
   }
 
+  /**
+   * Tous les thèmes en parallèle, tolérant par thème.
+   * @returns {Promise<{themeCount: number, themesOk: number,
+   *   totalItems: number, themes: object}>} Articles par thème (tableau vide
+   *   pour un thème en échec).
+   * @throws {Error} Si AUCUN thème n'a répondu.
+   */
   async fetchData() {
     const keys = Object.keys(THEMES);
-    const results = await Promise.allSettled(keys.map((k) => this.#fetchTheme(THEMES[k])));
+    const results = await Promise.allSettled(keys.map((key) => this.#fetchTheme(THEMES[key])));
 
     const themes = {};
-    let okThemes = 0;
-    let total = 0;
-    results.forEach((r, i) => {
+    let themesOk = 0;
+    let totalItems = 0;
+    results.forEach((result, i) => {
       const key = keys[i];
-      if (r.status === "fulfilled") {
-        themes[key] = r.value;
-        okThemes += 1;
-        total += r.value.length;
+      if (result.status === "fulfilled") {
+        themes[key] = result.value;
+        themesOk += 1;
+        totalItems += result.value.length;
       } else {
         themes[key] = [];
-        logger.warn(`[fundamental] Google News thème "${key}" KO : ${r.reason?.message}`);
+        logger.warn(`[fundamental] Google News thème "${key}" KO : ${result.reason?.message}`);
       }
     });
 
-    if (okThemes === 0) throw new Error("aucun thème Google News disponible");
+    if (themesOk === 0) throw new Error("aucun thème Google News disponible");
 
-    return { themeCount: keys.length, themesOk: okThemes, totalItems: total, themes };
+    return { themeCount: keys.length, themesOk, totalItems, themes };
   }
 }
