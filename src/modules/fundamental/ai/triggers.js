@@ -40,42 +40,64 @@ export const THRESHOLDS = {
   gdeltHeadlines: { type: "abs", value: 8, label: "Volume géopol (GDELT)" },
 };
 
+/**
+ * Compare les métriques courantes à la référence et liste les franchissements
+ * de seuil (THRESHOLDS).
+ * @param {object} current Métriques courantes (extractMetrics).
+ * @param {object|null} ref Métriques au dernier point IA (ai-state).
+ * @returns {Array<{metric: string, label: string, from: number, to: number,
+ *   delta?: number, pct?: number}>} Bascules détectées (delta pour type "abs",
+ *   pct pour type "pct").
+ */
 export function detectChanges(current, ref) {
   if (!ref) return [];
-  const out = [];
+  const changes = [];
   for (const [metric, cfg] of Object.entries(THRESHOLDS)) {
-    const a = current?.[metric];
-    const b = ref?.[metric];
-    if (a == null || b == null) continue;
+    const currentValue = current?.[metric];
+    const refValue = ref?.[metric];
+    if (currentValue == null || refValue == null) continue;
 
     if (cfg.type === "abs") {
-      const delta = a - b;
-      if (Math.abs(delta) >= cfg.value) out.push({ metric, label: cfg.label, from: b, to: a, delta });
+      const delta = currentValue - refValue;
+      if (Math.abs(delta) >= cfg.value) changes.push({ metric, label: cfg.label, from: refValue, to: currentValue, delta });
     } else {
-      if (b === 0) continue;
-      const pct = ((a - b) / Math.abs(b)) * 100;
-      if (Math.abs(pct) >= cfg.value) out.push({ metric, label: cfg.label, from: b, to: a, pct });
+      if (refValue === 0) continue;
+      const pct = ((currentValue - refValue) / Math.abs(refValue)) * 100;
+      if (Math.abs(pct) >= cfg.value) changes.push({ metric, label: cfg.label, from: refValue, to: currentValue, pct });
     }
   }
-  return out;
+  return changes;
 }
 
-export function formatChange(c) {
-  if (c.pct != null) return `${c.label} ${c.pct >= 0 ? "+" : ""}${c.pct.toFixed(2)}%`;
-  return `${c.label} ${c.delta >= 0 ? "+" : ""}${c.delta} (${c.from}→${c.to})`;
+/**
+ * Libellé lisible d'une bascule (pour les logs et le champ triggers).
+ * @param {{label: string, from: number, to: number, delta?: number,
+ *   pct?: number}} change Bascule détectée.
+ * @returns {string} Ex. "Dollar Index +0.62%" ou "Fear & Greed +8 (52→60)".
+ */
+export function formatChange(change) {
+  if (change.pct != null) return `${change.label} ${change.pct >= 0 ? "+" : ""}${change.pct.toFixed(2)}%`;
+  return `${change.label} ${change.delta >= 0 ? "+" : ""}${change.delta} (${change.from}→${change.to})`;
 }
 
-/** Catalyseurs calendaires fort impact tombant aujourd'hui (CPI, NFP, FOMC, etc.). */
+/**
+ * Catalyseurs calendaires fort impact tombant aujourd'hui (CPI, NFP, FOMC…),
+ * dédoublonnés par libellé.
+ * @param {object} state World-state complet (calendrier investing-calendar).
+ * @returns {Array<{name: string, date: string}>} Catalyseurs du jour.
+ */
 export function calendarToday(state) {
   const today = new Date().toISOString().slice(0, 10);
   const events = state?.axes?.macro?.["investing-calendar"]?.events || [];
-  const out = [];
-  for (const e of events) {
-    if (e.date === today && e.impact === "high") {
-      out.push({ name: `${e.country || ""} ${e.event}`.trim(), date: today });
-    }
-  }
-  // Dédoublonnage par libellé.
+
+  const catalysts = [];
   const seen = new Set();
-  return out.filter((e) => (seen.has(e.name) ? false : (seen.add(e.name), true)));
+  for (const event of events) {
+    if (event.date !== today || event.impact !== "high") continue;
+    const name = `${event.country || ""} ${event.event}`.trim();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    catalysts.push({ name, date: today });
+  }
+  return catalysts;
 }

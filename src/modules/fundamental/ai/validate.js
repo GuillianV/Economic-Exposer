@@ -1,13 +1,15 @@
-// Validateur déterministe post-LLM. Applique les garde-fous DURS du prompt
-// système que le modèle peut ignorer (observé sur DeepSeek) :
-//   1. AUCUN objectif de prix (le service "ne prédit pas le prix").
-//   2. AUCUN percentile [pXX/5a] inventé quand la normalisation est absente.
-//   3. Pas d'extrapolation d'une source marquée stale.
-// Le verdict est NETTOYÉ en place (redaction des 1 et 2) et les manquements
-// sont retournés pour journalisation/qualité (le 3 est signalé, pas réécrit —
-// trop risqué de mutiler la prose).
+/**
+ * Validateur déterministe post-LLM. Applique les garde-fous DURS du prompt
+ * système que le modèle peut ignorer (observé sur DeepSeek) :
+ *   1. AUCUN objectif de prix (le service "ne prédit pas le prix").
+ *   2. AUCUN percentile [pXX/5a] inventé quand la normalisation est absente.
+ *   3. Pas d'extrapolation d'une source marquée stale.
+ * Le verdict est NETTOYÉ en place (redaction des 1 et 2) et les manquements
+ * sont retournés pour journalisation/qualité (le 3 est signalé, pas réécrit —
+ * trop risqué de mutiler la prose).
+ */
 
-// --- Détecteurs (1) objectifs de prix ---------------------------------------
+// Détecteurs (1) objectifs de prix.
 // Fourchette type "55k-62k" / "55 k à 62 k" / "57k et 60k".
 const PRICE_RANGE = /\b\d{2,3}\s?k\s?(?:[-–]|à|et|and)\s?\d{2,3}\s?k\b/gi;
 // Exclusions communes aux nombres EN CLAIR (4-6 chiffres) : pas une année 20xx,
@@ -33,7 +35,7 @@ const PRICE_DOLLAR = /\$\s?\d{2,3}[\s.,]\d{3}\b/g;
 
 const PRICE_MARK = "[objectif de prix retiré]";
 
-// --- Détecteur (2) percentile -----------------------------------------------
+// Détecteur (2) percentile.
 // Token "p53", "p53/5a", "p>95", "p<10", "p 53 / 5a". `p` MINUSCULE uniquement
 // et non précédé d'une lettre, pour ne PAS attraper le "P" de "S&P500".
 const PCT_TOKEN = /(?<![A-Za-zÀ-ÿ])p\s?[<>≥≤]?\s?\d{1,3}(?:\s?\/\s?5\s?a)?/g;
@@ -49,35 +51,52 @@ const STALE_AXIS = {
   gdelt: "geopolitique",
 };
 
-/** Applique `fn` à chaque chaîne-feuille de `node` (mutation en place). */
+/**
+ * Applique `fn` à chaque chaîne-feuille de `node` et remplace la feuille par
+ * le retour de `fn`.
+ * @mutates node — les chaînes-feuilles sont remplacées en place.
+ * @param {*} node Nœud à parcourir (objet, tableau ou feuille).
+ * @param {Function} fn Transformation (string) => string.
+ * @returns {string|undefined} La chaîne transformée quand `node` est une
+ *   feuille (remplacée par le parent), undefined sinon.
+ */
 function walkStrings(node, fn) {
-  if (typeof node === "string") return fn(node); // remplacée par le parent
+  if (typeof node === "string") return fn(node);
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) {
-      const r = walkStrings(node[i], fn);
-      if (typeof node[i] === "string" && r !== undefined) node[i] = r;
+      const replaced = walkStrings(node[i], fn);
+      if (typeof node[i] === "string" && replaced !== undefined) node[i] = replaced;
     }
   } else if (node && typeof node === "object") {
-    for (const k of Object.keys(node)) {
-      const r = walkStrings(node[k], fn);
-      if (typeof node[k] === "string" && r !== undefined) node[k] = r;
+    for (const key of Object.keys(node)) {
+      const replaced = walkStrings(node[key], fn);
+      if (typeof node[key] === "string" && replaced !== undefined) node[key] = replaced;
     }
   }
   return undefined;
 }
 
-/** True si AU MOINS une métrique des tendances porte un rang percentile. */
+/**
+ * True si AU MOINS une métrique des tendances porte un rang percentile.
+ * @param {object} trends Tendances (getTrends).
+ * @returns {boolean} Présence d'une normalisation.
+ */
 function hasAnyPctRank(trends) {
-  const m = trends?.metrics;
-  if (!m) return false;
-  return Object.values(m).some((v) => v && v.pctRank != null);
+  const metrics = trends?.metrics;
+  if (!metrics) return false;
+  return Object.values(metrics).some((metric) => metric && metric.pctRank != null);
 }
 
 /**
- * Valide et NETTOIE un verdict en place.
- * @param {object} verdict - objet verdict parsé (muté en place)
- * @param {{ state?: object, trends?: object, previous?: object }} ctx
- * @returns {Array<{type:string, count?:number, sample?:string, axis?:string}>} manquements
+ * Valide et NETTOIE un verdict.
+ * @mutates verdict — les objectifs de prix et percentiles inventés sont
+ *   remplacés en place (redaction) ; les autres manquements sont signalés seuls.
+ * @param {object} verdict Objet verdict parsé.
+ * @param {{ state?: object, trends?: object, previous?: object }} [ctx]
+ *   World-state (sources stale), tendances (normalisation) et verdict
+ *   précédent (contrôles d'hystérésis).
+ * @returns {Array<{type: string, count?: number, sample?: string,
+ *   axis?: string}>} Manquements relevés (vide si verdict propre).
  */
 export function validateVerdict(verdict, { state, trends, previous } = {}) {
   const violations = [];

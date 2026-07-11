@@ -1,7 +1,7 @@
 import { logger } from "../../logs/index.js";
-import { getProviderChain, parseJsonLoose } from "./analyst.js";
 import { loadMetricsSince } from "../persistence/store.js";
-import { buildTrajectory, ASSETS, r2 } from "./curve.js";
+import { getProviderChain, parseJsonLoose } from "./analyst.js";
+import { ASSETS, buildTrajectory, r2 } from "./curve.js";
 
 /**
  * PRÉVISIONS DIRECTIONNELLES 24h — remplace les courbes de prix chiffrées.
@@ -21,6 +21,22 @@ import { buildTrajectory, ASSETS, r2 } from "./curve.js";
 export const CLASSES = ["envolee", "hausse", "calme", "baisse", "decrochage"];
 const CLASS_INDEX = new Map(CLASSES.map((c, i) => [c, i]));
 
+const HOUR_MS = 3600000;
+const DAY_MS = 86400000;
+const HORIZON_HOURS = 24;
+const VOL_LOOKBACK_MS = 32 * DAY_MS;
+const MIN_RETURN_SAMPLES = 8; // sous 8 rendements quotidiens, σ mesuré non fiable → repli
+const SIGMA_FLOOR_FACTOR = 0.5;
+const DEFAULT_SIGMA_PCT = 1.5; // σ quotidien par défaut (%) pour un actif hors FALLBACK_SIGMA
+const TRAJECTORY_WINDOW_MS = 7 * DAY_MS;
+const PREVISION_TIMEOUT_MS = 90000;
+const RAISON_MAX_CHARS = 280;
+const PRICE_MATCH_TOL_MS = 6 * HOUR_MS;
+const AUTOPSY_CONTEXT_WINDOW_MS = 2 * DAY_MS;
+const AUTOPSY_TIMEOUT_MS = 60000;
+const AUTOPSY_MAX_CHARS = 900;
+const RODAGE_JOURS = 7;
+
 const DISCLAIMER =
   "Prévision directionnelle IA à 24h, évaluée publiquement contre le réalisé le " +
   "lendemain. PAS un conseil financier : même un bon système se trompe souvent — " +
@@ -34,41 +50,62 @@ const FALLBACK_SIGMA = {
   gold: 0.9,
 };
 
-/** σ des rendements quotidiens (%) par actif, depuis les snapshots ~30 j. */
+/**
+ * σ des rendements quotidiens (%) par actif, mesuré sur les snapshots des
+ * ~30 derniers jours (dernier point de chaque jour). PLANCHER : un historique
+ * court en période calme sous-estime σ de moitié (constaté 2026-07-09 :
+ * EUR/USD « envolée » à +0.42%) — on ne descend jamais sous la moitié du σ
+ * typique de l'actif (FALLBACK_SIGMA).
+ * @returns {Promise<object>} { metricKey: sigmaPct } pour chaque actif d'ASSETS.
+ */
 export async function dailyVolatility() {
-  const since = Date.now() - 32 * 86400000;
+  const since = Date.now() - VOL_LOOKBACK_MS;
   const series = await loadMetricsSince(since);
+
   const byDay = new Map(); // dayKey -> metrics du dernier snapshot du jour
-  for (const s of series) byDay.set(Math.floor(s.ts / 86400000), s.metrics || {});
+  for (const snap of series) byDay.set(Math.floor(snap.ts / DAY_MS), snap.metrics || {});
   const days = [...byDay.keys()].sort((a, b) => a - b);
-  const out = {};
+
+  const sigmas = {};
   for (const [key] of ASSETS) {
-    const rets = [];
-    let prev = null;
-    for (const d of days) {
-      const v = byDay.get(d)?.[key];
-      if (v == null || !Number.isFinite(v)) continue;
-      if (prev != null && prev > 0) rets.push(Math.log(v / prev) * 100);
-      prev = v;
+    const returns = [];
+    let previousValue = null;
+    for (const day of days) {
+      const value = byDay.get(day)?.[key];
+      if (value == null || !Number.isFinite(value)) continue;
+      if (previousValue != null && previousValue > 0) returns.push(Math.log(value / previousValue) * 100);
+      previousValue = value;
     }
-    if (rets.length >= 8) {
-      const m = rets.reduce((a, b) => a + b, 0) / rets.length;
-      const sigma = Math.sqrt(rets.reduce((s, x) => s + (x - m) ** 2, 0) / rets.length);
-      // PLANCHER : un historique court en période calme sous-estime σ de moitié
-      // (constaté 2026-07-09 : EUR/USD « envolée » à +0.42%). On ne descend
-      // jamais sous la moitié du σ typique de l'actif.
-      out[key] = Math.max(sigma, (FALLBACK_SIGMA[key] ?? 1.5) * 0.5);
-    } else out[key] = FALLBACK_SIGMA[key] ?? 1.5;
+
+    const fallback = FALLBACK_SIGMA[key] ?? DEFAULT_SIGMA_PCT;
+    if (returns.length >= MIN_RETURN_SAMPLES) {
+      const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
+      const variance = returns.reduce((sum, ret) => sum + (ret - mean) ** 2, 0) / returns.length;
+      const sigma = Math.sqrt(variance);
+      sigmas[key] = Math.max(sigma, fallback * SIGMA_FLOOR_FACTOR);
+    } else {
+      sigmas[key] = fallback;
+    }
   }
-  return out;
+  return sigmas;
 }
 
-/** Seuils concrets (%) d'un actif depuis son σ quotidien. */
+/**
+ * Seuils concrets (%) d'un actif depuis son σ quotidien : ±0.25 σ (calme) et
+ * ±1.0 σ (fort).
+ * @param {number} sigmaPct σ quotidien de l'actif (%).
+ * @returns {{calme: number, fort: number}} Bornes de classe (%).
+ */
 export function thresholdsOf(sigmaPct) {
   return { calme: r2(0.25 * sigmaPct), fort: r2(1.0 * sigmaPct) };
 }
 
-/** Classe le rendement réalisé (%) selon les seuils stockés. */
+/**
+ * Classe le rendement réalisé (%) selon les seuils stockés à l'émission.
+ * @param {number} retPct Rendement réalisé (%).
+ * @param {{calme: number, fort: number}} th Seuils stockés du record.
+ * @returns {string} Une classe de CLASSES.
+ */
 export function classify(retPct, th) {
   if (retPct > th.fort) return "envolee";
   if (retPct > th.calme) return "hausse";
@@ -103,7 +140,14 @@ Réponds UNIQUEMENT par un objet JSON valide :
 }
 Un objet par actif fourni, classe ∈ {envolee, hausse, calme, baisse, decrochage}.`;
 
-/** Message utilisateur : trajectoire compacte + seuils par actif. */
+/**
+ * Message utilisateur : trajectoire compacte + seuils par actif + contexte
+ * (macro, extrêmes, catalyseurs, géopolitique). PROMPT FIGÉ : toute
+ * modification relève du protocole anti-overfitting.
+ * @param {object} traj Trajectoire (buildTrajectory).
+ * @param {object} vols σ quotidiens par actif (dailyVolatility).
+ * @returns {string} Message utilisateur complet.
+ */
 function formatUser(traj, vols) {
   const lines = [];
   lines.push(`# TRAJECTOIRE DU RÉGIME (${traj.regimes.length} points)`);
@@ -154,49 +198,79 @@ function formatUser(traj, vols) {
 }
 
 /**
+ * Normalise un actif prédit par le LLM vers la forme stockée : classe validée,
+ * conviction bornée [0,1], raison tronquée, prix de base et seuils de
+ * l'émission (l'évaluation du lendemain réutilise EXACTEMENT ces seuils).
+ * @param {object} predicted Actif brut du JSON LLM ({ actif, classe,
+ *   conviction, raison }).
+ * @param {string} metricKey Clé métrique de l'actif.
+ * @param {number} prixBase Cours actuel de l'actif.
+ * @param {number} sigmaPct σ quotidien de l'actif (%).
+ * @returns {object} Actif normalisé prêt à persister.
+ */
+function normalizePredictedAsset(predicted, metricKey, prixBase, sigmaPct) {
+  const classe = CLASSES.includes(predicted.classe) ? predicted.classe : "calme";
+
+  let conviction = null;
+  if (typeof predicted.conviction === "number") {
+    conviction = r2(Math.min(1, Math.max(0, predicted.conviction)));
+  }
+
+  return {
+    actif: predicted.actif,
+    metricKey,
+    classe,
+    conviction,
+    raison: String(predicted.raison ?? "").slice(0, RAISON_MAX_CHARS),
+    prixBase: r2(prixBase),
+    seuils: thresholdsOf(sigmaPct),
+    sigmaJour: r2(sigmaPct),
+  };
+}
+
+/**
  * Génère la prévision 24h : une classe par actif, ancrée sur le cours actuel,
- * seuils stockés avec le record (l'évaluation du lendemain réutilise EXACTEMENT
- * les seuils de l'émission — pas ceux du jour suivant).
+ * seuils stockés avec le record.
+ * @param {{ provider?: object }} [options] Fournisseur imposé (sinon chaîne
+ *   par défaut).
+ * @returns {Promise<{provider: string, previsions: object|null, raw: string}>}
+ *   Record prêt à persister ({ disclaimer, baseTs, targetTs, horizonHeures,
+ *   actifs }), previsions null si le JSON du LLM est inexploitable.
+ * @throws {Error} Trajectoire vide, ou TOUS les fournisseurs en échec.
  */
 export async function projectPrevisions({ provider } = {}) {
-  const [traj, vols] = await Promise.all([buildTrajectory(7 * 86400000), dailyVolatility()]);
+  const [traj, vols] = await Promise.all([buildTrajectory(TRAJECTORY_WINDOW_MS), dailyVolatility()]);
   if (!traj.regimes.length) throw new Error("aucun verdict sur la fenêtre — trajectoire vide");
+
   const chain = provider ? [provider] : getProviderChain();
   const user = formatUser(traj, vols);
-  const labelToKey = new Map(ASSETS.map(([k, l]) => [l, k]));
+  const labelToKey = new Map(ASSETS.map(([key, label]) => [label, key]));
   const errors = [];
+
   for (const p of chain) {
     try {
-      const raw = await p.complete({ system: SYSTEM, user, timeout: 90000 });
+      const raw = await p.complete({ system: SYSTEM, user, timeout: PREVISION_TIMEOUT_MS });
       const parsed = parseJsonLoose(raw);
       if (!parsed || !Array.isArray(parsed.actifs)) {
         logger.warn(`[prevision] "${p.name}" : JSON non parsé`);
         return { provider: p.name, previsions: null, raw };
       }
+
       const baseTs = Date.now();
       const actifs = [];
-      for (const a of parsed.actifs) {
-        const key = labelToKey.get(a.actif);
+      for (const predicted of parsed.actifs) {
+        const key = labelToKey.get(predicted.actif);
         if (!key || traj.current[key] == null) continue;
-        const classe = CLASSES.includes(a.classe) ? a.classe : "calme";
-        actifs.push({
-          actif: a.actif,
-          metricKey: key,
-          classe,
-          conviction: typeof a.conviction === "number" ? r2(Math.min(1, Math.max(0, a.conviction))) : null,
-          raison: String(a.raison ?? "").slice(0, 280),
-          prixBase: r2(traj.current[key]),
-          seuils: thresholdsOf(vols[key]),
-          sigmaJour: r2(vols[key]),
-        });
+        actifs.push(normalizePredictedAsset(predicted, key, traj.current[key], vols[key]));
       }
+
       return {
         provider: p.name,
         previsions: {
           disclaimer: DISCLAIMER,
           baseTs,
-          targetTs: baseTs + 24 * 3600000,
-          horizonHeures: 24,
+          targetTs: baseTs + HORIZON_HOURS * HOUR_MS,
+          horizonHeures: HORIZON_HOURS,
           actifs,
         },
         raw,
@@ -209,55 +283,89 @@ export async function projectPrevisions({ provider } = {}) {
   throw new Error(`tous les fournisseurs IA ont échoué (prevision) — ${errors.join(" | ")}`);
 }
 
-// ---- Évaluation (le lendemain) ---------------------------------------------
-
-/** Prix d'un actif au plus près de `ts` dans une série déjà chargée (premier snapshot ≥ ts, tolérance 6h). */
+/**
+ * Prix d'un actif au plus près de `ts` dans une série déjà chargée : premier
+ * snapshot ≥ ts, dans la tolérance PRICE_MATCH_TOL_MS.
+ * @param {Array<{ts: number, metrics: object}>} series Snapshots triés croissant.
+ * @param {string} metricKey Clé métrique de l'actif.
+ * @param {number} ts Timestamp cible (epoch ms).
+ * @returns {{v: number, ts: number}|null} Prix apparié, ou null.
+ */
 function priceAt(series, metricKey, ts) {
-  for (const s of series) {
-    if (s.ts >= ts && s.ts <= ts + 6 * 3600000) {
-      const v = s.metrics?.[metricKey];
-      if (v != null && Number.isFinite(v)) return { v, ts: s.ts };
+  for (const snap of series) {
+    if (snap.ts >= ts && snap.ts <= ts + PRICE_MATCH_TOL_MS) {
+      const value = snap.metrics?.[metricKey];
+      if (value != null && Number.isFinite(value)) return { v: value, ts: snap.ts };
     }
   }
   return null;
 }
 
 /**
+ * Direction d'une classe : +1 (hausse/envolee), −1 (baisse/decrochage),
+ * 0 (calme).
+ * @param {string} classe Une classe de CLASSES.
+ * @returns {number} −1 | 0 | +1.
+ */
+function directionOf(classe) {
+  if (classe === "calme") return 0;
+  if (classe === "hausse" || classe === "envolee") return 1;
+  return -1;
+}
+
+/**
+ * Résultat d'une prédiction selon la distance entre classe prédite et classe
+ * réalisée sur l'échelle ordonnée CLASSES.
+ * @param {number} dist Distance d'index (0, 1, 2+).
+ * @returns {string} "exact" | "adjacent" | "faux".
+ */
+function resultOf(dist) {
+  if (dist === 0) return "exact";
+  if (dist === 1) return "adjacent";
+  return "faux";
+}
+
+/**
  * Évalue un record de prévision si son échéance est passée : classe réalisée
  * par actif (avec LES SEUILS STOCKÉS), outcome exact/adjacent/faux + direction.
- * Mute le record ; renvoie { record, evaluated } (0 si trop tôt / déjà évalué).
+ * Une seule lecture de la série : même fenêtre pour les 8+ actifs du record.
+ * @mutates record — ajoute `realise` par actif et `outcome` quand tout est évalué
+ *   (les champs d'émission ne sont JAMAIS réécrits).
+ * @param {object} record Record de prévision persisté.
+ * @returns {Promise<{record: object, evaluated: number}>} Record muté +
+ *   nombre d'actifs évalués (0 si trop tôt / déjà évalué).
  */
 export async function evaluatePrevision(record) {
   if (!record?.actifs?.length || record.outcome) return { record, evaluated: 0 };
   if (Date.now() < record.targetTs) return { record, evaluated: 0 };
-  // Une seule lecture de la série : même fenêtre pour les 8+ actifs du record.
+
   const series = await loadMetricsSince(record.targetTs);
   let evaluated = 0;
-  for (const a of record.actifs) {
-    if (a.realise) continue;
-    const px = priceAt(series, a.metricKey, record.targetTs);
-    if (!px || a.prixBase == null || a.prixBase === 0) continue;
-    const retPct = r2(((px.v - a.prixBase) / a.prixBase) * 100);
-    const classeReelle = classify(retPct, a.seuils);
-    const dist = Math.abs(CLASS_INDEX.get(classeReelle) - CLASS_INDEX.get(a.classe));
-    const dir = (c) => (c === "calme" ? 0 : c === "hausse" || c === "envolee" ? 1 : -1);
-    a.realise = {
+  for (const asset of record.actifs) {
+    if (asset.realise) continue;
+    const px = priceAt(series, asset.metricKey, record.targetTs);
+    if (!px || asset.prixBase == null || asset.prixBase === 0) continue;
+
+    const retPct = r2(((px.v - asset.prixBase) / asset.prixBase) * 100);
+    const classeReelle = classify(retPct, asset.seuils);
+    const dist = Math.abs(CLASS_INDEX.get(classeReelle) - CLASS_INDEX.get(asset.classe));
+
+    asset.realise = {
       prix: r2(px.v),
       ts: px.ts,
       retPct,
       classe: classeReelle,
-      resultat: dist === 0 ? "exact" : dist === 1 ? "adjacent" : "faux",
-      directionOk: dir(a.classe) === dir(classeReelle),
+      resultat: resultOf(dist),
+      directionOk: directionOf(asset.classe) === directionOf(classeReelle),
     };
     evaluated++;
   }
-  if (evaluated && record.actifs.every((a) => a.realise)) {
+
+  if (evaluated && record.actifs.every((asset) => asset.realise)) {
     record.outcome = { evaluatedAt: Date.now() };
   }
   return { record, evaluated };
 }
-
-// ---- Post-mortem (autopsie publique des prévisions ratées) ------------------
 
 // Les providers forcent response_format json_object : le paragraphe est
 // donc demandé DANS un objet JSON (pas de texte brut possible par ce chemin).
@@ -265,13 +373,12 @@ const AUTOPSY_SYSTEM = `Tu es un analyste quantitatif qui rédige le post-mortem
 Réponds UNIQUEMENT par un objet JSON valide : {"texte": "un seul paragraphe de 2 à 4 phrases couvrant l'essentiel — pas un commentaire par actif, pas de liste"}.`;
 
 /**
- * Post-mortem LLM d'un record ENTIÈREMENT évalué : pourquoi les ratés ont raté.
- * Narratif seulement — n'influence aucune règle (protocole anti-overfitting).
- * Renvoie { texte, provider, ts } ou null (tout exact, ou LLM indisponible).
+ * Message utilisateur du post-mortem : prédit vs réalisé par actif + contexte
+ * du jour écoulé (best-effort — le post-mortem reste possible sans contexte).
+ * @param {object} record Record de prévision entièrement évalué.
+ * @returns {Promise<string>} Message utilisateur complet.
  */
-export async function autopsyPrevision(record) {
-  const rates = (record.actifs ?? []).filter((a) => a.realise && a.realise.resultat !== "exact");
-  if (!rates.length) return null;
+async function formatAutopsyUser(record) {
   const lines = [`# PRÉVISION ÉMISE LE ${new Date(record.baseTs).toISOString().slice(0, 16).replace("T", " ")} — PRÉDIT vs RÉALISÉ 24h`];
   for (const a of record.actifs) {
     if (!a.realise) continue;
@@ -280,30 +387,52 @@ export async function autopsyPrevision(record) {
         (a.raison ? ` · raison d'origine : ${a.raison}` : ""),
     );
   }
-  // Contexte du jour écoulé : même lecture que la génération (best-effort).
   try {
-    const traj = await buildTrajectory(2 * 86400000);
+    const traj = await buildTrajectory(AUTOPSY_CONTEXT_WINDOW_MS);
     const s = traj.signals ?? {};
     if (s.changements?.length) lines.push(`\n# CE QUI A CHANGÉ SUR LA FENÊTRE\n- ` + s.changements.join("\n- "));
     if (s.alertes?.length) lines.push(`\n# ALERTES\n- ` + s.alertes.join("\n- "));
     if (s.geopolitique) lines.push(`\n# GÉOPOLITIQUE\n${s.geopolitique}`);
-  } catch {
-    /* le post-mortem reste possible sans contexte */
+  } catch (err) {
+    logger.warn(`[prevision] autopsie ${record.baseTs} : contexte indisponible, post-mortem sans contexte (${err.message})`);
   }
+  return lines.join("\n");
+}
+
+/**
+ * Extrait le paragraphe d'autopsie d'une réponse LLM parsée. Rattrapage : un
+ * modèle qui répond {actif: phrase, …} malgré la consigne (constaté 2026-07-09
+ * avec DeepSeek) est aplati en paragraphe.
+ * @param {object|null} parsed Réponse LLM parsée.
+ * @returns {string} Paragraphe (tronqué à AUTOPSY_MAX_CHARS), ou "" si vide.
+ */
+function extractAutopsyText(parsed) {
+  let texte = typeof parsed?.texte === "string" ? parsed.texte.trim() : "";
+  if (!texte && parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    texte = Object.entries(parsed)
+      .filter(([, value]) => typeof value === "string" && value.trim())
+      .map(([key, value]) => `${key} : ${value.trim()}`)
+      .join(" ");
+  }
+  return texte.slice(0, AUTOPSY_MAX_CHARS);
+}
+
+/**
+ * Post-mortem LLM d'un record ENTIÈREMENT évalué : pourquoi les ratés ont raté.
+ * Narratif seulement — n'influence aucune règle (protocole anti-overfitting).
+ * @param {object} record Record de prévision entièrement évalué.
+ * @returns {Promise<{texte: string, provider: string, ts: number}|null>}
+ *   Autopsie, ou null (tout exact, ou LLM indisponible).
+ */
+export async function autopsyPrevision(record) {
+  const rates = (record.actifs ?? []).filter((a) => a.realise && a.realise.resultat !== "exact");
+  if (!rates.length) return null;
+
+  const user = await formatAutopsyUser(record);
   for (const p of getProviderChain()) {
     try {
-      const raw = await p.complete({ system: AUTOPSY_SYSTEM, user: lines.join("\n"), timeout: 60000 });
-      const parsed = parseJsonLoose(raw);
-      let texte = typeof parsed?.texte === "string" ? parsed.texte.trim() : "";
-      // Rattrapage : modèle qui répond {actif: phrase, …} malgré la consigne
-      // (constaté 2026-07-09 avec DeepSeek) → on aplatit en paragraphe.
-      if (!texte && parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        texte = Object.entries(parsed)
-          .filter(([, v]) => typeof v === "string" && v.trim())
-          .map(([k, v]) => `${k} : ${v.trim()}`)
-          .join(" ");
-      }
-      texte = texte.slice(0, 900);
+      const raw = await p.complete({ system: AUTOPSY_SYSTEM, user, timeout: AUTOPSY_TIMEOUT_MS });
+      const texte = extractAutopsyText(parseJsonLoose(raw));
       if (texte) return { texte, provider: p.name, ts: Date.now() };
     } catch (err) {
       logger.warn(`[prevision] autopsie "${p.name}" en échec → fournisseur suivant (${err.message})`);
@@ -314,33 +443,48 @@ export async function autopsyPrevision(record) {
 
 // Rodage : le front ne montre le track record qu'à partir de ~7 jours
 // d'évaluations. Seuil calculé ICI (côté données) pour suivre ASSETS.
-const MIN_EVALS = ASSETS.length * 7;
+const MIN_EVALS = ASSETS.length * RODAGE_JOURS;
 
-/** Statistiques agrégées sur une liste de records évalués. */
-export function statsOf(records) {
-  const global = { n: 0, exact: 0, adjacent: 0, directionOk: 0 };
-  const parActif = {};
-  for (const r of records) {
-    for (const a of r.actifs ?? []) {
-      if (!a.realise) continue;
-      const s = (parActif[a.actif] ??= { n: 0, exact: 0, adjacent: 0, directionOk: 0 });
-      for (const t of [global, s]) {
-        t.n++;
-        if (a.realise.resultat === "exact") t.exact++;
-        if (a.realise.resultat === "adjacent") t.adjacent++;
-        if (a.realise.directionOk) t.directionOk++;
-      }
-    }
-  }
-  const pct = (t) => ({
+/**
+ * Taux (%) d'un compteur de résultats.
+ * @param {{n: number, exact: number, adjacent: number, directionOk: number}} t
+ *   Compteur agrégé.
+ * @returns {{n: number, exactPct: number|null, exactOuAdjacentPct: number|null,
+ *   directionPct: number|null}} Taux arrondis, null si aucune évaluation.
+ */
+function ratesOf(t) {
+  return {
     n: t.n,
     exactPct: t.n ? Math.round((t.exact / t.n) * 100) : null,
     exactOuAdjacentPct: t.n ? Math.round(((t.exact + t.adjacent) / t.n) * 100) : null,
     directionPct: t.n ? Math.round((t.directionOk / t.n) * 100) : null,
-  });
+  };
+}
+
+/**
+ * Statistiques agrégées (globales + par actif) sur une liste de records.
+ * @param {Array<object>} records Records de prévision (évalués ou non).
+ * @returns {{global: object, parActif: object, reperes: object,
+ *   rodage: {minEvals: number, pret: boolean}}} Track record complet.
+ */
+export function statsOf(records) {
+  const global = { n: 0, exact: 0, adjacent: 0, directionOk: 0 };
+  const parActif = {};
+  for (const record of records) {
+    for (const asset of record.actifs ?? []) {
+      if (!asset.realise) continue;
+      const assetStats = (parActif[asset.actif] ??= { n: 0, exact: 0, adjacent: 0, directionOk: 0 });
+      for (const target of [global, assetStats]) {
+        target.n++;
+        if (asset.realise.resultat === "exact") target.exact++;
+        if (asset.realise.resultat === "adjacent") target.adjacent++;
+        if (asset.realise.directionOk) target.directionOk++;
+      }
+    }
+  }
   return {
-    global: pct(global),
-    parActif: Object.fromEntries(Object.entries(parActif).map(([k, v]) => [k, pct(v)])),
+    global: ratesOf(global),
+    parActif: Object.fromEntries(Object.entries(parActif).map(([actif, counts]) => [actif, ratesOf(counts)])),
     reperes: { hasardExact: 20, hasardDirection: 50 },
     rodage: { minEvals: MIN_EVALS, pret: global.n >= MIN_EVALS },
   };

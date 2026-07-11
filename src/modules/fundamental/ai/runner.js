@@ -1,21 +1,32 @@
 import { logger } from "../../logs/index.js";
+import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
 import { extractMetrics } from "../persistence/metrics.js";
 import { collectOnce, getTrends, HOUR_MS } from "../persistence/scheduler.js";
 import {
   loadAiState,
-  saveAiState,
-  saveVerdict,
-  loadLatestVerdict,
-  savePrevision,
-  loadPrevisionsSince,
   loadLatestPrevision,
+  loadLatestVerdict,
+  loadPrevisionsSince,
+  saveAiState,
+  savePrevision,
+  saveVerdict,
 } from "../persistence/store.js";
 import { analyze } from "./analyst.js";
-import { projectPrevisions, evaluatePrevision, autopsyPrevision } from "./prevision.js";
-import { detectChanges, formatChange, calendarToday } from "./triggers.js";
-import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
+import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
+import { calendarToday, detectChanges, formatChange } from "./triggers.js";
 
-/** Qualité des données ayant servi au verdict (fraîcheur des sources). */
+const MINUTE_MS = 60000;
+const DAY_MS = 86400000;
+const EVAL_WINDOW_MS = 7 * DAY_MS; // fenêtre de rescan des prévisions à évaluer
+const DEFAULT_BASELINE_HOURS = 4;
+const DEFAULT_DAILY_HOUR = 12;
+
+/**
+ * Qualité des données ayant servi au verdict (fraîcheur des sources).
+ * @param {object} state World-state complet.
+ * @returns {{stale: Array<string>, ok: number|null, total: number|null,
+ *   freshnessTs: number}} Synthèse de fraîcheur.
+ */
 function dataQualityOf(state) {
   return {
     stale: state.meta?.staleSources ?? [],
@@ -25,13 +36,17 @@ function dataQualityOf(state) {
   };
 }
 
-const BASELINE_MS = (Number(process.env.AI_BASELINE_HOURS) || 4) * 3600000;
+const BASELINE_MS = (Number(process.env.AI_BASELINE_HOURS) || DEFAULT_BASELINE_HOURS) * HOUR_MS;
 
 /**
  * Décide s'il faut lancer l'IA, et la lance le cas échéant.
  * Déclencheurs : (1) cadence de fond dépassée, (2) bascule détectée vs le
  * dernier point IA, (3) catalyseur calendaire du jour.
  * Persiste le verdict + met à jour l'état IA (référence + dernier run).
+ * @param {object} state World-state complet de la collecte.
+ * @param {object} trends Tendances (getTrends).
+ * @returns {Promise<{triggered: boolean, reasons?: Array<string>,
+ *   verdict?: object, record?: object, file?: string}>} Résultat du tour.
  */
 export async function maybeAnalyze(state, trends) {
   const metrics = extractMetrics(state);
@@ -81,6 +96,8 @@ export async function maybeAnalyze(state, trends) {
  * et enregistre le verdict corrélé. NE met PAS à jour la référence de bascule
  * (ai-state) — une analyse à la demande ne doit pas fausser la cadence du
  * service. Utilisé par `fa:ai`.
+ * @returns {Promise<{provider: string, verdict: object|null, raw: string,
+ *   file: string, snapshotTs: number}>} Verdict enregistré.
  */
 export async function analyzeNow() {
   const { state } = await collectOnce();
@@ -105,19 +122,22 @@ export async function analyzeNow() {
 
 // Throttle : l'évaluation est aussi déclenchée par les lectures API (lazy-eval) —
 // inutile de rescanner le répertoire plus d'une fois toutes les 10 min.
-const EVAL_THROTTLE_MS = 10 * 60000;
-let lastEvalTs = 0;
+const EVAL_THROTTLE_MS = 10 * MINUTE_MS;
+let lastEvalTs = 0; // dernier scan d'évaluation (epoch ms)
 
 /**
  * Évalue les prévisions arrivées à échéance (classe réalisée vs prédite, avec
- * les seuils stockés à l'émission). Idempotent, ne throw jamais.
+ * les seuils stockés à l'émission) et déclenche l'autopsie des records
+ * entièrement évalués. Idempotent, throttlé, ne throw jamais.
+ * @param {{ force?: boolean }} [options] force ignore le throttle.
+ * @returns {Promise<number>} Nombre de records évalués sur ce scan.
  */
 export async function evaluateDuePrevisions({ force = false } = {}) {
   if (!force && Date.now() - lastEvalTs < EVAL_THROTTLE_MS) return 0;
   lastEvalTs = Date.now();
   let done = 0;
   try {
-    const recs = await loadPrevisionsSince(Date.now() - 7 * 86400000);
+    const recs = await loadPrevisionsSince(Date.now() - EVAL_WINDOW_MS);
     for (const rec of recs) {
       if (rec.outcome) continue;
       const { evaluated } = await evaluatePrevision(rec);
@@ -144,6 +164,7 @@ export async function evaluateDuePrevisions({ force = false } = {}) {
  * Génère la prévision directionnelle 24h et la PERSISTE (remplace les courbes
  * de prix chiffrées — choix produit 2026-07-07). Évalue d'abord les prévisions
  * échues (track record). Ne throw jamais.
+ * @returns {Promise<object|null>} Record persisté, ou null en cas d'échec.
  */
 export async function generateDailyPrevision() {
   await evaluateDuePrevisions({ force: true });
@@ -164,12 +185,20 @@ export async function generateDailyPrevision() {
 }
 
 /**
- * Planifie la génération de la courbe UNE FOIS par jour à `hour` (heure locale
- * serveur). Renvoie une fonction stop. Ne bloque pas ; s'auto-replanifie.
+ * Planifie la génération de la prévision UNE FOIS par jour à `hour` (heure
+ * locale serveur). Ne bloque pas ; s'auto-replanifie. Rattrapage au démarrage
+ * si aucune prévision n'a été générée aujourd'hui.
+ * @param {{ hour?: number }} [options] Heure locale de génération (défaut :
+ *   PREVISION_DAILY_HOUR / CURVE_DAILY_HOUR / midi).
+ * @returns {Function} Fonction stop (annule le timer en cours).
  */
-export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || 12 } = {}) {
+export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || DEFAULT_DAILY_HOUR } = {}) {
   let timer = null;
   let stopped = false;
+
+  /**
+   * Programme le prochain tir quotidien (à `hour`, aujourd'hui ou demain).
+   */
   const scheduleNext = () => {
     if (stopped) return;
     const now = new Date();
@@ -184,7 +213,7 @@ export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_
       await generateDailyPrevision();
       scheduleNext();
     }, delay);
-    logger.info(`[prevision] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / 60000)} min)`);
+    logger.info(`[prevision] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / MINUTE_MS)} min)`);
   };
 
   // Rattrapage au démarrage : si aucune prévision n'a été générée AUJOURD'HUI,
@@ -214,16 +243,27 @@ export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_
   };
 }
 
-/** Un tour de service : collecte → tendances → analyse conditionnelle. */
+/**
+ * Un tour de service : collecte → tendances → analyse conditionnelle.
+ * @returns {Promise<object>} Résultat de maybeAnalyze.
+ */
 export async function serviceTick() {
   const { state } = await collectOnce();
   const trends = await getTrends();
   return maybeAnalyze(state, trends);
 }
 
-/** Boucle de service : un tick à chaque intervalle (défaut horaire). */
+/**
+ * Boucle de service : un tick à chaque intervalle (défaut horaire).
+ * @param {{ intervalMs?: number }} [options] Intervalle entre deux ticks (ms).
+ * @returns {Function} Fonction stop (arrête la boucle).
+ */
 export function startService({ intervalMs = HOUR_MS } = {}) {
   let stopped = false;
+
+  /**
+   * Un tick protégé : un échec est logué, la boucle continue.
+   */
   const tick = async () => {
     if (stopped) return;
     try {
@@ -234,7 +274,7 @@ export function startService({ intervalMs = HOUR_MS } = {}) {
   };
   tick();
   const timer = setInterval(tick, intervalMs);
-  logger.info(`[service] démarré — collecte ${Math.round(intervalMs / 60000)} min, IA de fond ${BASELINE_MS / 3600000}h + sur bascule`);
+  logger.info(`[service] démarré — collecte ${Math.round(intervalMs / MINUTE_MS)} min, IA de fond ${BASELINE_MS / HOUR_MS}h + sur bascule`);
   return function stop() {
     stopped = true;
     clearInterval(timer);

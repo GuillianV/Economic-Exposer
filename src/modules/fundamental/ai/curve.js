@@ -1,7 +1,9 @@
 import { logger } from "../../logs/index.js";
-import { listVerdicts, loadVerdictByTs, loadMetricsSince } from "../persistence/store.js";
-import { getTrends } from "../persistence/scheduler.js";
 import { METRIC_DICTIONARY } from "../dictionary.js";
+import { getTrends } from "../persistence/scheduler.js";
+import { listVerdicts, loadMetricsSince, loadVerdictByTs } from "../persistence/store.js";
+
+const DAY_MS = 86400000;
 
 // Seuils d'extrême sur le rang percentile 5 ans (mean-reversion / contrarian).
 const PCT_LOW = 10;
@@ -14,13 +16,23 @@ const SECULAR_DENY = new Set(["m2", "cpi", "pce", "retailSales", "foodPriceIndex
 // Catalyseurs "imminents" : événements binaires dans les prochains jours qui
 // figent le marché (attente) → le modèle doit gater sa confiance dessus.
 const IMMINENT_DAYS = 3;
+
+const DEFAULT_WINDOW_MS = 7 * DAY_MS;
+const DEFAULT_MAX_POINTS = 24;
+
+/**
+ * Catalyseurs du verdict tombant dans la fenêtre imminente (hier inclus, pour
+ * couvrir aujourd'hui quelle que soit l'heure).
+ * @param {object} verdict Verdict parsé (catalyseurs_a_venir).
+ * @returns {Array<object>} Catalyseurs imminents (peut être vide).
+ */
 function imminentCatalysts(verdict) {
-  const arr = Array.isArray(verdict?.catalyseurs_a_venir) ? verdict.catalyseurs_a_venir : [];
+  const catalysts = Array.isArray(verdict?.catalyseurs_a_venir) ? verdict.catalyseurs_a_venir : [];
   const now = Date.now();
-  const lim = now + IMMINENT_DAYS * 86400000;
-  return arr.filter((c) => {
-    const t = Date.parse(c?.date);
-    return Number.isFinite(t) && t >= now - 86400000 && t <= lim; // -1j pour inclure aujourd'hui
+  const limit = now + IMMINENT_DAYS * DAY_MS;
+  return catalysts.filter((catalyst) => {
+    const ts = Date.parse(catalyst?.date);
+    return Number.isFinite(ts) && ts >= now - DAY_MS && ts <= limit;
   });
 }
 
@@ -28,25 +40,29 @@ function imminentCatalysts(verdict) {
  * Métriques à un EXTRÊME de percentile (≤10 ou ≥90) — les meilleurs tells de
  * retournement (peur/euphorie, positionnement lessivé, sur-achat). Triées par
  * distance à la médiane (plus extrême d'abord).
+ * @param {object} trends Tendances (getTrends).
+ * @returns {Array<{metric: string, label: string, sens: string|null,
+ *   value: number, pctRank: number, z: number|null, extreme: string}>}
+ *   Extrêmes triés, "extreme" ∈ {"bas", "haut"}.
  */
 function extremesOf(trends) {
-  const out = [];
-  for (const [k, m] of Object.entries(trends?.metrics ?? {})) {
-    if (!m || m.pctRank == null || SECULAR_DENY.has(k)) continue;
-    if (m.pctRank > PCT_LOW && m.pctRank < PCT_HIGH) continue;
-    const meta = METRIC_DICTIONARY[k];
-    out.push({
-      metric: k,
-      label: meta?.label ?? k,
+  const extremes = [];
+  for (const [key, metric] of Object.entries(trends?.metrics ?? {})) {
+    if (!metric || metric.pctRank == null || SECULAR_DENY.has(key)) continue;
+    if (metric.pctRank > PCT_LOW && metric.pctRank < PCT_HIGH) continue;
+    const meta = METRIC_DICTIONARY[key];
+    extremes.push({
+      metric: key,
+      label: meta?.label ?? key,
       sens: meta?.sens ?? null,
-      value: r2(m.value),
-      pctRank: m.pctRank,
-      z: m.z != null ? r2(m.z) : null,
-      extreme: m.pctRank <= PCT_LOW ? "bas" : "haut",
+      value: r2(metric.value),
+      pctRank: metric.pctRank,
+      z: metric.z != null ? r2(metric.z) : null,
+      extreme: metric.pctRank <= PCT_LOW ? "bas" : "haut",
     });
   }
-  out.sort((a, b) => Math.abs(b.pctRank - 50) - Math.abs(a.pctRank - 50));
-  return out;
+  extremes.sort((a, b) => Math.abs(b.pctRank - 50) - Math.abs(a.pctRank - 50));
+  return extremes;
 }
 
 // Cours majeurs suivis : clé métrique -> libellé affiché.
@@ -62,13 +78,27 @@ export const ASSETS = [
   ["gold", "Or (XAU/USD)"],
 ];
 
-export const r2 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) / 100 : n);
+/**
+ * Arrondi à 2 décimales, en laissant passer les non-nombres tels quels.
+ * @param {*} n Valeur à arrondir.
+ * @returns {*} Nombre arrondi, ou la valeur d'origine si non-nombre.
+ */
+export function r2(n) {
+  if (typeof n === "number" && Number.isFinite(n)) return Math.round(n * 100) / 100;
+  return n;
+}
 
 /**
  * Construit la trajectoire depuis le store : timeline régime (verdicts) +
- * timeline des cours (métriques), sous-échantillonnée à ~maxPoints points.
+ * timeline des cours (métriques), sous-échantillonnée à ~maxPoints points,
+ * plus extrêmes de percentile, contexte macro et signaux du dernier verdict.
+ * @param {number} [windowMs] Fenêtre d'historique (ms).
+ * @param {number} [maxPoints] Nombre maximal de points par timeline.
+ * @returns {Promise<{regimes: Array<object>, prices: Array<object>,
+ *   current: object, extremes: Array<object>, macroCtx: object|null,
+ *   signals: object|null, span: object}>} Trajectoire complète.
  */
-export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
+export async function buildTrajectory(windowMs = DEFAULT_WINDOW_MS, maxPoints = DEFAULT_MAX_POINTS) {
   const since = Date.now() - windowMs;
   const vlist = await listVerdicts(since);
   const mseries = await loadMetricsSince(since);
@@ -83,6 +113,11 @@ export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
     }
   }
 
+  /**
+   * Sous-échantillonne un tableau à maxPoints points équirépartis.
+   * @param {Array} arr Tableau source.
+   * @returns {Array} Tableau réduit (ou tel quel si déjà assez court).
+   */
   const downsample = (arr) => {
     if (arr.length <= maxPoints) return arr;
     const step = (arr.length - 1) / (maxPoints - 1);
@@ -132,13 +167,32 @@ export async function buildTrajectory(windowMs = 7 * 86400000, maxPoints = 24) {
  * Contexte macro & options depuis les tendances : le POURQUOI du régime
  * (inflation en rythme, attentes Fed, taux réels, plomberie) + le positionnement
  * options (skew/put-call). Valeurs brutes — pas besoin de baseline.
+ * @param {object} trends Tendances (getTrends).
+ * @returns {object} Contexte macro à plat (valeurs et deltas 24h/7j, null si
+ *   métrique absente).
  */
 function macroContextOf(trends) {
+  /**
+   * Valeur courante d'une métrique.
+   * @param {string} k Clé de la métrique.
+   * @returns {number|null} Valeur, ou null si absente.
+   */
   const g = (k) => trends?.metrics?.[k]?.value ?? null;
+
+  /**
+   * Delta 24h (%) d'une métrique, arrondi à 2 décimales.
+   * @param {string} k Clé de la métrique.
+   * @returns {number|null} Delta, ou null si absent.
+   */
   const d = (k) => {
-    const p = trends?.metrics?.[k]?.d24h?.pct;
-    return typeof p === "number" ? Math.round(p * 100) / 100 : null;
+    const pct = trends?.metrics?.[k]?.d24h?.pct;
+    if (typeof pct !== "number") return null;
+    return Math.round(pct * 100) / 100;
   };
+
+  const claimsD7Pct = trends?.metrics?.initialClaims?.d7d?.pct;
+  const initialClaimsD7 = claimsD7Pct == null ? null : Math.round(claimsD7Pct * 100) / 100;
+
   return {
     cpiYoY: g("cpiYoY"),
     pceYoY: g("pceYoY"),
@@ -170,10 +224,7 @@ function macroContextOf(trends) {
     moveD24: d("move"),
     vix: g("vix"),
     initialClaims: g("initialClaims"),
-    initialClaimsD7: (() => {
-      const p = trends?.metrics?.initialClaims?.d7d?.pct;
-      return p == null ? null : Math.round(p * 100) / 100;
-    })(),
+    initialClaimsD7,
   };
 }
 

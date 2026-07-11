@@ -9,13 +9,20 @@ const PROVIDERS = { deepseek, gemini, groq };
 // Chaîne par défaut : DeepSeek d'abord, Groq en secours (gratuit) si DeepSeek échoue.
 const DEFAULT_CHAIN = ["deepseek", "groq"];
 
-/** Ordre des fournisseurs à essayer : LLM_PROVIDER en tête, puis le reste en secours. */
+/**
+ * Ordre des fournisseurs à essayer : LLM_PROVIDER en tête (si valide), puis la
+ * chaîne par défaut en secours.
+ * @returns {Array<object>} Modules fournisseurs ({ name, complete }) dans
+ *   l'ordre d'essai.
+ */
 export function getProviderChain() {
   const order = [];
   const primary = process.env.LLM_PROVIDER;
   if (primary && PROVIDERS[primary]) order.push(primary);
-  for (const n of DEFAULT_CHAIN) if (!order.includes(n)) order.push(n);
-  return order.map((n) => PROVIDERS[n]);
+  for (const providerName of DEFAULT_CHAIN) {
+    if (!order.includes(providerName)) order.push(providerName);
+  }
+  return order.map((providerName) => PROVIDERS[providerName]);
 }
 
 /**
@@ -110,6 +117,12 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
 
 Vise 3 signaux_cles minimum (avec percentile dans "valeur" quand disponible), 3 scénarios (haussier/baissier/médian), 2-3 conseils, un bloc pour_debutants complet (en_bref + posture + a_eviter + pistes_simples), 2-3 entrées dans pistes_par_classe.favorisees ET sous_pression, 1-3 signaux_contradictoires si le tableau est tendu, et remplis lecture_par_axe pour CHAQUE axe disponible.`;
 
+/**
+ * Suffixe de tendance d'une métrique pour le prompt : variations 24h et 7j.
+ * @param {object} trends Tendances (getTrends).
+ * @param {string} key Clé de la métrique.
+ * @returns {string} Ex. " (24h +1.20%, 7j -0.40%)", ou "" si pas de delta.
+ */
 function fmtTrend(trends, key) {
   const m = trends?.metrics?.[key];
   if (!m) return "";
@@ -121,19 +134,45 @@ function fmtTrend(trends, key) {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
-// Contexte historique : rang percentile (vs ~5 ans) + label qualitatif.
+/**
+ * Suffixe de contexte historique pour le prompt : rang percentile (vs ~5 ans)
+ * + label qualitatif.
+ * @param {object} trends Tendances (getTrends).
+ * @param {string} key Clé de la métrique.
+ * @returns {string} Ex. " [p92/5a, très haut]", ou "" si pas de baseline.
+ */
 function fmtNorm(trends, key) {
   const m = trends?.metrics?.[key];
   if (!m || m.pctRank == null) return "";
   const p = m.pctRank;
-  const label = p <= 10 ? "très bas" : p <= 30 ? "bas" : p >= 90 ? "très haut" : p >= 70 ? "haut" : "médian";
+
+  let label = "médian";
+  if (p <= 10) label = "très bas";
+  else if (p <= 30) label = "bas";
+  else if (p >= 90) label = "très haut";
+  else if (p >= 70) label = "haut";
+
   return ` [p${p}/5a, ${label}]`;
 }
 
-// Mises en forme compactes : évite les flottants à rallonge dans le prompt
-// (gaspillage de tokens + bruit). r() arrondit ; big() abrège les grosses
-// magnitudes en T/Md/M (ex. 2118994149230.84 -> "2.12 T").
-const r = (n, d = 2) => (typeof n === "number" && isFinite(n) ? Number(n.toFixed(d)) : n);
+/**
+ * Arrondi compact pour le prompt : évite les flottants à rallonge (gaspillage
+ * de tokens + bruit). Laisse passer les non-nombres tels quels.
+ * @param {*} n Valeur à arrondir.
+ * @param {number} [d] Nombre de décimales.
+ * @returns {*} Nombre arrondi, ou la valeur d'origine si non-nombre.
+ */
+function r(n, d = 2) {
+  if (typeof n === "number" && isFinite(n)) return Number(n.toFixed(d));
+  return n;
+}
+
+/**
+ * Abrège les grosses magnitudes en T/Md/M pour le prompt
+ * (ex. 2118994149230.84 -> "2.12 T").
+ * @param {*} n Valeur à abréger.
+ * @returns {*} Chaîne abrégée, ou la valeur d'origine si non-nombre.
+ */
 function big(n) {
   if (typeof n !== "number" || !isFinite(n)) return n;
   const a = Math.abs(n);
@@ -143,7 +182,15 @@ function big(n) {
   return String(r(n, 0));
 }
 
-/** Met en forme le world-state + tendances en texte compact pour le LLM. */
+/**
+ * Met en forme le world-state + tendances en texte compact pour le LLM
+ * (message utilisateur). PROMPT FIGÉ : toute modification relève du protocole
+ * anti-overfitting (défaut de démarrage daté uniquement).
+ * @param {object} state World-state complet.
+ * @param {object} trends Tendances (getTrends).
+ * @param {object|null} [previous] Dernier verdict persisté (active l'hystérésis).
+ * @returns {string} Message utilisateur complet.
+ */
 export function formatState(state, trends, previous = null) {
   const a = state.axes ?? {};
   const L = [];
@@ -367,7 +414,12 @@ function formatPrevious(previous, nowTs) {
   return L.join("\n");
 }
 
-/** JSON.parse tolérant : extrait le premier bloc {...} si le modèle a bavardé autour. */
+/**
+ * JSON.parse tolérant : extrait le premier bloc {...} si le modèle a bavardé
+ * autour.
+ * @param {string|null} raw Réponse brute du LLM.
+ * @returns {object|null} Objet parsé, ou null si rien d'exploitable.
+ */
 export function parseJsonLoose(raw) {
   if (!raw) return null;
   try {
@@ -386,9 +438,18 @@ export function parseJsonLoose(raw) {
 }
 
 /**
- * Lance l'analyse : formate l'état, appelle le fournisseur, parse le verdict.
- * `previous` (dernier verdict persisté) active l'hystérésis de régime.
- * @returns { provider, verdict, raw, prompt }
+ * Lance l'analyse : formate l'état, appelle les fournisseurs en cascade,
+ * parse le verdict et applique les garde-fous déterministes (validateVerdict :
+ * objectifs de prix, percentiles non sourcés, extrapolation de source stale).
+ * @param {object} state World-state complet.
+ * @param {object} trends Tendances (getTrends).
+ * @param {{ provider?: object, previous?: object }} [options] Fournisseur
+ *   imposé (sinon chaîne par défaut) et dernier verdict persisté (active
+ *   l'hystérésis de régime).
+ * @returns {Promise<{provider: string, verdict: object|null, raw: string,
+ *   prompt: string, violations: Array<object>}>} Verdict parsé (null si JSON
+ *   inexploitable) + réponse brute + manquements relevés.
+ * @throws {Error} Si TOUS les fournisseurs échouent.
  */
 export async function analyze(state, trends, { provider, previous } = {}) {
   const chain = provider ? [provider] : getProviderChain();
@@ -398,8 +459,6 @@ export async function analyze(state, trends, { provider, previous } = {}) {
     try {
       const raw = await p.complete({ system: SYSTEM, user });
       const verdict = parseJsonLoose(raw);
-      // Garde-fous déterministes : nettoie objectifs de prix / percentiles non
-      // sourcés et signale toute extrapolation de source stale.
       const violations = verdict ? validateVerdict(verdict, { state, trends, previous }) : [];
       if (violations.length) {
         logger.warn(`[ai] garde-fous "${p.name}" : ${violations.map((v) => `${v.type}${v.count ? `×${v.count}` : ""}`).join(", ")}`);
