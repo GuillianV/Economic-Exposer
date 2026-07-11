@@ -1,490 +1,707 @@
 import express from "express";
 import { logger } from "../logs/index.js";
-import {
-  listSnapshots,
-  loadSnapshotByTs,
-  loadLatestSnapshot,
-  loadMetricsSince,
-  listVerdicts,
-  loadVerdictByTs,
-  loadLatestVerdict,
-  getVerdictForSnapshot,
-  getSnapshotForVerdict,
-  loadLatestCurve,
-  listCurves,
-  loadCurveByTs,
-  listPrevisions,
-  loadPrevisionsSince,
-  loadLatestPrevision,
-  loadPrevisionByTs,
-} from "../fundamental/persistence/store.js";
-import { computeCurveOutcome } from "../fundamental/persistence/curve-outcome.js";
 import { statsOf } from "../fundamental/ai/prevision.js";
-import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
-import { getTrends } from "../fundamental/persistence/scheduler.js";
-import { freshnessPayload } from "../fundamental/freshness.js";
-import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
-import { buildCalendar } from "../fundamental/calendar.js";
-import { METRIC_DICTIONARY, GLOSSARY } from "../fundamental/dictionary.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
+import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
+import { buildCalendar } from "../fundamental/calendar.js";
+import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
+import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
+import { freshnessPayload } from "../fundamental/freshness.js";
+import { computeCurveOutcome } from "../fundamental/persistence/curve-outcome.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
-import { SCHEMA_VERSION } from "../fundamental/persistence/store.js";
+import { getTrends } from "../fundamental/persistence/scheduler.js";
+import {
+  SCHEMA_VERSION,
+  getSnapshotForVerdict,
+  getVerdictForSnapshot,
+  listCurves,
+  listPrevisions,
+  listSnapshots,
+  listVerdicts,
+  loadCurveByTs,
+  loadLatestCurve,
+  loadLatestPrevision,
+  loadLatestSnapshot,
+  loadLatestVerdict,
+  loadMetricsSince,
+  loadPrevisionByTs,
+  loadPrevisionsSince,
+  loadSnapshotByTs,
+  loadVerdictByTs,
+} from "../fundamental/persistence/store.js";
 
-const DAY = 86400000;
+/**
+ * API publique en lecture seule : snapshots, verdicts, prévisions, tendances,
+ * calendrier, vulgarisation. Auth Bearer optionnelle (API_TOKEN), rate-limit
+ * optionnel (API_RATE_LIMIT), CORS ouvert.
+ */
+const MINUTE_MS = 60000;
+const HOUR_MS = 3600000;
+const DAY_MS = 86400000;
+const DEFAULT_LIMIT = 100;
+const SNAPSHOTS_SINCE_DAYS = 7;
+const HISTORY_SINCE_DAYS = 30;
+const STATS_SINCE_DAYS = 90;
+const TRENDS_LOOKBACK_DAYS = 8;
+const RATE_WINDOW_MS = MINUTE_MS;
+const CALENDAR_FRESH_MS = HOUR_MS;
+const PREVISION_PREVIOUS_WINDOW_MS = 7 * DAY_MS;
+const EXPLAIN_MIN_CHARS = 8;
+const EXPLAIN_MAX_CHARS = 600;
+const EXPLAIN_TIMEOUT_MS = 20000;
+const EXPLAIN_CACHE_MAX = 300;
+const EXPLAIN_BODY_LIMIT = "4kb";
 
+/**
+ * Parse un timestamp de requête : epoch ms numérique ou date ISO.
+ * @param {string|undefined} raw Valeur brute (query ou param).
+ * @returns {number|null} Epoch ms, ou null si absent/invalide.
+ */
 function parseTs(raw) {
   if (raw == null) return null;
-  if (/^\d+$/.test(raw)) return Number(raw); // epoch ms
-  const t = Date.parse(raw); // ISO
-  return Number.isFinite(t) ? t : null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseSince(raw, defaultDays = 7) {
-  const t = parseTs(raw);
-  return t != null ? t : Date.now() - defaultDays * DAY;
+/**
+ * Parse un `?since=` avec repli sur une fenêtre par défaut.
+ * @param {string|undefined} raw Valeur brute de la query.
+ * @param {number} [defaultDays] Fenêtre par défaut (jours) si absent/invalide.
+ * @returns {number} Epoch ms.
+ */
+function parseSince(raw, defaultDays = SNAPSHOTS_SINCE_DAYS) {
+  const ts = parseTs(raw);
+  return ts != null ? ts : Date.now() - defaultDays * DAY_MS;
 }
 
-const withIso = (r) => ({ ts: r.ts, iso: new Date(r.ts).toISOString() });
+/**
+ * Référence de record réduite à { ts, iso } pour les listes.
+ * @param {{ts: number}} record Référence avec timestamp.
+ * @returns {{ts: number, iso: string}} Référence sérialisable.
+ */
+function withIso(record) {
+  return { ts: record.ts, iso: new Date(record.ts).toISOString() };
+}
 
-/** Construit l'app Express (API publique en lecture seule). */
-export function createApp() {
-  const app = express();
-
-  // CORS ouvert (API publique en lecture).
-  app.use((req, res, next) => {
-    res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    if (req.method === "OPTIONS") return res.sendStatus(204);
-    next();
-  });
-
-  // Auth OPTIONNELLE : si API_TOKEN est défini, exige un Bearer token (ou ?token=)
-  // sur tout /api/* sauf /api/health. Sans la variable : ouvert (dev local).
-  const TOKEN = process.env.API_TOKEN;
-  if (TOKEN) {
-    app.use((req, res, next) => {
-      if (req.path === "/api/health") return next();
-      const auth = req.get("authorization") || "";
-      const provided = auth.startsWith("Bearer ") ? auth.slice(7) : req.query.token;
-      if (provided !== TOKEN) return res.status(401).json({ error: "non autorisé (token requis)" });
-      next();
-    });
-  }
-
-  // Rate-limit OPTIONNEL (par IP, fenêtre glissante 1 min) si API_RATE_LIMIT > 0.
-  const RL = Number(process.env.API_RATE_LIMIT) || 0;
-  if (RL > 0) {
-    const hits = new Map();
-    app.use((req, res, next) => {
-      const ip = req.ip || req.socket?.remoteAddress || "?";
-      const now = Date.now();
-      const w = hits.get(ip) || { count: 0, reset: now + 60000 };
-      if (now > w.reset) { w.count = 0; w.reset = now + 60000; }
-      w.count++;
-      hits.set(ip, w);
-      if (w.count > RL) return res.status(429).json({ error: "trop de requêtes (rate limit)" });
-      next();
-    });
-  }
-
-  const wrap = (fn) => (req, res) => {
-    Promise.resolve(fn(req, res)).catch((err) => {
+/**
+ * Enveloppe un handler async : toute erreur est loguée avec la route et
+ * renvoyée en 500 JSON (jamais de requête pendante).
+ * @param {Function} handler Handler async (req, res).
+ * @returns {Function} Handler Express sûr.
+ */
+function wrapAsync(handler) {
+  return (req, res) => {
+    Promise.resolve(handler(req, res)).catch((err) => {
       logger.error(`[api] ${req.method} ${req.path} : ${err.message}`);
       res.status(500).json({ error: err.message });
     });
   };
+}
 
-  app.get("/api/health", (req, res) => res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION }));
-
-  // --- Index : liste des endpoints (servi sur / ET /api) ---
-  const apiIndex = {
-    service: "crypto-fundamental",
-    schemaVersion: SCHEMA_VERSION,
-    endpoints: [
-      "GET /api/health",
-      "GET /api/snapshots?since=&limit=",
-      "GET /api/snapshots/latest",
-      "GET /api/snapshots/:ts",
-      "GET /api/snapshots/:ts/verdict",
-      "GET /api/snapshots/:ts/freshness",
-      "GET /api/freshness",
-      "GET /api/verdicts?since=&limit=",
-      "GET /api/verdicts/latest",
-      "GET /api/verdicts/:ts",
-      "GET /api/verdicts/:ts/snapshot",
-      "GET /api/verdicts/:ts/outcome",
-      "GET /api/forecast/curves?since=&limit=",
-      "GET /api/forecast/curves/latest",
-      "GET /api/forecast/curves/:ts",
-      "GET /api/forecast/curves/:ts/outcome",
-      "GET /api/forecast/previsions?since=&limit=",
-      "GET /api/forecast/previsions/latest",
-      "GET /api/forecast/previsions/stats?since=",
-      "GET /api/forecast/previsions/:ts",
-      "GET /api/trends?lookbackDays=",
-      "GET /api/metrics?since=",
-      "GET /api/dictionary",
-      "GET /api/glossary",
-      "POST /api/explain",
-      "GET /api/calendar",
-    ],
+/**
+ * Middleware CORS ouvert (API publique en lecture).
+ * @returns {Function} Middleware Express.
+ */
+function createCorsMiddleware() {
+  return (req, res, next) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+    next();
   };
-  const sendIndex = (req, res) => res.json(apiIndex);
+}
+
+/**
+ * Middleware d'auth Bearer (ou ?token=) sur tout /api/* sauf /api/health.
+ * @param {string} token Token attendu (API_TOKEN).
+ * @returns {Function} Middleware Express.
+ */
+function createAuthMiddleware(token) {
+  return (req, res, next) => {
+    if (req.path === "/api/health") return next();
+
+    const auth = req.get("authorization") || "";
+    let provided = req.query.token;
+    if (auth.startsWith("Bearer ")) provided = auth.slice(7);
+
+    if (provided !== token) return res.status(401).json({ error: "non autorisé (token requis)" });
+    next();
+  };
+}
+
+/**
+ * Middleware de rate-limit par IP, fenêtre glissante de RATE_WINDOW_MS.
+ * @param {number} maxPerWindow Nombre maximal de requêtes par fenêtre.
+ * @returns {Function} Middleware Express.
+ */
+function createRateLimitMiddleware(maxPerWindow) {
+  const hits = new Map(); // ip -> { count, reset } : compteur de la fenêtre courante
+
+  return (req, res, next) => {
+    const ip = req.ip || req.socket?.remoteAddress || "?";
+    const now = Date.now();
+
+    const window = hits.get(ip) || { count: 0, reset: now + RATE_WINDOW_MS };
+    if (now > window.reset) {
+      window.count = 0;
+      window.reset = now + RATE_WINDOW_MS;
+    }
+    window.count++;
+    hits.set(ip, window);
+
+    if (window.count > maxPerWindow) return res.status(429).json({ error: "trop de requêtes (rate limit)" });
+    next();
+  };
+}
+
+// Index auto-descriptif servi sur / et /api.
+const API_INDEX = {
+  service: "crypto-fundamental",
+  schemaVersion: SCHEMA_VERSION,
+  endpoints: [
+    "GET /api/health",
+    "GET /api/snapshots?since=&limit=",
+    "GET /api/snapshots/latest",
+    "GET /api/snapshots/:ts",
+    "GET /api/snapshots/:ts/verdict",
+    "GET /api/snapshots/:ts/freshness",
+    "GET /api/freshness",
+    "GET /api/verdicts?since=&limit=",
+    "GET /api/verdicts/latest",
+    "GET /api/verdicts/:ts",
+    "GET /api/verdicts/:ts/snapshot",
+    "GET /api/verdicts/:ts/outcome",
+    "GET /api/forecast/curves?since=&limit=",
+    "GET /api/forecast/curves/latest",
+    "GET /api/forecast/curves/:ts",
+    "GET /api/forecast/curves/:ts/outcome",
+    "GET /api/forecast/previsions?since=&limit=",
+    "GET /api/forecast/previsions/latest",
+    "GET /api/forecast/previsions/stats?since=",
+    "GET /api/forecast/previsions/:ts",
+    "GET /api/trends?lookbackDays=",
+    "GET /api/metrics?since=",
+    "GET /api/dictionary",
+    "GET /api/glossary",
+    "POST /api/explain",
+    "GET /api/calendar",
+  ],
+};
+
+/**
+ * Sert l'index des endpoints.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+function sendIndex(req, res) {
+  res.json(API_INDEX);
+}
+
+const EXPLAIN_SYSTEM =
+  "Tu es un vulgarisateur financier. On te donne une phrase issue d'une analyse " +
+  "de marché. Explique-la en français TRÈS simple (comme à un proche non-initié), " +
+  "en 2-3 phrases maximum, sans jargon, sans chiffre inutile, sans conseil " +
+  "d'investissement, sans prédiction de prix. Si la phrase contient un terme " +
+  "technique, explique-le en une proposition. Réponds UNIQUEMENT par un objet " +
+  'JSON : {"explication": "..."}';
+
+const explainCache = new Map(); // texte normalisé -> explication (FIFO borné à EXPLAIN_CACHE_MAX)
+
+/**
+ * Extrait le champ `explication` d'une réponse Groq : JSON direct, sinon
+ * premier bloc {...} trouvé dans le texte.
+ * @param {string|null} raw Réponse brute du LLM.
+ * @returns {string|null} Explication, ou null si non exploitable.
+ */
+function parseExplication(raw) {
+  try {
+    const direct = JSON.parse(raw)?.explication;
+    if (direct) return direct;
+  } catch {
+    const match = raw?.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0])?.explication ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * POST /api/explain — vulgarisation à la demande, UNIQUEMENT via Groq (palier
+ * gratuit, rapide). Pas de fallback DeepSeek : feature de confort, si Groq est
+ * down on renvoie 503 (le contenu de base reste lisible). Cache borné (mêmes
+ * phrases re-demandées par les visiteurs).
+ * @param {object} req Requête Express ({ body.texte }).
+ * @param {object} res Réponse Express.
+ */
+async function postExplain(req, res) {
+  const texte = typeof req.body?.texte === "string" ? req.body.texte.trim() : "";
+  if (texte.length < EXPLAIN_MIN_CHARS) {
+    return res.status(400).json({ error: `texte manquant ou trop court (min ${EXPLAIN_MIN_CHARS} caractères)` });
+  }
+  if (texte.length > EXPLAIN_MAX_CHARS) {
+    return res.status(400).json({ error: `texte trop long (max ${EXPLAIN_MAX_CHARS} caractères)` });
+  }
+
+  const key = texte.toLowerCase().replace(/\s+/g, " ");
+  if (explainCache.has(key)) {
+    return res.json({ provider: "groq", cached: true, explication: explainCache.get(key) });
+  }
+
+  let raw;
+  try {
+    raw = await groq.complete({ system: EXPLAIN_SYSTEM, user: texte, timeout: EXPLAIN_TIMEOUT_MS });
+  } catch (err) {
+    return res.status(503).json({ error: `vulgarisation indisponible (Groq) : ${err.message}` });
+  }
+
+  const explication = parseExplication(raw);
+  if (!explication) return res.status(502).json({ error: "réponse Groq non exploitable" });
+
+  if (explainCache.size >= EXPLAIN_CACHE_MAX) explainCache.delete(explainCache.keys().next().value);
+  explainCache.set(key, explication);
+  res.json({ provider: "groq", cached: false, explication });
+}
+
+/**
+ * GET /api/calendar — calendrier économique unifié (format type investing.com).
+ * Source riche : investing.com (scrapé) en primaire, FairEconomy en repli. Lit
+ * le dernier snapshot ; collecte en direct si rien (ou snapshot de plus d'1 h).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getCalendar(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < CALENDAR_FRESH_MS;
+  let rich = fresh ? snap.axes?.macro?.["investing-calendar"] : null;
+  let source = fresh ? "snapshot" : "live";
+  let ts = snap?.ts;
+
+  if (!rich?.events?.length) {
+    const result = await new InvestingCalendarCollector().collect();
+    if (!result.stale && result.data?.events?.length) {
+      rich = result.data;
+      source = fresh ? "snapshot+live" : "live";
+      ts = Math.max(ts || 0, result.ts);
+    }
+  }
+
+  const calendar = buildCalendar(rich);
+  if (!calendar.events.length) {
+    return res.status(503).json({ error: "calendrier indisponible (investing.com + FairEconomy en échec)" });
+  }
+
+  res.json({
+    source,
+    ts,
+    iso: ts ? new Date(ts).toISOString() : null,
+    ...calendar,
+    count: calendar.events.length,
+  });
+}
+
+/**
+ * GET /api/snapshots — références des snapshots d'une fenêtre.
+ * @param {object} req Requête Express (?since=&limit=).
+ * @param {object} res Réponse Express.
+ */
+async function getSnapshots(req, res) {
+  const since = parseSince(req.query.since);
+  const limit = Number(req.query.limit) || DEFAULT_LIMIT;
+  const list = await listSnapshots(since);
+  res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+}
+
+/**
+ * GET /api/snapshots/latest — dernier snapshot complet.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getLatestSnapshot(req, res) {
+  const snap = await loadLatestSnapshot();
+  if (!snap) return res.status(404).json({ error: "aucun snapshot" });
+  res.json(snap);
+}
+
+/**
+ * GET /api/snapshots/:ts/verdict — verdict produit depuis ce snapshot.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getSnapshotVerdict(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const verdict = await getVerdictForSnapshot(ts);
+  if (!verdict) return res.status(404).json({ error: "aucun verdict pour ce snapshot" });
+  res.json(verdict);
+}
+
+/**
+ * GET /api/snapshots/:ts/freshness — date réelle + âge de chaque source, pour
+ * que le consommateur sache de QUAND datent les données du verdict.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getSnapshotFreshness(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const snap = await loadSnapshotByTs(ts);
+  if (!snap) return res.status(404).json({ error: "snapshot introuvable" });
+  res.json(freshnessPayload(snap));
+}
+
+/**
+ * GET /api/freshness — fraîcheur du DERNIER snapshot (raccourci).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getLatestFreshness(req, res) {
+  const snap = await loadLatestSnapshot();
+  if (!snap) return res.status(404).json({ error: "aucun snapshot" });
+  res.json(freshnessPayload(snap));
+}
+
+/**
+ * GET /api/snapshots/:ts — un snapshot complet par timestamp.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getSnapshotByTs(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const snap = await loadSnapshotByTs(ts);
+  if (!snap) return res.status(404).json({ error: "snapshot introuvable" });
+  res.json(snap);
+}
+
+/**
+ * GET /api/verdicts — références des verdicts d'une fenêtre. `?summary=1`
+ * renvoie régime/confiance/contradictions de CHAQUE verdict en UNE requête
+ * (sinon un client doit faire N appels /:ts et tape le rate-limit).
+ * @param {object} req Requête Express (?since=&limit=&summary=).
+ * @param {object} res Réponse Express.
+ */
+async function getVerdicts(req, res) {
+  const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
+  const limit = Number(req.query.limit) || DEFAULT_LIMIT;
+  const list = await listVerdicts(since);
+  const items = list.slice(-limit);
+
+  if (req.query.summary === "1") {
+    const summaries = [];
+    for (const item of items) {
+      const record = await loadVerdictByTs(item.ts).catch(() => null);
+      const verdict = record?.verdict ?? {};
+      summaries.push({
+        ts: item.ts,
+        iso: new Date(item.ts).toISOString(),
+        regime: verdict.regime ?? null,
+        confiance: verdict.confiance ?? null,
+        contradictions: Array.isArray(verdict.signaux_contradictoires) ? verdict.signaux_contradictoires.length : 0,
+      });
+    }
+    return res.json({ count: list.length, items: summaries });
+  }
+
+  res.json({ count: list.length, items: items.map(withIso) });
+}
+
+/**
+ * GET /api/verdicts/latest — dernier verdict complet.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getLatestVerdict(req, res) {
+  const verdict = await loadLatestVerdict();
+  if (!verdict) return res.status(404).json({ error: "aucun verdict" });
+  res.json(verdict);
+}
+
+/**
+ * GET /api/forecast/curves — références des courbes archivées (génération
+ * retirée 2026-07-08, l'API ne fait que LIRE).
+ * @param {object} req Requête Express (?since=&limit=).
+ * @param {object} res Réponse Express.
+ */
+async function getCurves(req, res) {
+  const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
+  const limit = Number(req.query.limit) || DEFAULT_LIMIT;
+  const list = await listCurves(since);
+  res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+}
+
+/**
+ * GET /api/forecast/curves/latest — dernière courbe archivée.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getLatestCurveRoute(req, res) {
+  const curve = await loadLatestCurve();
+  if (!curve) return res.status(404).json({ error: "aucune courbe" });
+  res.json(curve);
+}
+
+/**
+ * GET /api/forecast/curves/:ts/outcome — suivi a posteriori d'une courbe :
+ * projeté vs réalisé + justesse directionnelle (100 % déterministe, sans IA).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getCurveOutcome(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const outcome = await computeCurveOutcome(ts);
+  if (!outcome) return res.status(404).json({ error: "courbe introuvable" });
+  res.json(outcome);
+}
+
+/**
+ * GET /api/forecast/curves/:ts — une courbe archivée par son ts (= baseTs).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getCurveByTs(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const curve = await loadCurveByTs(ts);
+  if (!curve) return res.status(404).json({ error: "courbe introuvable" });
+  res.json(curve);
+}
+
+/**
+ * Middleware lazy-eval commun à TOUTES les lectures previsions (y compris
+ * /:ts) : les prévisions échues sont évaluées avant de servir — throttlé côté
+ * runner (10 min).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @param {Function} next Chaîne Express.
+ */
+function evaluatePrevisionsBeforeServing(req, res, next) {
+  evaluateDuePrevisions().then(() => next(), next);
+}
+
+/**
+ * GET /api/forecast/previsions — références des prévisions d'une fenêtre.
+ * `?full=1` : records complets (le tableau "prédit vs obtenu" du Reader en a
+ * besoin — un aller-retour par ts serait un N+1 côté client).
+ * @param {object} req Requête Express (?since=&limit=&full=).
+ * @param {object} res Réponse Express.
+ */
+async function getPrevisions(req, res) {
+  const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
+  const limit = Number(req.query.limit) || DEFAULT_LIMIT;
+
+  if (req.query.full === "1") {
+    const records = await loadPrevisionsSince(since);
+    return res.json({ count: records.length, items: records.slice(-limit) });
+  }
+
+  const list = await listPrevisions(since);
+  res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
+}
+
+/**
+ * Prévision évaluée la plus récente ANTÉRIEURE à un baseTs (pour l'affichage
+ * "hier : prédit vs réalisé" du Reader).
+ * @param {Array<object>} records Prévisions triées croissant.
+ * @param {number} baseTs baseTs de la prévision courante (epoch ms).
+ * @returns {object|null} Record évalué le plus récent avant baseTs, ou null.
+ */
+function findPreviousEvaluated(records, baseTs) {
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].baseTs >= baseTs) continue;
+    if (records[i].actifs?.some((asset) => asset.realise)) return records[i];
+  }
+  return null;
+}
+
+/**
+ * GET /api/forecast/previsions/latest — dernière prévision, jointe à la
+ * précédente ÉVALUÉE (`precedente`).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getLatestPrevisionRoute(req, res) {
+  const prevision = await loadLatestPrevision();
+  if (!prevision) return res.status(404).json({ error: "aucune prévision" });
+
+  const records = await loadPrevisionsSince(Date.now() - PREVISION_PREVIOUS_WINDOW_MS);
+  const previous = findPreviousEvaluated(records, prevision.baseTs);
+  res.json({ ...prevision, precedente: previous });
+}
+
+/**
+ * GET /api/forecast/previsions/stats — track record agrégé (statsOf) sur une
+ * fenêtre.
+ * @param {object} req Requête Express (?since=).
+ * @param {object} res Réponse Express.
+ */
+async function getPrevisionStats(req, res) {
+  const since = parseSince(req.query.since, STATS_SINCE_DAYS);
+  const records = await loadPrevisionsSince(since);
+  res.json({ since, count: records.length, ...statsOf(records) });
+}
+
+/**
+ * GET /api/forecast/previsions/:ts — une prévision par timestamp.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getPrevisionByTsRoute(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const prevision = await loadPrevisionByTs(ts);
+  if (!prevision) return res.status(404).json({ error: "prévision introuvable" });
+  res.json(prevision);
+}
+
+/**
+ * GET /api/verdicts/:ts/snapshot — snapshot ayant produit ce verdict.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getVerdictSnapshot(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const snap = await getSnapshotForVerdict(ts);
+  if (!snap) return res.status(404).json({ error: "aucun snapshot pour ce verdict" });
+  res.json(snap);
+}
+
+/**
+ * GET /api/verdicts/:ts/outcome — suivi a posteriori : deltas factuels des
+ * métriques-clés à +24h/+7j. Pas de note "juste/faux" — le consommateur juge.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getVerdictOutcome(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const outcome = await computeOutcome(ts);
+  if (!outcome) return res.status(404).json({ error: "verdict introuvable" });
+  res.json(outcome);
+}
+
+/**
+ * GET /api/verdicts/:ts — un verdict complet par timestamp.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+async function getVerdictByTsRoute(req, res) {
+  const ts = parseTs(req.params.ts);
+  if (ts == null) return res.status(400).json({ error: "ts invalide" });
+  const verdict = await loadVerdictByTs(ts);
+  if (!verdict) return res.status(404).json({ error: "verdict introuvable" });
+  res.json(verdict);
+}
+
+/**
+ * GET /api/trends — tendances courantes (deltas 1h/24h/7j + normalisation).
+ * @param {object} req Requête Express (?lookbackDays=).
+ * @param {object} res Réponse Express.
+ */
+async function getTrendsRoute(req, res) {
+  const lookbackDays = Number(req.query.lookbackDays) || TRENDS_LOOKBACK_DAYS;
+  res.json(await getTrends(lookbackDays));
+}
+
+/**
+ * GET /api/metrics — historique compact des métriques d'une fenêtre.
+ * @param {object} req Requête Express (?since=).
+ * @param {object} res Réponse Express.
+ */
+async function getMetrics(req, res) {
+  const since = parseSince(req.query.since);
+  res.json(await loadMetricsSince(since));
+}
+
+/**
+ * GET /api/health — sonde de vie (jamais authentifiée).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+function getHealth(req, res) {
+  res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION });
+}
+
+/**
+ * GET /api/dictionary — dictionnaire auto-descriptif des métriques.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+function getDictionary(req, res) {
+  res.json({ schemaVersion: SCHEMA_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY });
+}
+
+/**
+ * GET /api/glossary — glossaire des termes.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ */
+function getGlossary(req, res) {
+  res.json({ count: GLOSSARY.length, terms: GLOSSARY });
+}
+
+/**
+ * Construit l'app Express : middlewares (CORS, auth optionnelle, rate-limit
+ * optionnel) puis routes. Les routes spécifiques (latest, outcome…) sont
+ * enregistrées AVANT les génériques `/:ts`.
+ * @returns {object} App Express prête à écouter.
+ */
+export function createApp() {
+  const app = express();
+
+  app.use(createCorsMiddleware());
+
+  // Auth OPTIONNELLE : sans API_TOKEN, l'API reste ouverte (dev local).
+  const token = process.env.API_TOKEN;
+  if (token) app.use(createAuthMiddleware(token));
+
+  // Rate-limit OPTIONNEL : actif seulement si API_RATE_LIMIT > 0.
+  const rateLimit = Number(process.env.API_RATE_LIMIT) || 0;
+  if (rateLimit > 0) app.use(createRateLimitMiddleware(rateLimit));
+
+  app.get("/api/health", getHealth);
   app.get("/", sendIndex);
   app.get("/api", sendIndex);
 
-  // --- API auto-descriptive : dictionnaire des métriques + glossaire ---
-  app.get("/api/dictionary", (req, res) =>
-    res.json({ schemaVersion: SCHEMA_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY }),
-  );
-  app.get("/api/glossary", (req, res) => res.json({ count: GLOSSARY.length, terms: GLOSSARY }));
+  app.get("/api/dictionary", getDictionary);
+  app.get("/api/glossary", getGlossary);
 
-  // --- EXPLIQUE-MOI : vulgarisation à la demande, UNIQUEMENT via Groq --------
-  // Le client envoie une phrase du verdict qu'il n'a pas comprise ; Groq (palier
-  // gratuit, rapide) la reformule en langage simple. Pas de fallback DeepSeek :
-  // feature de confort, si Groq est down on renvoie 503 (le contenu de base
-  // reste lisible). Cache borné (mêmes phrases re-demandées par les visiteurs).
-  const EXPLAIN_SYSTEM =
-    "Tu es un vulgarisateur financier. On te donne une phrase issue d'une analyse " +
-    "de marché. Explique-la en français TRÈS simple (comme à un proche non-initié), " +
-    "en 2-3 phrases maximum, sans jargon, sans chiffre inutile, sans conseil " +
-    "d'investissement, sans prédiction de prix. Si la phrase contient un terme " +
-    "technique, explique-le en une proposition. Réponds UNIQUEMENT par un objet " +
-    'JSON : {"explication": "..."}';
-  const explainCache = new Map(); // texte normalisé -> explication (borné à 300)
+  app.post("/api/explain", express.json({ limit: EXPLAIN_BODY_LIMIT }), wrapAsync(postExplain));
+  app.get("/api/calendar", wrapAsync(getCalendar));
 
-  app.post(
-    "/api/explain",
-    express.json({ limit: "4kb" }),
-    wrap(async (req, res) => {
-      const texte = typeof req.body?.texte === "string" ? req.body.texte.trim() : "";
-      if (texte.length < 8) return res.status(400).json({ error: "texte manquant ou trop court (min 8 caractères)" });
-      if (texte.length > 600) return res.status(400).json({ error: "texte trop long (max 600 caractères)" });
+  app.get("/api/snapshots", wrapAsync(getSnapshots));
+  app.get("/api/snapshots/latest", wrapAsync(getLatestSnapshot));
+  app.get("/api/snapshots/:ts/verdict", wrapAsync(getSnapshotVerdict));
+  app.get("/api/snapshots/:ts/freshness", wrapAsync(getSnapshotFreshness));
+  app.get("/api/freshness", wrapAsync(getLatestFreshness));
+  app.get("/api/snapshots/:ts", wrapAsync(getSnapshotByTs));
 
-      const key = texte.toLowerCase().replace(/\s+/g, " ");
-      if (explainCache.has(key)) return res.json({ provider: "groq", cached: true, explication: explainCache.get(key) });
+  app.get("/api/verdicts", wrapAsync(getVerdicts));
+  app.get("/api/verdicts/latest", wrapAsync(getLatestVerdict));
 
-      let raw;
-      try {
-        raw = await groq.complete({ system: EXPLAIN_SYSTEM, user: texte, timeout: 20000 });
-      } catch (err) {
-        return res.status(503).json({ error: `vulgarisation indisponible (Groq) : ${err.message}` });
-      }
-      let explication = null;
-      try {
-        explication = JSON.parse(raw)?.explication ?? null;
-      } catch {
-        const m = raw?.match(/\{[\s\S]*\}/);
-        if (m) try { explication = JSON.parse(m[0])?.explication ?? null; } catch { /* non parsé */ }
-      }
-      if (!explication) return res.status(502).json({ error: "réponse Groq non exploitable" });
+  app.get("/api/forecast/curves", wrapAsync(getCurves));
+  app.get("/api/forecast/curves/latest", wrapAsync(getLatestCurveRoute));
+  app.get("/api/forecast/curves/:ts/outcome", wrapAsync(getCurveOutcome));
+  app.get("/api/forecast/curves/:ts", wrapAsync(getCurveByTs));
 
-      if (explainCache.size >= 300) explainCache.delete(explainCache.keys().next().value); // FIFO borné
-      explainCache.set(key, explication);
-      res.json({ provider: "groq", cached: false, explication });
-    }),
-  );
+  app.use("/api/forecast/previsions", evaluatePrevisionsBeforeServing);
+  app.get("/api/forecast/previsions", wrapAsync(getPrevisions));
+  app.get("/api/forecast/previsions/latest", wrapAsync(getLatestPrevisionRoute));
+  app.get("/api/forecast/previsions/stats", wrapAsync(getPrevisionStats));
+  app.get("/api/forecast/previsions/:ts", wrapAsync(getPrevisionByTsRoute));
 
-  // --- Calendrier économique unifié (format type investing.com) ---
-  // Source riche : investing.com (scrapé) en primaire, FairEconomy en repli. Lit
-  // le dernier snapshot ; collecte en direct si rien (ou snapshot de plus d'1 h).
-  app.get(
-    "/api/calendar",
-    wrap(async (req, res) => {
-      const snap = await loadLatestSnapshot();
-      const fresh = snap && Date.now() - snap.ts < 3600000;
-      let rich = fresh ? snap.axes?.macro?.["investing-calendar"] : null;
-      let source = fresh ? "snapshot" : "live";
-      let ts = snap?.ts;
+  app.get("/api/verdicts/:ts/snapshot", wrapAsync(getVerdictSnapshot));
+  app.get("/api/verdicts/:ts/outcome", wrapAsync(getVerdictOutcome));
+  app.get("/api/verdicts/:ts", wrapAsync(getVerdictByTsRoute));
 
-      if (!rich?.events?.length) {
-        // Le collecteur gère lui-même le repli investing.com → FairEconomy.
-        const r = await new InvestingCalendarCollector().collect();
-        if (!r.stale && r.data?.events?.length) {
-          rich = r.data;
-          source = fresh ? "snapshot+live" : "live";
-          ts = Math.max(ts || 0, r.ts);
-        }
-      }
-
-      const cal = buildCalendar(rich);
-      if (!cal.events.length) return res.status(503).json({ error: "calendrier indisponible (investing.com + FairEconomy en échec)" });
-
-      res.json({
-        source,
-        ts,
-        iso: ts ? new Date(ts).toISOString() : null,
-        ...cal,
-        count: cal.events.length,
-      });
-    }),
-  );
-
-  // --- Snapshots ---
-  app.get(
-    "/api/snapshots",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since);
-      const limit = Number(req.query.limit) || 100;
-      const list = await listSnapshots(since);
-      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
-    }),
-  );
-
-  app.get(
-    "/api/snapshots/latest",
-    wrap(async (req, res) => {
-      const snap = await loadLatestSnapshot();
-      if (!snap) return res.status(404).json({ error: "aucun snapshot" });
-      res.json(snap);
-    }),
-  );
-
-  app.get(
-    "/api/snapshots/:ts/verdict",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const v = await getVerdictForSnapshot(ts);
-      if (!v) return res.status(404).json({ error: "aucun verdict pour ce snapshot" });
-      res.json(v);
-    }),
-  );
-
-  // Fraîcheur des données d'un snapshot : date réelle + âge de chaque source,
-  // pour que le consommateur sache de QUAND datent les données du verdict.
-  app.get(
-    "/api/snapshots/:ts/freshness",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const snap = await loadSnapshotByTs(ts);
-      if (!snap) return res.status(404).json({ error: "snapshot introuvable" });
-      res.json(freshnessPayload(snap));
-    }),
-  );
-
-  // Fraîcheur du DERNIER snapshot (raccourci pratique).
-  app.get(
-    "/api/freshness",
-    wrap(async (req, res) => {
-      const snap = await loadLatestSnapshot();
-      if (!snap) return res.status(404).json({ error: "aucun snapshot" });
-      res.json(freshnessPayload(snap));
-    }),
-  );
-
-  app.get(
-    "/api/snapshots/:ts",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const snap = await loadSnapshotByTs(ts);
-      if (!snap) return res.status(404).json({ error: "snapshot introuvable" });
-      res.json(snap);
-    }),
-  );
-
-  // --- Verdicts ---
-  // ?summary=1 : renvoie régime/confiance/contradictions de CHAQUE verdict en
-  // UNE requête (sinon un client doit faire N appels /:ts et tape le rate-limit).
-  app.get(
-    "/api/verdicts",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since, 30);
-      const limit = Number(req.query.limit) || 100;
-      const list = await listVerdicts(since);
-      const items = list.slice(-limit);
-      if (req.query.summary === "1") {
-        const out = [];
-        for (const it of items) {
-          const r = await loadVerdictByTs(it.ts).catch(() => null);
-          const v = r?.verdict ?? {};
-          out.push({
-            ts: it.ts,
-            iso: new Date(it.ts).toISOString(),
-            regime: v.regime ?? null,
-            confiance: v.confiance ?? null,
-            contradictions: Array.isArray(v.signaux_contradictoires) ? v.signaux_contradictoires.length : 0,
-          });
-        }
-        return res.json({ count: list.length, items: out });
-      }
-      res.json({ count: list.length, items: items.map(withIso) });
-    }),
-  );
-
-  app.get(
-    "/api/verdicts/latest",
-    wrap(async (req, res) => {
-      const v = await loadLatestVerdict();
-      if (!v) return res.status(404).json({ error: "aucun verdict" });
-      res.json(v);
-    }),
-  );
-
-  // Courbes projetées : générées par le SERVICE (1/jour), l'API ne fait que
-  // LIRE — exactement comme snapshots/verdicts (aucun appel LLM ici).
-
-  // HISTORIQUE (liste).
-  app.get(
-    "/api/forecast/curves",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since, 30);
-      const limit = Number(req.query.limit) || 100;
-      const list = await listCurves(since);
-      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
-    }),
-  );
-
-  // Dernière courbe (comme /verdicts/latest). AVANT la route générique `/:ts`.
-  app.get(
-    "/api/forecast/curves/latest",
-    wrap(async (req, res) => {
-      const c = await loadLatestCurve();
-      if (!c) return res.status(404).json({ error: "aucune courbe" });
-      res.json(c);
-    }),
-  );
-
-  // Suivi A POSTERIORI d'une courbe : projeté vs réalisé + justesse directionnelle
-  // (100 % déterministe, sans IA). AVANT la route générique `/:ts`.
-  app.get(
-    "/api/forecast/curves/:ts/outcome",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const out = await computeCurveOutcome(ts);
-      if (!out) return res.status(404).json({ error: "courbe introuvable" });
-      res.json(out);
-    }),
-  );
-
-  // Une courbe passée par son ts (= baseTs).
-  app.get(
-    "/api/forecast/curves/:ts",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const c = await loadCurveByTs(ts);
-      if (!c) return res.status(404).json({ error: "courbe introuvable" });
-      res.json(c);
-    }),
-  );
-
-  // Prévisions directionnelles 24h (remplaçantes des courbes chiffrées).
-  // Lazy-eval commun à TOUTES les lectures previsions (y compris /:ts) : les
-  // échues sont évaluées avant de servir — throttlé côté runner (10 min).
-  app.use("/api/forecast/previsions", (req, res, next) => {
-    evaluateDuePrevisions().then(() => next(), next);
-  });
-
-  app.get(
-    "/api/forecast/previsions",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since, 30);
-      const limit = Number(req.query.limit) || 100;
-      // full=1 : records complets (le graph "prédit vs réel" du Reader en a
-      // besoin — un aller-retour par ts serait un N+1 côté client).
-      if (req.query.full === "1") {
-        const records = await loadPrevisionsSince(since);
-        return res.json({ count: records.length, items: records.slice(-limit) });
-      }
-      const list = await listPrevisions(since);
-      res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
-    }),
-  );
-
-  app.get(
-    "/api/forecast/previsions/latest",
-    wrap(async (req, res) => {
-      const p = await loadLatestPrevision();
-      if (!p) return res.status(404).json({ error: "aucune prévision" });
-      // joint la précédente ÉVALUÉE : le Reader affiche "hier : prédit vs réalisé"
-      const recs = await loadPrevisionsSince(Date.now() - 7 * 86400000);
-      let previous = null;
-      for (let i = recs.length - 1; i >= 0; i--) {
-        if (recs[i].baseTs >= p.baseTs) continue;
-        if (recs[i].actifs?.some((a) => a.realise)) {
-          previous = recs[i];
-          break;
-        }
-      }
-      res.json({ ...p, precedente: previous });
-    }),
-  );
-
-  app.get(
-    "/api/forecast/previsions/stats",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since, 90);
-      const records = await loadPrevisionsSince(since);
-      res.json({ since, count: records.length, ...statsOf(records) });
-    }),
-  );
-
-  app.get(
-    "/api/forecast/previsions/:ts",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const p = await loadPrevisionByTs(ts);
-      if (!p) return res.status(404).json({ error: "prévision introuvable" });
-      res.json(p);
-    }),
-  );
-
-  app.get(
-    "/api/verdicts/:ts/snapshot",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const snap = await getSnapshotForVerdict(ts);
-      if (!snap) return res.status(404).json({ error: "aucun snapshot pour ce verdict" });
-      res.json(snap);
-    }),
-  );
-
-  // Suivi A POSTERIORI : ce qui s'est passé depuis le verdict (deltas factuels
-  // des métriques-clés à +24h/+7j). Pas de note "juste/faux" — le consommateur juge.
-  app.get(
-    "/api/verdicts/:ts/outcome",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const out = await computeOutcome(ts);
-      if (!out) return res.status(404).json({ error: "verdict introuvable" });
-      res.json(out);
-    }),
-  );
-
-  app.get(
-    "/api/verdicts/:ts",
-    wrap(async (req, res) => {
-      const ts = parseTs(req.params.ts);
-      if (ts == null) return res.status(400).json({ error: "ts invalide" });
-      const v = await loadVerdictByTs(ts);
-      if (!v) return res.status(404).json({ error: "verdict introuvable" });
-      res.json(v);
-    }),
-  );
-
-  // --- Tendances & métriques ---
-  app.get(
-    "/api/trends",
-    wrap(async (req, res) => {
-      const lookbackDays = Number(req.query.lookbackDays) || 8;
-      res.json(await getTrends(lookbackDays));
-    }),
-  );
-
-  app.get(
-    "/api/metrics",
-    wrap(async (req, res) => {
-      const since = parseSince(req.query.since);
-      res.json(await loadMetricsSince(since));
-    }),
-  );
+  app.get("/api/trends", wrapAsync(getTrendsRoute));
+  app.get("/api/metrics", wrapAsync(getMetrics));
 
   return app;
 }
