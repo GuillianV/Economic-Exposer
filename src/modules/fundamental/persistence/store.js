@@ -20,7 +20,6 @@ import path from "node:path";
 const DATA = path.resolve(process.cwd(), "data");
 const SNAP_DIR = path.join(DATA, "snapshots");
 const VERDICT_DIR = path.join(DATA, "verdicts");
-const CURVE_DIR = path.join(DATA, "curves");
 const PREVISION_DIR = path.join(DATA, "previsions");
 const AI_STATE_FILE = path.join(DATA, "ai-state.json");
 
@@ -257,34 +256,6 @@ export async function loadVerdictByTs(ts, tolMs = NEAREST_TOL_MS) {
  */
 export async function loadLatestVerdict() {
   return loadLatestRecord(VERDICT_DIR);
-}
-
-/**
- * Courbe projetée la plus récente (ARCHIVE — génération retirée 2026-07-08,
- * lecture seule).
- * @returns {Promise<object|null>} Courbe complète, ou null si aucune.
- */
-export async function loadLatestCurve() {
-  return loadLatestRecord(CURVE_DIR);
-}
-
-/**
- * Références des courbes projetées archivées (1/jour).
- * @param {number} [sinceMs] Timestamp minimal (epoch ms).
- * @returns {Promise<Array<{ts: number, file: string}>>} Références triées croissant.
- */
-export async function listCurves(sinceMs = 0) {
-  return listRecords(CURVE_DIR, sinceMs);
-}
-
-/**
- * Courbe archivée par timestamp (= baseTs).
- * @param {number} ts Timestamp cible (epoch ms).
- * @param {number} [tolMs] Écart maximal accepté (ms).
- * @returns {Promise<object|null>} Courbe complète, ou null si absente.
- */
-export async function loadCurveByTs(ts, tolMs = NEAREST_TOL_MS) {
-  return loadRecordByTs(CURVE_DIR, ts, tolMs);
 }
 
 /**

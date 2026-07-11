@@ -1,4 +1,5 @@
 import express from "express";
+import { createSignatureAuthMiddleware } from "./auth.js";
 import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
@@ -6,19 +7,15 @@ import { buildCalendar } from "../fundamental/calendar.js";
 import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
 import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
-import { computeCurveOutcome } from "../fundamental/persistence/curve-outcome.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import {
   SCHEMA_VERSION,
   getSnapshotForVerdict,
   getVerdictForSnapshot,
-  listCurves,
   listPrevisions,
   listSnapshots,
   listVerdicts,
-  loadCurveByTs,
-  loadLatestCurve,
   loadLatestPrevision,
   loadLatestSnapshot,
   loadLatestVerdict,
@@ -32,8 +29,9 @@ import { logger } from "../logs/index.js";
 
 /**
  * API publique en lecture seule : snapshots, verdicts, prévisions, tendances,
- * calendrier, vulgarisation. Auth Bearer optionnelle (API_TOKEN), rate-limit
- * optionnel (API_RATE_LIMIT), CORS ouvert.
+ * calendrier, vulgarisation. Auth par signature HMAC (voir auth.js), Bearer
+ * legacy tant qu'API_TOKEN est défini, rate-limit optionnel (API_RATE_LIMIT),
+ * CORS ouvert.
  */
 const MINUTE_MS = 60000;
 const HOUR_MS = 3600000;
@@ -100,32 +98,16 @@ function wrapAsync(handler) {
 }
 
 /**
- * Middleware CORS ouvert (API publique en lecture).
+ * Middleware CORS ouvert (API publique en lecture), en-têtes de signature
+ * autorisés pour les clients navigateur éventuels.
  * @returns {Function} Middleware Express.
  */
 function createCorsMiddleware() {
   return (req, res, next) => {
     res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Auth-Ts, X-Auth-Nonce, X-Auth-Sig");
     if (req.method === "OPTIONS") return res.sendStatus(204);
-    next();
-  };
-}
-
-/**
- * Middleware d'auth Bearer (ou ?token=) sur tout /api/* sauf /api/health.
- * @param {string} token Token attendu (API_TOKEN).
- * @returns {Function} Middleware Express.
- */
-function createAuthMiddleware(token) {
-  return (req, res, next) => {
-    if (req.path === "/api/health") return next();
-
-    const auth = req.get("authorization") || "";
-    let provided = req.query.token;
-    if (auth.startsWith("Bearer ")) provided = auth.slice(7);
-
-    if (provided !== token) return res.status(401).json({ error: "non autorisé (token requis)" });
     next();
   };
 }
@@ -172,10 +154,6 @@ const API_INDEX = {
     "GET /api/verdicts/:ts",
     "GET /api/verdicts/:ts/snapshot",
     "GET /api/verdicts/:ts/outcome",
-    "GET /api/forecast/curves?since=&limit=",
-    "GET /api/forecast/curves/latest",
-    "GET /api/forecast/curves/:ts",
-    "GET /api/forecast/curves/:ts/outcome",
     "GET /api/forecast/previsions?since=&limit=",
     "GET /api/forecast/previsions/latest",
     "GET /api/forecast/previsions/stats?since=",
@@ -432,61 +410,6 @@ async function getLatestVerdict(req, res) {
 }
 
 /**
- * GET /api/forecast/curves — références des courbes archivées (génération
- * retirée 2026-07-08, l'API ne fait que LIRE).
- * @param {object} req Requête Express (?since=&limit=).
- * @param {object} res Réponse Express.
- * @returns {Promise<void>} Rien — la réponse est envoyée via res.
- */
-async function getCurves(req, res) {
-  const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
-  const limit = Number(req.query.limit) || DEFAULT_LIMIT;
-  const list = await listCurves(since);
-  res.json({ count: list.length, items: list.slice(-limit).map(withIso) });
-}
-
-/**
- * GET /api/forecast/curves/latest — dernière courbe archivée.
- * @param {object} req Requête Express.
- * @param {object} res Réponse Express.
- * @returns {Promise<void>} Rien — la réponse est envoyée via res.
- */
-async function getLatestCurveRoute(req, res) {
-  const curve = await loadLatestCurve();
-  if (!curve) return res.status(404).json({ error: "aucune courbe" });
-  res.json(curve);
-}
-
-/**
- * GET /api/forecast/curves/:ts/outcome — suivi a posteriori d'une courbe :
- * projeté vs réalisé + justesse directionnelle (100 % déterministe, sans IA).
- * @param {object} req Requête Express.
- * @param {object} res Réponse Express.
- * @returns {Promise<void>} Rien — la réponse est envoyée via res.
- */
-async function getCurveOutcome(req, res) {
-  const ts = parseTs(req.params.ts);
-  if (ts == null) return res.status(400).json({ error: "ts invalide" });
-  const outcome = await computeCurveOutcome(ts);
-  if (!outcome) return res.status(404).json({ error: "courbe introuvable" });
-  res.json(outcome);
-}
-
-/**
- * GET /api/forecast/curves/:ts — une courbe archivée par son ts (= baseTs).
- * @param {object} req Requête Express.
- * @param {object} res Réponse Express.
- * @returns {Promise<void>} Rien — la réponse est envoyée via res.
- */
-async function getCurveByTs(req, res) {
-  const ts = parseTs(req.params.ts);
-  if (ts == null) return res.status(400).json({ error: "ts invalide" });
-  const curve = await loadCurveByTs(ts);
-  if (!curve) return res.status(404).json({ error: "courbe introuvable" });
-  res.json(curve);
-}
-
-/**
  * Middleware lazy-eval commun à TOUTES les lectures previsions (y compris
  * /:ts) : les prévisions échues sont évaluées avant de servir — throttlé côté
  * runner (10 min).
@@ -679,10 +602,7 @@ export function createApp() {
   const app = express();
 
   app.use(createCorsMiddleware());
-
-  // Auth OPTIONNELLE : sans API_TOKEN, l'API reste ouverte (dev local).
-  const token = process.env.API_TOKEN;
-  if (token) app.use(createAuthMiddleware(token));
+  app.use(createSignatureAuthMiddleware());
 
   // Rate-limit OPTIONNEL : actif seulement si API_RATE_LIMIT > 0.
   const rateLimit = Number(process.env.API_RATE_LIMIT) || 0;
@@ -707,11 +627,6 @@ export function createApp() {
 
   app.get("/api/verdicts", wrapAsync(getVerdicts));
   app.get("/api/verdicts/latest", wrapAsync(getLatestVerdict));
-
-  app.get("/api/forecast/curves", wrapAsync(getCurves));
-  app.get("/api/forecast/curves/latest", wrapAsync(getLatestCurveRoute));
-  app.get("/api/forecast/curves/:ts/outcome", wrapAsync(getCurveOutcome));
-  app.get("/api/forecast/curves/:ts", wrapAsync(getCurveByTs));
 
   app.use("/api/forecast/previsions", evaluatePrevisionsBeforeServing);
   app.get("/api/forecast/previsions", wrapAsync(getPrevisions));
