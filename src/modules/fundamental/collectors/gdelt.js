@@ -36,8 +36,13 @@ function parseSeenDate(raw) {
   return Number.isFinite(ts) ? ts : null;
 }
 
+/**
+ *
+ */
 export class GdeltCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ maxRecords?: number }} [options] Nombre maximal d'articles demandés.
    */
   constructor({ maxRecords = 20 } = {}) {

@@ -1,3 +1,6 @@
+import { analyze } from "./analyst.js";
+import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
+import { calendarToday, detectChanges, formatChange } from "./triggers.js";
 import { logger } from "../../logs/index.js";
 import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
 import { extractMetrics } from "../persistence/metrics.js";
@@ -11,9 +14,6 @@ import {
   savePrevision,
   saveVerdict,
 } from "../persistence/store.js";
-import { analyze } from "./analyst.js";
-import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
-import { calendarToday, detectChanges, formatChange } from "./triggers.js";
 
 const MINUTE_MS = 60000;
 const DAY_MS = 86400000;

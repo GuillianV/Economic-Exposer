@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
-import { logger } from "../../logs/index.js";
 import { Collector } from "./base.js";
+import { logger } from "../../logs/index.js";
 
 /**
  * Agrégateur de news (Tier 3) — flux RSS/Atom crypto + macro + monde.
@@ -40,8 +40,13 @@ const FEEDS = [
   { name: "Foreign Policy", category: "world", url: "https://foreignpolicy.com/feed/" },
 ];
 
+/**
+ *
+ */
 export class NewsCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ maxItems?: number, perFeedTimeout?: number }} [options] Nombre
    *   maximal d'items conservés et timeout par flux (ms).
    */

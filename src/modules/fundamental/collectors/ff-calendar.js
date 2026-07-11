@@ -58,8 +58,13 @@ function toCalendarNumber(value) {
   return Number.isFinite(parsed) ? parsed * multiplier : null;
 }
 
+/**
+ *
+ */
 export class FfCalendarCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ ttlMs?: number }} [options] Durée de validité du cache du flux.
    */
   constructor({ ttlMs = CACHE_TTL_MS } = {}) {
@@ -93,10 +98,9 @@ export class FfCalendarCollector extends Collector {
   /**
    * Normalise un event brut vers la forme commune des calendriers.
    * @param {object} raw Event brut FairEconomy.
-   * @returns {{datetime: number|null, date: string|null, country: string|null,
-   *   currency: string|null, event: string|null, impact: string,
-   *   previous: number|null, forecast: number|null, actual: number|null,
-   *   surprise: number|null}} Event normalisé.
+   * @returns {object} Event normalisé : datetime (epoch ms|null), date
+   *   (AAAA-MM-JJ|null), country, currency, event, impact, previous,
+   *   forecast, actual, surprise (nombres ou null).
    */
   #normalize(raw) {
     const rawDate = raw.date || null; // "2026-07-14T08:30:00-04:00"

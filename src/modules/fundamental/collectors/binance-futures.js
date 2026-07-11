@@ -34,7 +34,14 @@ function ratioToPct(ratio) {
   return Math.round(parsed * 10000) / 100;
 }
 
+/**
+ *
+ */
 export class BinanceFuturesCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("binance-futures", { axis: "sentiment" });
   }

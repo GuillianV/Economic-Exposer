@@ -20,7 +20,14 @@ const SERIES = {
 
 const YAHOO_TIMEOUT_MS = 12000;
 
+/**
+ *
+ */
 export class MarketsCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("markets", { axis: "markets" });
   }

@@ -1,5 +1,5 @@
-import { ASSETS } from "../ai/curve.js";
 import { loadCurveByTs, loadLatestCurve, loadMetricsSince } from "./store.js";
+import { ASSETS } from "../ai/curve.js";
 
 /**
  * Suivi A POSTERIORI d'une courbe projetée — « a-t-on été bon ? », comme DONNÉE.

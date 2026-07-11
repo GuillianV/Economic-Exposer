@@ -55,7 +55,14 @@ function parseInstrument(name) {
   return Number.isFinite(strike) ? { expiryMs, strike, type } : null;
 }
 
+/**
+ *
+ */
 export class DeribitCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("deribit", { axis: "sentiment" });
   }

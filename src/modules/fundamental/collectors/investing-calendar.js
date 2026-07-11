@@ -1,6 +1,6 @@
-import { logger } from "../../logs/index.js";
 import { Collector } from "./base.js";
 import { FfCalendarCollector } from "./ff-calendar.js";
+import { logger } from "../../logs/index.js";
 
 /**
  * Calendrier économique RICHE scrapé depuis investing.com (endpoint AJAX
@@ -102,8 +102,13 @@ function firstMatch(block, regex) {
   return match ? match[1] : null;
 }
 
+/**
+ *
+ */
 export class InvestingCalendarCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ ttlMs?: number, pastDays?: number, futureDays?: number }}
    *   [options] TTL du cache et fenêtre (résultats publiés → à venir),
    *   surchargables par INVESTING_CAL_PAST_DAYS / INVESTING_CAL_FUTURE_DAYS.

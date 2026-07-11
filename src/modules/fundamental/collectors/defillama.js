@@ -8,6 +8,10 @@ import { Collector } from "./base.js";
  * (somme du circulating peggedUSD) = pouvoir d'achat disponible.
  */
 export class DefiLlamaCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("defillama", { axis: "onchain" });
   }

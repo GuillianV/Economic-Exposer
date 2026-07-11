@@ -49,7 +49,14 @@ function netPosition(long, short) {
   return long != null && short != null ? long - short : null;
 }
 
+/**
+ *
+ */
 export class CftcCotCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("cftc-cot", { axis: "positioning" });
   }

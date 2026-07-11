@@ -150,3 +150,5 @@ botold2
 .DS_Store
 graphify-out/
 CLAUDE.md
+.claude
+scripts

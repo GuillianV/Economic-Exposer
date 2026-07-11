@@ -18,7 +18,14 @@ const FRED_SERIES = {
   wheat: "PWHEAMTUSDM", // $/tonne, mensuel
 };
 
+/**
+ *
+ */
 export class CommoditiesCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("commodities", { axis: "commodities" });
   }

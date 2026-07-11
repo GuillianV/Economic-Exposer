@@ -5,6 +5,10 @@ import { Collector } from "./base.js";
  * Sans clé, gratuit. Axe : sentiment.
  */
 export class FearGreedCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("fear-greed", { axis: "sentiment" });
   }

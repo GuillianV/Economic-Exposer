@@ -1,5 +1,5 @@
-import { logger } from "../../logs/index.js";
 import { withHostGate } from "./throttle.js";
+import { logger } from "../../logs/index.js";
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
@@ -25,6 +25,8 @@ function safeHost(url) {
  */
 export class Collector {
   /**
+   * Initialise le collecteur : nom de source et axe de rattachement.
+   *
    * @param {string} name Nom unique de la source (clé dans le snapshot).
    * @param {{ axis?: string|null }} [options] `axis` range le collecteur dans
    *   un axe du world-state ("sentiment", "macro", "onchain", "structure"…).
@@ -48,6 +50,7 @@ export class Collector {
    * devient un résultat `stale` loggé, jamais une exception propagée.
    * @returns {Promise<{source: string, axis: string|null, ts: number,
    *   ok: boolean, stale: boolean, data: object|null, error: string|null}>}
+   *   Résultat de collecte, `stale: true` si la source a échoué.
    */
   async collect() {
     const ts = Date.now();

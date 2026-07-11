@@ -22,7 +22,14 @@ const SERIES_IDS = {
   jpyUsd: "DEXJPUS", // JPY par USD
 };
 
+/**
+ *
+ */
 export class LiquidityCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("liquidity", { axis: "liquidity" });
   }

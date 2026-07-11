@@ -29,7 +29,14 @@ function symbols() {
     .filter(Boolean);
 }
 
+/**
+ *
+ */
 export class MarketsLiveCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("markets-live", { axis: "markets" });
   }

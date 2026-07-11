@@ -1,5 +1,5 @@
-import { logger } from "../../logs/index.js";
 import { Collector } from "./base.js";
+import { logger } from "../../logs/index.js";
 
 /**
  * Or & argent (spot), sans clé. Collecteur DÉDIÉ (sorti de commodities) pour
@@ -14,7 +14,14 @@ import { Collector } from "./base.js";
 const YAHOO_SYMBOLS = { XAU: "GC=F", XAG: "SI=F" }; // futures COMEX or / argent
 const METAL_TIMEOUT_MS = 12000;
 
+/**
+ *
+ */
 export class MetalsCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("metals", { axis: "commodities" });
   }

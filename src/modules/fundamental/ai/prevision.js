@@ -1,7 +1,7 @@
-import { logger } from "../../logs/index.js";
-import { loadMetricsSince } from "../persistence/store.js";
 import { getProviderChain, parseJsonLoose } from "./analyst.js";
 import { ASSETS, buildTrajectory, r2 } from "./curve.js";
+import { logger } from "../../logs/index.js";
+import { loadMetricsSince } from "../persistence/store.js";
 
 /**
  * PRÉVISIONS DIRECTIONNELLES 24h — remplace les courbes de prix chiffrées.

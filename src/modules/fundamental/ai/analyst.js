@@ -1,8 +1,8 @@
-import { logger } from "../../logs/index.js";
-import { validateVerdict } from "./validate.js";
 import * as deepseek from "./providers/deepseek.js";
 import * as gemini from "./providers/gemini.js";
 import * as groq from "./providers/groq.js";
+import { validateVerdict } from "./validate.js";
+import { logger } from "../../logs/index.js";
 
 const PROVIDERS = { deepseek, gemini, groq };
 
@@ -397,6 +397,9 @@ const HYSTERESIS_MAX_AGE_MS = 48 * 3600000;
  * anti auto-persuasion (si ses propres conditions d'invalidation sont remplies,
  * le changement est OBLIGATOIRE). Placé en FIN de prompt, après toutes les
  * données, pour que le test se fasse contre le tableau complet.
+ * @param {object|null} previous Dernier verdict persisté ({ ts, verdict }).
+ * @param {number} nowTs Timestamp de l'analyse en cours (epoch ms).
+ * @returns {string|null} Bloc de prompt, ou null si verdict absent/trop vieux.
  */
 function formatPrevious(previous, nowTs) {
   const v = previous?.verdict;

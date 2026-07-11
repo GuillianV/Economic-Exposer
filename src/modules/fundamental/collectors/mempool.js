@@ -20,7 +20,14 @@ function toFiniteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ *
+ */
 export class MempoolCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("mempool", { axis: "onchain" });
   }

@@ -24,8 +24,13 @@ function toMillionsUsd(usd) {
   return Number.isFinite(usd) ? Math.round(usd / ONE_MILLION) : null;
 }
 
+/**
+ *
+ */
 export class EtfFlowsCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ days?: number }} [options] Nombre de jours conservés dans la
    *   mini-série `recent` du snapshot.
    */

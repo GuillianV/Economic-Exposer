@@ -8,6 +8,10 @@ import { Collector } from "./base.js";
  * côté API — écartés.
  */
 export class OnChainCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("blockchain-info", { axis: "onchain" });
   }

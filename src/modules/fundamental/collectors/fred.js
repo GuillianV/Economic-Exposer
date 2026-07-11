@@ -49,7 +49,14 @@ const YOY_KEYS = new Set(["cpi", "pce", "m2", "retailSales"]);
 // 14 observations mensuelles = de quoi retrouver le même mois un an plus tôt.
 const YOY_OBSERVATION_COUNT = 14;
 
+/**
+ *
+ */
 export class FredCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("fred", { axis: "macro" });
   }

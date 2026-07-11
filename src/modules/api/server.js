@@ -1,5 +1,4 @@
 import express from "express";
-import { logger } from "../logs/index.js";
 import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
@@ -29,6 +28,7 @@ import {
   loadSnapshotByTs,
   loadVerdictByTs,
 } from "../fundamental/persistence/store.js";
+import { logger } from "../logs/index.js";
 
 /**
  * API publique en lecture seule : snapshots, verdicts, prévisions, tendances,
@@ -237,6 +237,7 @@ function parseExplication(raw) {
  * phrases re-demandées par les visiteurs).
  * @param {object} req Requête Express ({ body.texte }).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function postExplain(req, res) {
   const texte = typeof req.body?.texte === "string" ? req.body.texte.trim() : "";
@@ -273,6 +274,7 @@ async function postExplain(req, res) {
  * le dernier snapshot ; collecte en direct si rien (ou snapshot de plus d'1 h).
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getCalendar(req, res) {
   const snap = await loadLatestSnapshot();
@@ -308,6 +310,7 @@ async function getCalendar(req, res) {
  * GET /api/snapshots — références des snapshots d'une fenêtre.
  * @param {object} req Requête Express (?since=&limit=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getSnapshots(req, res) {
   const since = parseSince(req.query.since);
@@ -320,6 +323,7 @@ async function getSnapshots(req, res) {
  * GET /api/snapshots/latest — dernier snapshot complet.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLatestSnapshot(req, res) {
   const snap = await loadLatestSnapshot();
@@ -331,6 +335,7 @@ async function getLatestSnapshot(req, res) {
  * GET /api/snapshots/:ts/verdict — verdict produit depuis ce snapshot.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getSnapshotVerdict(req, res) {
   const ts = parseTs(req.params.ts);
@@ -345,6 +350,7 @@ async function getSnapshotVerdict(req, res) {
  * que le consommateur sache de QUAND datent les données du verdict.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getSnapshotFreshness(req, res) {
   const ts = parseTs(req.params.ts);
@@ -358,6 +364,7 @@ async function getSnapshotFreshness(req, res) {
  * GET /api/freshness — fraîcheur du DERNIER snapshot (raccourci).
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLatestFreshness(req, res) {
   const snap = await loadLatestSnapshot();
@@ -369,6 +376,7 @@ async function getLatestFreshness(req, res) {
  * GET /api/snapshots/:ts — un snapshot complet par timestamp.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getSnapshotByTs(req, res) {
   const ts = parseTs(req.params.ts);
@@ -384,6 +392,7 @@ async function getSnapshotByTs(req, res) {
  * (sinon un client doit faire N appels /:ts et tape le rate-limit).
  * @param {object} req Requête Express (?since=&limit=&summary=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getVerdicts(req, res) {
   const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
@@ -414,6 +423,7 @@ async function getVerdicts(req, res) {
  * GET /api/verdicts/latest — dernier verdict complet.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLatestVerdict(req, res) {
   const verdict = await loadLatestVerdict();
@@ -426,6 +436,7 @@ async function getLatestVerdict(req, res) {
  * retirée 2026-07-08, l'API ne fait que LIRE).
  * @param {object} req Requête Express (?since=&limit=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getCurves(req, res) {
   const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
@@ -438,6 +449,7 @@ async function getCurves(req, res) {
  * GET /api/forecast/curves/latest — dernière courbe archivée.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLatestCurveRoute(req, res) {
   const curve = await loadLatestCurve();
@@ -450,6 +462,7 @@ async function getLatestCurveRoute(req, res) {
  * projeté vs réalisé + justesse directionnelle (100 % déterministe, sans IA).
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getCurveOutcome(req, res) {
   const ts = parseTs(req.params.ts);
@@ -463,6 +476,7 @@ async function getCurveOutcome(req, res) {
  * GET /api/forecast/curves/:ts — une courbe archivée par son ts (= baseTs).
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getCurveByTs(req, res) {
   const ts = parseTs(req.params.ts);
@@ -490,6 +504,7 @@ function evaluatePrevisionsBeforeServing(req, res, next) {
  * besoin — un aller-retour par ts serait un N+1 côté client).
  * @param {object} req Requête Express (?since=&limit=&full=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getPrevisions(req, res) {
   const since = parseSince(req.query.since, HISTORY_SINCE_DAYS);
@@ -524,6 +539,7 @@ function findPreviousEvaluated(records, baseTs) {
  * précédente ÉVALUÉE (`precedente`).
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLatestPrevisionRoute(req, res) {
   const prevision = await loadLatestPrevision();
@@ -539,6 +555,7 @@ async function getLatestPrevisionRoute(req, res) {
  * fenêtre.
  * @param {object} req Requête Express (?since=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getPrevisionStats(req, res) {
   const since = parseSince(req.query.since, STATS_SINCE_DAYS);
@@ -550,6 +567,7 @@ async function getPrevisionStats(req, res) {
  * GET /api/forecast/previsions/:ts — une prévision par timestamp.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getPrevisionByTsRoute(req, res) {
   const ts = parseTs(req.params.ts);
@@ -563,6 +581,7 @@ async function getPrevisionByTsRoute(req, res) {
  * GET /api/verdicts/:ts/snapshot — snapshot ayant produit ce verdict.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getVerdictSnapshot(req, res) {
   const ts = parseTs(req.params.ts);
@@ -577,6 +596,7 @@ async function getVerdictSnapshot(req, res) {
  * métriques-clés à +24h/+7j. Pas de note "juste/faux" — le consommateur juge.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getVerdictOutcome(req, res) {
   const ts = parseTs(req.params.ts);
@@ -590,6 +610,7 @@ async function getVerdictOutcome(req, res) {
  * GET /api/verdicts/:ts — un verdict complet par timestamp.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getVerdictByTsRoute(req, res) {
   const ts = parseTs(req.params.ts);
@@ -603,6 +624,7 @@ async function getVerdictByTsRoute(req, res) {
  * GET /api/trends — tendances courantes (deltas 1h/24h/7j + normalisation).
  * @param {object} req Requête Express (?lookbackDays=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getTrendsRoute(req, res) {
   const lookbackDays = Number(req.query.lookbackDays) || TRENDS_LOOKBACK_DAYS;
@@ -613,6 +635,7 @@ async function getTrendsRoute(req, res) {
  * GET /api/metrics — historique compact des métriques d'une fenêtre.
  * @param {object} req Requête Express (?since=).
  * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getMetrics(req, res) {
   const since = parseSince(req.query.since);

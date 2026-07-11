@@ -8,6 +8,10 @@ import { Collector } from "./base.js";
  * et la force des alts via TOTAL2 (hors BTC) / TOTAL3 (hors BTC+ETH).
  */
 export class CoinGeckoCollector extends Collector {
+  /**
+   * Initialise le collecteur et ses options.
+   *
+   */
   constructor() {
     super("coingecko", { axis: "structure" });
   }

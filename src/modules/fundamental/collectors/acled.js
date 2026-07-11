@@ -19,8 +19,13 @@ const DAY_MS = 86400000;
 const TOKEN_DEFAULT_TTL_S = 86400; // durée de vie du token si l'API ne la donne pas
 const TOKEN_SAFETY_MARGIN_S = 60; // renouvelé un peu avant l'expiration réelle
 
+/**
+ *
+ */
 export class AcledCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ windowDays?: number, limit?: number, topCountries?: number,
    *   recentEvents?: number }} [options] Fenêtre d'analyse, plafond
    *   d'événements demandés, tailles des tops renvoyés.

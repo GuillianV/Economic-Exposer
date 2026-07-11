@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
-import { logger } from "../../logs/index.js";
 import { Collector } from "./base.js";
+import { logger } from "../../logs/index.js";
 
 /**
  * Google News RSS — surveillance thématique ciblée.
@@ -33,8 +33,13 @@ function googleNewsUrl(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(`${query} when:2d`)}&hl=en-US&gl=US&ceid=US:en`;
 }
 
+/**
+ *
+ */
 export class GoogleNewsCollector extends Collector {
   /**
+   * Initialise le collecteur et ses options.
+   *
    * @param {{ perThemeMax?: number, perFeedTimeout?: number }} [options]
    *   Articles gardés par thème et timeout par flux (ms).
    */

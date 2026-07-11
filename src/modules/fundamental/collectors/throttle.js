@@ -18,6 +18,8 @@ const LIMITS = {
  */
 class Gate {
   /**
+   * Initialise la porte de débit d'un hôte.
+   *
    * @param {{ concurrency: number, minIntervalMs: number }} limits Bornes de l'hôte.
    */
   constructor({ concurrency, minIntervalMs }) {
@@ -31,7 +33,7 @@ class Gate {
 
   /**
    * Met un job en file et renvoie sa promesse de résultat.
-   * @param {() => Promise<*>} fn Job à exécuter dans un créneau.
+   * @param {Function} fn Job async à exécuter dans un créneau.
    * @returns {Promise<*>} Résultat (ou rejet) du job.
    */
   run(fn) {
@@ -80,7 +82,7 @@ const gates = new Map(); // hôte -> Gate (une file partagée par hôte)
  * Exécute `fn` à travers le créneau de l'hôte, ou directement si l'hôte
  * n'est pas borné dans LIMITS.
  * @param {string|null} host Nom d'hôte de la requête.
- * @param {() => Promise<*>} fn Requête à exécuter.
+ * @param {Function} fn Requête async à exécuter.
  * @returns {Promise<*>} Résultat de `fn`.
  */
 export function withHostGate(host, fn) {
