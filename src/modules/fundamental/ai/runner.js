@@ -96,19 +96,22 @@ export async function maybeAnalyze(state, trends) {
  * et enregistre le verdict corrélé. NE met PAS à jour la référence de bascule
  * (ai-state) — une analyse à la demande ne doit pas fausser la cadence du
  * service. Utilisé par `fa:ai`.
+ * @param {{ cold?: boolean }} [options] cold coupe l'ancre d'hystérésis
+ *   (previous=null) : lecture à froid, pour réamorcer un régime verrouillé.
  * @returns {Promise<{provider: string, verdict: object|null, raw: string,
  *   file: string, snapshotTs: number}>} Verdict enregistré.
  */
-export async function analyzeNow() {
+export async function analyzeNow({ cold = false } = {}) {
   const { state } = await collectOnce();
   const trends = await getTrends();
-  const previous = await loadLatestVerdict().catch(() => null);
+  const previous = cold ? null : await loadLatestVerdict().catch(() => null);
   const { provider, verdict, raw, violations } = await analyze(state, trends, { previous });
+  const trigger = cold ? "analyse forcée à froid (fa:ai --cold)" : "analyse forcée (fa:ai)";
   const record = {
     ts: state.ts,
     snapshotTs: state.ts,
     provider,
-    triggers: ["analyse forcée (fa:ai)"],
+    triggers: [trigger],
     dataQuality: dataQualityOf(state),
     guardrails: violations ?? [],
     verdict,
