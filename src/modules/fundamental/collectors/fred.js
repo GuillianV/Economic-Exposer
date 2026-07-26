@@ -49,6 +49,16 @@ const YOY_KEYS = new Set(["cpi", "pce", "m2", "retailSales"]);
 // 14 observations mensuelles = de quoi retrouver le même mois un an plus tôt.
 const YOY_OBSERVATION_COUNT = 14;
 
+// Fenêtre d'observations récupérées pour une série SIMPLE (non-YoY). Corrige
+// un défaut identifié le 2026-07-24 : avec limit=1 on ne prenait que la toute
+// dernière ligne, souvent un « . » (valeur manquante) pour les séries
+// quotidiennes le week-end ou en attente de publication (FX, taux) — la série
+// retombait alors à null alors qu'une valeur réelle existait la veille. On
+// récupère 10 lignes pour sauter les « . » de queue et retrouver la dernière
+// valeur réellement publiée (un enchaînement de plus de 10 « . » = série
+// vraiment morte, null légitime).
+const LATEST_OBSERVATION_LOOKBACK = 10;
+
 /**
  *
  */
@@ -70,7 +80,7 @@ export class FredCollector extends Collector {
    *   Observation la plus récente, ou null si la série est vide.
    */
   async #latest(seriesId, apiKey, { yoy = false } = {}) {
-    const limit = yoy ? YOY_OBSERVATION_COUNT : 1;
+    const limit = yoy ? YOY_OBSERVATION_COUNT : LATEST_OBSERVATION_LOOKBACK;
     const url =
       `https://api.stlouisfed.org/fred/series/observations` +
       `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=${limit}`;

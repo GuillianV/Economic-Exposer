@@ -10,12 +10,12 @@ import { FearGreedCollector } from "./collectors/fear-greed.js";
 import { FredCollector } from "./collectors/fred.js";
 import { GdeltCollector } from "./collectors/gdelt.js";
 import { GoogleNewsCollector } from "./collectors/google-news.js";
-import { InvestingCalendarCollector } from "./collectors/investing-calendar.js";
 import { LiquidityCollector } from "./collectors/liquidity.js";
 import { MarketsLiveCollector } from "./collectors/markets-live.js";
 import { MarketsCollector } from "./collectors/markets.js";
 import { MempoolCollector } from "./collectors/mempool.js";
 import { MetalsCollector } from "./collectors/metals.js";
+import { NasdaqCalendarCollector } from "./collectors/nasdaq-calendar.js";
 import { NewsCollector } from "./collectors/news.js";
 import { OnChainCollector } from "./collectors/onchain.js";
 
@@ -23,7 +23,7 @@ import { OnChainCollector } from "./collectors/onchain.js";
  * Instancie la liste complète des collecteurs, par axe :
  *   sentiment   : fear-greed, binance-futures, deribit (DVOL)
  *   positioning : cftc-cot (positionnement futures BTC : hedge funds / institutionnels)
- *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), investing-calendar (calendrier riche scrapé, repli FairEconomy interne)
+ *   macro       : fred (taux, FX+EM, crédit, conditions/stress, incertitude, éco réelle, alimentaire), nasdaq-calendar (calendrier riche API nasdaq avec réel, repli FairEconomy interne)
  *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
@@ -39,7 +39,7 @@ export function buildCollectors() {
     new DeribitCollector(),
     new CftcCotCollector(),
     new FredCollector(),
-    new InvestingCalendarCollector(),
+    new NasdaqCalendarCollector(),
     new LiquidityCollector(),
     new CommoditiesCollector(),
     new MetalsCollector(),

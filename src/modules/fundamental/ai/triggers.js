@@ -83,12 +83,12 @@ export function formatChange(change) {
 /**
  * Catalyseurs calendaires fort impact tombant aujourd'hui (CPI, NFP, FOMC…),
  * dédoublonnés par libellé.
- * @param {object} state World-state complet (calendrier investing-calendar).
+ * @param {object} state World-state complet (calendrier nasdaq-calendar).
  * @returns {Array<{name: string, date: string}>} Catalyseurs du jour.
  */
 export function calendarToday(state) {
   const today = new Date().toISOString().slice(0, 10);
-  const events = state?.axes?.macro?.["investing-calendar"]?.events || [];
+  const events = state?.axes?.macro?.["nasdaq-calendar"]?.events || [];
 
   const catalysts = [];
   const seen = new Set();

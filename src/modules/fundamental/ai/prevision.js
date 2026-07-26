@@ -445,6 +445,35 @@ export async function autopsyPrevision(record) {
 // d'évaluations. Seuil calculé ICI (côté données) pour suivre ASSETS.
 const MIN_EVALS = ASSETS.length * RODAGE_JOURS;
 
+// Publication du track record GELÉE le 2026-07-20 (défaut de démarrage
+// identifié) : le prompt impose « calme » comme classe par DÉFAUT alors que la
+// calibration des seuils fait de « calme » un événement à ~20 % seulement. Le
+// modèle a produit 72 % de prévisions « calme » pour 19 % de réalisations
+// « calme » — incohérence de spécification, démontrable sans regarder un seul
+// score. Tant qu'elle n'est pas corrigée, publier un track record reviendrait
+// à afficher les performances d'un modèle connu comme défectueux. Repasser à
+// false APRÈS correction de l'a priori ET un rodage complet sur les prévisions
+// corrigées (les évaluations antérieures ne comptent pas pour ce rodage).
+const PUBLICATION_GELEE = true;
+
+/**
+ * Une évaluation n'est mesurable que si le marché a réellement coté sur
+ * l'horizon prévu. Un mouvement de 0.00 % EXACT trahit un marché fermé
+ * (week-end, jour férié) ou une source figée : « calme » y serait juste par
+ * accident et non par prévision. Ces évaluations sortent des statistiques ;
+ * les records émis, eux, ne sont jamais réécrits.
+ * @param {object} realise Bloc `realise` d'un actif évalué ({ retPct, … }).
+ * @returns {boolean} true si l'évaluation reflète un vrai mouvement de marché.
+ */
+function estMesurable(realise) {
+  return Number.isFinite(realise.retPct) && realise.retPct !== 0;
+}
+
+// Actifs encore suivis : les évaluations d'un actif RETIRÉ (source inadaptée à
+// l'horizon, cf. ASSETS) restent dans les records mais sortent du score — leur
+// mesure était invalide, dans le sens flatteur comme dans le sens défavorable.
+const ACTIFS_SUIVIS = new Set(ASSETS.map(([, label]) => label));
+
 /**
  * Taux (%) d'un compteur de résultats.
  * @param {{n: number, exact: number, adjacent: number, directionOk: number}} t
@@ -463,9 +492,11 @@ function ratesOf(t) {
 
 /**
  * Statistiques agrégées (globales + par actif) sur une liste de records.
+ * Seules les évaluations mesurables comptent (voir estMesurable) : un marché
+ * fermé ou une source figée ne valide ni n'invalide une prévision.
  * @param {Array<object>} records Records de prévision (évalués ou non).
  * @returns {{global: object, parActif: object, reperes: object,
- *   rodage: {minEvals: number, pret: boolean}}} Track record complet.
+ *   rodage: {minEvals: number, gelee: boolean, pret: boolean}}} Track record complet.
  */
 export function statsOf(records) {
   const global = { n: 0, exact: 0, adjacent: 0, directionOk: 0 };
@@ -473,6 +504,8 @@ export function statsOf(records) {
   for (const record of records) {
     for (const asset of record.actifs ?? []) {
       if (!asset.realise) continue;
+      if (!ACTIFS_SUIVIS.has(asset.actif)) continue;
+      if (!estMesurable(asset.realise)) continue;
       const assetStats = (parActif[asset.actif] ??= { n: 0, exact: 0, adjacent: 0, directionOk: 0 });
       for (const target of [global, assetStats]) {
         target.n++;
@@ -486,6 +519,6 @@ export function statsOf(records) {
     global: ratesOf(global),
     parActif: Object.fromEntries(Object.entries(parActif).map(([actif, counts]) => [actif, ratesOf(counts)])),
     reperes: { hasardExact: 20, hasardDirection: 50 },
-    rodage: { minEvals: MIN_EVALS, pret: global.n >= MIN_EVALS },
+    rodage: { minEvals: MIN_EVALS, gelee: PUBLICATION_GELEE, pret: !PUBLICATION_GELEE && global.n >= MIN_EVALS },
   };
 }

@@ -325,9 +325,9 @@ export function formatState(state, trends, previous = null) {
   }
   if (!gd?.topHeadlines?.length && ac?.totalEvents == null) push(`- (stale)`);
 
-  // --- CALENDRIER ÉCO : collecteur unique investing-calendar (investing.com,
-  // repli FairEconomy interne) — multi-pays, heure, impact, précédent/prévision/réel. ---
-  const ff = a.macro?.["investing-calendar"];
+  // --- CALENDRIER ÉCO : collecteur unique nasdaq-calendar (API nasdaq,
+  // repli FairEconomy interne) — multi-pays, heure, précédent/prévision/réel. ---
+  const ff = a.macro?.["nasdaq-calendar"];
   const ffEvents = ff?.events || [];
   const hhmm = (ms) => (ms ? new Date(ms).toISOString().slice(11, 16) : "--:--");
 

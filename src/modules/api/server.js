@@ -4,7 +4,7 @@ import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
-import { InvestingCalendarCollector } from "../fundamental/collectors/investing-calendar.js";
+import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
 import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
@@ -257,12 +257,12 @@ async function postExplain(req, res) {
 async function getCalendar(req, res) {
   const snap = await loadLatestSnapshot();
   const fresh = snap && Date.now() - snap.ts < CALENDAR_FRESH_MS;
-  let rich = fresh ? snap.axes?.macro?.["investing-calendar"] : null;
+  let rich = fresh ? snap.axes?.macro?.["nasdaq-calendar"] : null;
   let source = fresh ? "snapshot" : "live";
   let ts = snap?.ts;
 
   if (!rich?.events?.length) {
-    const result = await new InvestingCalendarCollector().collect();
+    const result = await new NasdaqCalendarCollector().collect();
     if (!result.stale && result.data?.events?.length) {
       rich = result.data;
       source = fresh ? "snapshot+live" : "live";

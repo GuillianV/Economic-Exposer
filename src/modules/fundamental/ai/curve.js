@@ -66,15 +66,18 @@ function extremesOf(trends) {
 }
 
 // Cours majeurs suivis : clé métrique -> libellé affiché.
+// RETRAIT 2026-07-20 de dxy/eurusd/usdjpy (défaut de démarrage identifié) :
+// ces trois cours viennent de FRED, séries QUOTIDIENNES publiées avec 1 à 2
+// jours de retard et figées le week-end. Une prévision à 24h y était comparée
+// à un cours inchangé (mouvement mesuré 0.00 % exact) ou au même saut recyclé
+// plusieurs jours — la source est structurellement incapable de mesurer
+// l'horizon prévu. Réintégrables le jour où une source intraday les alimente.
 export const ASSETS = [
   ["btcPrice", "BTC/USD"],
   ["ethPrice", "ETH/USD"],
   ["solPrice", "SOL/USD"],
   ["sp500", "S&P 500"],
   ["nasdaq", "Nasdaq 100"],
-  ["dxy", "DXY (indice dollar)"],
-  ["eurusd", "EUR/USD"],
-  ["usdjpy", "USD/JPY"],
   ["gold", "Or (XAU/USD)"],
 ];
 
