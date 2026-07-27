@@ -4,6 +4,9 @@
  * C'est ce qui déclenche une analyse IA "sur bascule" entre deux points de fond.
  *
  * type "abs" : variation absolue (points). type "pct" : variation en %.
+ * floor (option, type "pct") : plancher absolu — le franchissement en % est
+ * ignoré tant que |courant| ET |référence| restent sous ce seuil (évite le
+ * bruit des métriques à petite valeur : 1 → 2 sat/vB = +100% mais insignifiant).
  */
 export const THRESHOLDS = {
   fearGreed: { type: "abs", value: 6, label: "Fear & Greed" },
@@ -36,7 +39,7 @@ export const THRESHOLDS = {
   stablecoinMcapUsd: { type: "pct", value: 1, label: "Stablecoins" },
   longShortAccountRatio: { type: "abs", value: 0.3, label: "Ratio long/short BTC" },
   totalVolume24hUsd: { type: "pct", value: 30, label: "Volume crypto 24h" },
-  mempoolFeeFast: { type: "pct", value: 50, label: "Frais réseau BTC" },
+  mempoolFeeFast: { type: "pct", value: 50, floor: 20, label: "Frais réseau BTC" }, // floor sat/vB : ignore le bruit sous congestion
   gdeltHeadlines: { type: "abs", value: 8, label: "Volume géopol (GDELT)" },
 };
 
@@ -62,6 +65,8 @@ export function detectChanges(current, ref) {
       if (Math.abs(delta) >= cfg.value) changes.push({ metric, label: cfg.label, from: refValue, to: currentValue, delta });
     } else {
       if (refValue === 0) continue;
+      const sousPlancher = cfg.floor != null && Math.abs(currentValue) < cfg.floor && Math.abs(refValue) < cfg.floor;
+      if (sousPlancher) continue;
       const pct = ((currentValue - refValue) / Math.abs(refValue)) * 100;
       if (Math.abs(pct) >= cfg.value) changes.push({ metric, label: cfg.label, from: refValue, to: currentValue, pct });
     }

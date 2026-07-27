@@ -8,26 +8,21 @@ process.env.LOG_LEVEL = "silent";
  * coupés avant tout import — sortie stdout voulue).
  *
  * Option --prompt : affiche le prompt envoyé au LLM, sans rien enregistrer.
- * Option --cold : coupe l'ancre d'hystérésis (lecture à froid) pour réamorcer
- * un régime verrouillé — le verdict précédent n'est PAS injecté au modèle.
  */
 if (process.argv.includes("--prompt")) {
   const { getWorldState } = await import("./modules/fundamental/index.js");
   const { getTrends } = await import("./modules/fundamental/persistence/scheduler.js");
   const { formatState } = await import("./modules/fundamental/ai/index.js");
-  const { loadLatestVerdict } = await import("./modules/fundamental/persistence/store.js");
   const state = await getWorldState();
   const trends = await getTrends();
-  const previous = await loadLatestVerdict().catch(() => null);
-  console.log(formatState(state, trends, previous));
+  console.log(formatState(state, trends));
   process.exit(0);
 }
 
 const { analyzeNow } = await import("./modules/fundamental/ai/runner.js");
-const cold = process.argv.includes("--cold");
 
 try {
-  const { provider, verdict, raw } = await analyzeNow({ cold });
+  const { provider, verdict, raw } = await analyzeNow();
   if (verdict) {
     console.log(JSON.stringify(verdict, null, 2));
   } else {

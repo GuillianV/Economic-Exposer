@@ -36,6 +36,54 @@ function dataQualityOf(state) {
   };
 }
 
+// Lectures consécutives concordantes requises pour publier un changement de
+// régime : l'IA lit à froid (aucun verdict précédent injecté au modèle, pour
+// éviter le verrou d'auto-confirmation), mais un flip ne devient officiel
+// qu'une fois confirmé — amortisseur anti-girouette au boundary.
+const REGIME_CONFIRM_CYCLES = 2;
+
+/**
+ * Amortisseur anti-girouette du régime. Un régime différent du dernier publié
+ * n'est adopté qu'après REGIME_CONFIRM_CYCLES lectures consécutives
+ * concordantes ; entre-temps le régime publié est conservé et le régime
+ * pressenti mémorisé. Fonction pure (aucune I/O).
+ * @param {string} regimeBrut Régime de la lecture à froid courante.
+ * @param {object|null} previous Dernier verdict publié ({ verdict: { regime,
+ *   damper: { regimePressenti, compteur } } }).
+ * @returns {{regimeConfirme: string, regimePressenti: string|null,
+ *   compteur: number}} Régime à publier + état de l'amortisseur à persister.
+ */
+function amortirRegime(regimeBrut, previous) {
+  const regimeConfirmePrec = previous?.verdict?.regime ?? regimeBrut;
+  if (regimeBrut === regimeConfirmePrec) {
+    return { regimeConfirme: regimeBrut, regimePressenti: null, compteur: 0 };
+  }
+  const pressentiPrec = previous?.verdict?.damper?.regimePressenti ?? null;
+  const compteurPrec = previous?.verdict?.damper?.compteur ?? 0;
+  const compteur = regimeBrut === pressentiPrec ? compteurPrec + 1 : 1;
+  if (compteur >= REGIME_CONFIRM_CYCLES) {
+    return { regimeConfirme: regimeBrut, regimePressenti: null, compteur: 0 };
+  }
+  return { regimeConfirme: regimeConfirmePrec, regimePressenti: regimeBrut, compteur };
+}
+
+/**
+ * Applique l'amortisseur à un verdict frais : conserve le régime brut, publie
+ * le régime confirmé et attache l'état de l'amortisseur pour le tour suivant.
+ * No-op si le verdict n'a pas de régime (parse échoué).
+ * @mutates verdict — regime/regimeBrut/damper posés en place.
+ * @param {object|null} verdict Verdict parsé (peut être null).
+ * @param {object|null} previous Dernier verdict publié.
+ * @returns {void}
+ */
+function appliquerAmortisseur(verdict, previous) {
+  if (!verdict?.regime) return;
+  const { regimeConfirme, regimePressenti, compteur } = amortirRegime(verdict.regime, previous);
+  verdict.regimeBrut = verdict.regime; // régime honnête de la lecture à froid
+  verdict.regime = regimeConfirme; // régime publié (confirmé sur REGIME_CONFIRM_CYCLES)
+  verdict.damper = { regimePressenti, compteur }; // état anti-girouette persisté
+}
+
 const BASELINE_MS = (Number(process.env.AI_BASELINE_HOURS) || DEFAULT_BASELINE_HOURS) * HOUR_MS;
 
 /**
@@ -68,9 +116,11 @@ export async function maybeAnalyze(state, trends) {
   }
 
   logger.info(`[ai] déclenchement → ${reasons.join(" | ")}`);
-  // Hystérésis : le dernier verdict est passé comme hypothèse à tester (anti flip-flop).
+  // Analyse à froid + amortisseur : le régime brut est lu sans injecter le
+  // verdict précédent (anti-verrou), puis lissé sur REGIME_CONFIRM_CYCLES.
   const previous = await loadLatestVerdict().catch(() => null);
-  const { provider, verdict, raw, violations } = await analyze(state, trends, { previous });
+  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  appliquerAmortisseur(verdict, previous);
   const record = {
     ts: now,
     snapshotTs: now, // corrélation : même ts que le snapshot de cette collecte
@@ -95,23 +145,21 @@ export async function maybeAnalyze(state, trends) {
  * Force une analyse MAINTENANT : collecte un snapshot, analyse sans condition,
  * et enregistre le verdict corrélé. NE met PAS à jour la référence de bascule
  * (ai-state) — une analyse à la demande ne doit pas fausser la cadence du
- * service. Utilisé par `fa:ai`.
- * @param {{ cold?: boolean }} [options] cold coupe l'ancre d'hystérésis
- *   (previous=null) : lecture à froid, pour réamorcer un régime verrouillé.
+ * service. Utilisé par `fa:ai`. Lecture à froid + amortisseur, comme le service.
  * @returns {Promise<{provider: string, verdict: object|null, raw: string,
  *   file: string, snapshotTs: number}>} Verdict enregistré.
  */
-export async function analyzeNow({ cold = false } = {}) {
+export async function analyzeNow() {
   const { state } = await collectOnce();
   const trends = await getTrends();
-  const previous = cold ? null : await loadLatestVerdict().catch(() => null);
-  const { provider, verdict, raw, violations } = await analyze(state, trends, { previous });
-  const trigger = cold ? "analyse forcée à froid (fa:ai --cold)" : "analyse forcée (fa:ai)";
+  const previous = await loadLatestVerdict().catch(() => null);
+  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  appliquerAmortisseur(verdict, previous);
   const record = {
     ts: state.ts,
     snapshotTs: state.ts,
     provider,
-    triggers: [trigger],
+    triggers: ["analyse forcée (fa:ai)"],
     dataQuality: dataQualityOf(state),
     guardrails: violations ?? [],
     verdict,

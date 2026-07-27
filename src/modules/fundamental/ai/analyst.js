@@ -195,10 +195,9 @@ function big(n) {
  * anti-overfitting (défaut de démarrage daté uniquement).
  * @param {object} state World-state complet.
  * @param {object} trends Tendances (getTrends).
- * @param {object|null} [previous] Dernier verdict persisté (active l'hystérésis).
  * @returns {string} Message utilisateur complet.
  */
-export function formatState(state, trends, previous = null) {
+export function formatState(state, trends) {
   const a = state.axes ?? {};
   const L = [];
   const push = (s) => L.push(s);
@@ -388,39 +387,6 @@ export function formatState(state, trends, previous = null) {
     }
   }
 
-  const prev = formatPrevious(previous, state.ts);
-  if (prev) push(prev);
-
-  return L.join("\n");
-}
-
-// Le verdict précédent n'est utilisable comme hypothèse que s'il est récent :
-// au-delà, le monde a trop bougé et l'hystérésis deviendrait de l'inertie.
-const HYSTERESIS_MAX_AGE_MS = 48 * 3600000;
-
-/**
- * Bloc HYSTÉRÉSIS : le verdict précédent comme HYPOTHÈSE À FALSIFIER, pas à
- * confirmer. Anti flip-flop (changer de régime exige une donnée nouvelle) ET
- * anti auto-persuasion (si ses propres conditions d'invalidation sont remplies,
- * le changement est OBLIGATOIRE). Placé en FIN de prompt, après toutes les
- * données, pour que le test se fasse contre le tableau complet.
- * @param {object|null} previous Dernier verdict persisté ({ ts, verdict }).
- * @param {number} nowTs Timestamp de l'analyse en cours (epoch ms).
- * @returns {string|null} Bloc de prompt, ou null si verdict absent/trop vieux.
- */
-function formatPrevious(previous, nowTs) {
-  const v = previous?.verdict;
-  if (!v?.regime || previous.ts == null) return null;
-  const ageMs = nowTs - previous.ts;
-  if (!(ageMs >= 0) || ageMs > HYSTERESIS_MAX_AGE_MS) return null;
-  const ageH = Math.round((ageMs / 3600000) * 10) / 10;
-  const L = [`\n## VERDICT PRÉCÉDENT (il y a ${ageH} h) — HYPOTHÈSE À TESTER, PAS UNE CIBLE À CONFIRMER`];
-  L.push(`- Régime : ${v.regime} · confiance ${v.confiance}`);
-  if (v.invalidation) L.push(`- Ses conditions d'invalidation déclarées : ${v.invalidation}`);
-  if (v.resume) L.push(`- Son résumé : ${v.resume}`);
-  L.push(
-    `RÈGLE D'HYSTÉRÉSIS : confronte ces conditions d'invalidation aux données ACTUELLES ci-dessus et consigne le résultat CHIFFRÉ dans "test_invalidation" (chaque condition : remplie ou non, avec la valeur actuelle). Si les conditions sont REMPLIES, ou si une donnée NOUVELLE majeure contredit ce régime, tu DOIS changer de régime — et citer dans "ce_qui_a_change" la donnée précise qui a basculé. Exception UNIQUE : si les conditions sont remplies mais que les drivers prioritaires (taux réels, liquidité, crédit) justifient ENCORE ce régime, tu peux le conserver À CONDITION de le dire explicitement dans "test_invalidation.detail" (les conditions étaient mal calibrées — reformule-les dans "invalidation"). SINON, CONSERVE ce régime : exprime ton évolution par la CONFIANCE (baisse-la si les signaux s'effritent). INTERDIT de changer de régime sur une simple relecture différente des MÊMES données — la stabilité entre deux analyses sur données inchangées fait partie de la qualité.`,
-  );
   return L.join("\n");
 }
 
@@ -453,23 +419,24 @@ export function parseJsonLoose(raw) {
  * objectifs de prix, percentiles non sourcés, extrapolation de source stale).
  * @param {object} state World-state complet.
  * @param {object} trends Tendances (getTrends).
- * @param {{ provider?: object, previous?: object }} [options] Fournisseur
- *   imposé (sinon chaîne par défaut) et dernier verdict persisté (active
- *   l'hystérésis de régime).
+ * @param {{ provider?: object }} [options] Fournisseur imposé (sinon chaîne
+ *   par défaut). L'analyse est TOUJOURS à froid : le verdict précédent n'est
+ *   plus injecté au modèle (anti-verrou), l'anti-girouette est traité en aval
+ *   par l'amortisseur de régime du runner.
  * @returns {Promise<{provider: string, verdict: object|null, raw: string,
  *   prompt: string, violations: Array<object>}>} Verdict parsé (null si JSON
  *   inexploitable) + réponse brute + manquements relevés.
  * @throws {Error} Si TOUS les fournisseurs échouent.
  */
-export async function analyze(state, trends, { provider, previous } = {}) {
+export async function analyze(state, trends, { provider } = {}) {
   const chain = provider ? [provider] : getProviderChain();
-  const user = formatState(state, trends, previous);
+  const user = formatState(state, trends);
   const errors = [];
   for (const p of chain) {
     try {
       const raw = await p.complete({ system: SYSTEM, user });
       const verdict = parseJsonLoose(raw);
-      const violations = verdict ? validateVerdict(verdict, { state, trends, previous }) : [];
+      const violations = verdict ? validateVerdict(verdict, { state, trends }) : [];
       if (violations.length) {
         logger.warn(`[ai] garde-fous "${p.name}" : ${violations.map((v) => `${v.type}${v.count ? `×${v.count}` : ""}`).join(", ")}`);
       }

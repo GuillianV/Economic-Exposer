@@ -92,13 +92,12 @@ function hasAnyPctRank(trends) {
  * @mutates verdict — les objectifs de prix et percentiles inventés sont
  *   remplacés en place (redaction) ; les autres manquements sont signalés seuls.
  * @param {object} verdict Objet verdict parsé.
- * @param {{ state?: object, trends?: object, previous?: object }} [ctx]
- *   World-state (sources stale), tendances (normalisation) et verdict
- *   précédent (contrôles d'hystérésis).
+ * @param {{ state?: object, trends?: object }} [ctx] World-state (sources
+ *   stale) et tendances (normalisation).
  * @returns {Array<{type: string, count?: number, sample?: string,
  *   axis?: string}>} Manquements relevés (vide si verdict propre).
  */
-export function validateVerdict(verdict, { state, trends, previous } = {}) {
+export function validateVerdict(verdict, { state, trends } = {}) {
   const violations = [];
   if (!verdict || typeof verdict !== "object") return violations;
 
@@ -152,26 +151,6 @@ export function validateVerdict(verdict, { state, trends, previous } = {}) {
     if (!admitsStale && hasNumber) {
       flaggedAxes.add(axis);
       violations.push({ type: "stale_extrapolation", axis, sources: stale.filter((s) => STALE_AXIS[s] === axis) });
-    }
-  }
-
-  // (4) Hystérésis — signalements seuls, pour suivi qualité :
-  //   a. flip de régime avec "ce_qui_a_change" vide = relecture différente des
-  //      mêmes données (ce que l'hystérésis interdit) ;
-  //   b. conditions d'invalidation reconnues REMPLIES par l'IA elle-même
-  //      (test_invalidation) mais régime conservé = auto-persuasion possible
-  //      (toléré par l'exception drivers prioritaires, mais à auditer).
-  const prevRegime = previous?.verdict?.regime;
-  if (prevRegime && verdict.regime) {
-    if (verdict.regime !== prevRegime) {
-      const changed = Array.isArray(verdict.ce_qui_a_change)
-        ? verdict.ce_qui_a_change.filter((s) => typeof s === "string" && s.trim())
-        : [];
-      if (!changed.length) {
-        violations.push({ type: "regime_flip_unjustified", from: prevRegime, to: verdict.regime });
-      }
-    } else if (verdict.test_invalidation?.conditions_remplies === true) {
-      violations.push({ type: "invalidation_met_regime_kept", regime: verdict.regime });
     }
   }
 
