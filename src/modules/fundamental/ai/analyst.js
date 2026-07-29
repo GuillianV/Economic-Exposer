@@ -395,8 +395,8 @@ export function formatState(state, trends) {
   push(`\n## GÉOPOLITIQUE`);
   const gd = a.geopolitics?.gdelt;
   if (gd?.topHeadlines?.length) {
-    push(`Manchettes (GDELT) :`);
-    gd.topHeadlines.slice(0, 10).forEach((h) => push(`- (${h.sourceCountry || "?"}) ${h.title}`));
+    push(`Manchettes conflit (GDELT) — volume ${gd.headlineCount}${fmtTrend(trends, "gdeltHeadlines")} :`);
+    gd.topHeadlines.slice(0, 10).forEach((h) => push(`- (${h.lang || "?"}) ${h.title}`));
   }
   const ac = a.geopolitics?.acled;
   if (ac?.totalEvents != null) {

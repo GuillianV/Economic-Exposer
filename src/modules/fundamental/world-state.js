@@ -36,7 +36,7 @@ import { OnChainCollector } from "./collectors/onchain.js";
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal), derivatives (funding/OI/long-short/liquidations 24h Coinglass), liquidations (niveaux/aimants de liquidation Coinglass), whales (positionnement gros comptes Hyperliquid) — trois derniers via scrape navigateur découplé
  *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC), cycle (Mayer/Pi Cycle/200 sem — position de cycle BTC prix), valuation (MVRV/NUPL/prix réalisé/Puell — valorisation realized-cap, CoinMetrics), bmpro (RHODL/Reserve Risk — cycle BitcoinMagazinePro via scrape navigateur)
- *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
+ *   geopolitics : gdelt (manchettes conflit, dataset ngrams statique) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
  * @returns {Array<object>} Collecteurs prêts à l'emploi.
  */

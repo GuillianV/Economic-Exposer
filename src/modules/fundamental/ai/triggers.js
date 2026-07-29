@@ -40,7 +40,12 @@ export const THRESHOLDS = {
   longShortAccountRatio: { type: "abs", value: 0.3, label: "Ratio long/short BTC" },
   totalVolume24hUsd: { type: "pct", value: 30, label: "Volume crypto 24h" },
   mempoolFeeFast: { type: "pct", value: 50, floor: 20, label: "Frais réseau BTC" }, // floor sat/vB : ignore le bruit sous congestion
-  gdeltHeadlines: { type: "abs", value: 8, label: "Volume géopol (GDELT)" },
+  // 2026-07-29 : source GDELT passée de la DOC 2.0 API (cumul 2 jours, cap 20)
+  // au dataset ngrams (volume conflit d'UN intervalle ~1 min, base ~20, variance
+  // plus haute). Seuil relevé 8 -> 12 pour éviter le sur-déclenchement sur le
+  // bruit d'échantillonnage — calibrage de démarrage du nouveau capteur, pas un
+  // ajustement aux résultats.
+  gdeltHeadlines: { type: "abs", value: 12, label: "Volume géopol (GDELT)" },
 };
 
 /**
