@@ -3,6 +3,7 @@ import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
 import { CftcCotCollector } from "./collectors/cftc-cot.js";
 import { CoinGeckoCollector } from "./collectors/coingecko.js";
 import { CommoditiesCollector } from "./collectors/commodities.js";
+import { CycleCollector } from "./collectors/cycle.js";
 import { DefiLlamaCollector } from "./collectors/defillama.js";
 import { DeribitCollector } from "./collectors/deribit.js";
 import { EtfFlowsCollector } from "./collectors/etf-flows.js";
@@ -28,7 +29,7 @@ import { OnChainCollector } from "./collectors/onchain.js";
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal)
- *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC)
+ *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC), cycle (Mayer/Pi Cycle/200 sem — position de cycle BTC)
  *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
  * @returns {Array<object>} Collecteurs prêts à l'emploi.
@@ -51,6 +52,7 @@ export function buildCollectors() {
     new BinanceFuturesCollector(),
     new OnChainCollector(),
     new MempoolCollector(),
+    new CycleCollector(),
     new GdeltCollector(),
     // ACLED désactivé (accès API non accordé à un compte perso → 403). La géopol
     // reste couverte par GDELT + news. Réactiver : remettre `new AcledCollector()`

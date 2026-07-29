@@ -4,9 +4,11 @@ import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
+import { CycleCollector } from "../fundamental/collectors/cycle.js";
 import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
 import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
+import { extractMetrics } from "../fundamental/persistence/metrics.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import {
@@ -43,6 +45,9 @@ const STATS_SINCE_DAYS = 90;
 const TRENDS_LOOKBACK_DAYS = 8;
 const RATE_WINDOW_MS = MINUTE_MS;
 const CALENDAR_FRESH_MS = HOUR_MS;
+const CYCLE_FRESH_MS = 12 * HOUR_MS;
+const FED_SPREAD_DOVISH = -0.25; // pt : 2Y nettement sous le taux directeur = baisses pricées
+const FED_SPREAD_HAWKISH = 0.35; // pt : 2Y nettement au-dessus = pas de baisse, biais restrictif
 const PREVISION_PREVIOUS_WINDOW_MS = 7 * DAY_MS;
 const EXPLAIN_MIN_CHARS = 8;
 const EXPLAIN_MAX_CHARS = 600;
@@ -281,6 +286,72 @@ async function getCalendar(req, res) {
     iso: ts ? new Date(ts).toISOString() : null,
     ...calendar,
     count: calendar.events.length,
+  });
+}
+
+/**
+ * GET /api/cycle — position de cycle du BTC (Mayer / Pi Cycle / 200 semaines).
+ * Sert la valeur du dernier snapshot si fraîche, sinon recalcule en direct.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getCycle(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < CYCLE_FRESH_MS;
+  let cycle = fresh ? snap.axes?.onchain?.cycle : null;
+  let source = fresh ? "snapshot" : "live";
+  let ts = snap?.ts;
+
+  if (cycle?.position == null) {
+    const result = await new CycleCollector().collect();
+    if (!result.stale && result.data?.position != null) {
+      cycle = result.data;
+      source = "live";
+      ts = result.ts;
+    }
+  }
+
+  if (cycle?.position == null) {
+    return res.status(503).json({ error: "indicateurs de cycle indisponibles (klines Binance en échec)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...cycle });
+}
+
+/**
+ * GET /api/fed — attentes de taux implicites (proxy : 2Y - taux directeur).
+ * Read directionnel depuis FRED (pas les probabilités FedWatch exactes, qui
+ * exigent l'API CME payante) : spread négatif = baisses pricées, positif franc
+ * = biais restrictif.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getFedExpectation(req, res) {
+  const snap = await loadLatestSnapshot();
+  if (!snap) return res.status(404).json({ error: "aucun snapshot" });
+
+  const metrics = extractMetrics(snap);
+  const fedFunds = metrics?.fedFunds;
+  const yield2y = metrics?.yield2y;
+  if (fedFunds == null || yield2y == null) {
+    return res.status(503).json({ error: "taux indisponibles (FRED)" });
+  }
+
+  const spread = yield2y - fedFunds;
+  let biais = "statu quo attendu";
+  if (spread <= FED_SPREAD_DOVISH) biais = "baisses attendues";
+  else if (spread >= FED_SPREAD_HAWKISH) biais = "pas de baisse pricée";
+
+  res.json({
+    source: "fred",
+    ts: snap.ts,
+    iso: new Date(snap.ts).toISOString(),
+    fedFunds,
+    yield2y,
+    spread,
+    biais,
   });
 }
 
@@ -617,6 +688,8 @@ export function createApp() {
 
   app.post("/api/explain", express.json({ limit: EXPLAIN_BODY_LIMIT }), wrapAsync(postExplain));
   app.get("/api/calendar", wrapAsync(getCalendar));
+  app.get("/api/cycle", wrapAsync(getCycle));
+  app.get("/api/fed", wrapAsync(getFedExpectation));
 
   app.get("/api/snapshots", wrapAsync(getSnapshots));
   app.get("/api/snapshots/latest", wrapAsync(getLatestSnapshot));
