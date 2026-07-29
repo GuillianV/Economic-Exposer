@@ -87,7 +87,7 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "confiance": 0.0,
   "niveau_de_risque": "faible" | "modéré" | "élevé",
   "lecture_par_axe": {
-    "sentiment": "Fear&Greed, funding BTC/ETH/SOL, DVOL (vol implicite), ratio long/short BTC ET DÉRIVÉS AGRÉGÉS Coinglass (funding pondéré OI, open interest total + tendance 7j, retail vs top-traders, liquidations 24h) ; lis funding et retail en CONTRARIAN (foule longue = risque de purge), SUIS les top-traders (smart money), souligne toute DIVERGENCE retail vs top-traders et tout excès de funding",
+    "sentiment": "Fear&Greed, funding BTC/ETH/SOL, DVOL (vol implicite), ratio long/short BTC ET DÉRIVÉS AGRÉGÉS Coinglass (funding pondéré OI, open interest total + tendance 7j, retail vs top-traders, liquidations 24h) ; lis funding et retail en CONTRARIAN (foule longue = risque de purge), SUIS les top-traders (smart money), souligne toute DIVERGENCE retail vs top-traders et tout excès de funding ; les whales Hyperliquid CORROBORENT les top-traders (même cohorte, autre venue) — convergence = conviction, divergence = signal, JAMAIS un driver indépendant",
     "positionnement": "COT MULTI-ACTIFS : net spéculatif BTC + forex (EUR/JPY/GBP) + actions (S&P500/Nasdaq) + or/pétrole ; souligne les extrêmes de positionnement (percentile)",
     "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle (avec percentiles)",
     "liquidite": "liquidité nette Fed ET liquidité GLOBALE (Fed+BCE+BoJ), niveau ET tendance, implication pour le risque/BTC",
@@ -281,6 +281,9 @@ export function formatState(state, trends) {
     );
   const derivatives = a.structure?.derivatives;
   if (derivatives?.openInterestUsd != null) push(formatDerivatives(derivatives));
+  const whales = a.structure?.whales;
+  if (whales?.longPct != null)
+    push(`- Whales Hyperliquid (gros comptes) : ${whales.longPct}% long / ${whales.shortPct}% short (${big(whales.positionUsd)} $ de positions) — à lire en CORROBORATION des top-traders Binance (même cohorte smart money, venue différente) : convergence = conviction du positionnement smart money ; divergence = signal. NE le compte PAS comme un driver indépendant (évite le double-compte avec le long/short top-traders).`);
 
   const cot = a.positioning?.["cftc-cot"];
   push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
