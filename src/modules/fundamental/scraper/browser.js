@@ -88,6 +88,38 @@ export async function capturePayloads(url, { matchKeys = [], minLen = DEFAULT_MI
 }
 
 /**
+ * Charge une URL et capture les réponses réseau JSON dont l'URL correspond à un
+ * motif (cas des données servies par fetch/XHR sans passer par un JSON.parse
+ * hookable — ex. django_plotly_dash de BitcoinMagazinePro).
+ * @param {string} url URL de la page à charger.
+ * @param {{pattern: RegExp, settleMs?: number}} options `pattern` filtre les URLs
+ *   de réponse à retenir ; `settleMs` attente après chargement.
+ * @returns {Promise<Array<object>>} Corps JSON des réponses correspondantes.
+ * @throws {Error} Si le navigateur ou la navigation échoue.
+ */
+export async function captureResponses(url, { pattern, settleMs = DEFAULT_SETTLE_MS }) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  const bodies = [];
+  try {
+    await page.setViewport({ width: 1440, height: 900 });
+    page.on("response", async (res) => {
+      if (!pattern.test(res.url())) return;
+      try {
+        bodies.push(await res.json());
+      } catch {
+        /* réponse non-JSON : ignorée */
+      }
+    });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: NAV_TIMEOUT_MS });
+    await new Promise((resolve) => setTimeout(resolve, settleMs));
+    return bodies;
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/**
  * Code INJECTÉ en page (avant le bundle) : remplace `JSON.parse` par un wrapper
  * qui retient les objets/arrays déchiffrés portant les clés attendues. Défini
  * hors de capturePayloads pour rester sérialisable et lisible.

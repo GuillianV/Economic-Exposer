@@ -1,5 +1,6 @@
 import { logger } from "../logs/index.js";
 import { BinanceFuturesCollector } from "./collectors/binance-futures.js";
+import { BmproCollector } from "./collectors/bmpro.js";
 import { CftcCotCollector } from "./collectors/cftc-cot.js";
 import { CoinGeckoCollector } from "./collectors/coingecko.js";
 import { CoinglassDerivativesCollector } from "./collectors/coinglass-derivatives.js";
@@ -34,7 +35,7 @@ import { OnChainCollector } from "./collectors/onchain.js";
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
  *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal), derivatives (funding/OI/long-short/liquidations 24h Coinglass), liquidations (niveaux/aimants de liquidation Coinglass), whales (positionnement gros comptes Hyperliquid) — trois derniers via scrape navigateur découplé
- *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC), cycle (Mayer/Pi Cycle/200 sem — position de cycle BTC prix), valuation (MVRV/NUPL/prix réalisé/Puell — valorisation realized-cap, CoinMetrics)
+ *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC), cycle (Mayer/Pi Cycle/200 sem — position de cycle BTC prix), valuation (MVRV/NUPL/prix réalisé/Puell — valorisation realized-cap, CoinMetrics), bmpro (RHODL/Reserve Risk — cycle BitcoinMagazinePro via scrape navigateur)
  *   geopolitics : gdelt (manchettes) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
  * @returns {Array<object>} Collecteurs prêts à l'emploi.
@@ -63,6 +64,7 @@ export function buildCollectors() {
     new MempoolCollector(),
     new CycleCollector(),
     new OnChainValuationCollector(),
+    new BmproCollector(),
     new GdeltCollector(),
     // ACLED désactivé (accès API non accordé à un compte perso → 403). La géopol
     // reste couverte par GDELT + news. Réactiver : remettre `new AcledCollector()`

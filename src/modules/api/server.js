@@ -4,6 +4,7 @@ import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
+import { BmproCollector } from "../fundamental/collectors/bmpro.js";
 import { CoinglassDerivativesCollector } from "../fundamental/collectors/coinglass-derivatives.js";
 import { CoinglassLiquidationsCollector } from "../fundamental/collectors/coinglass-liquidations.js";
 import { CoinglassWhalesCollector } from "../fundamental/collectors/coinglass-whales.js";
@@ -453,6 +454,37 @@ async function getWhales(req, res) {
 }
 
 /**
+ * GET /api/onchain-extras — indicateurs de cycle BitcoinMagazinePro (RHODL Ratio,
+ * Reserve Risk) via scrape. Sert la valeur du snapshot si fraîche, sinon lit le
+ * cache via le collecteur (jamais le navigateur dans le chemin route).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getOnchainExtras(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
+  let bmpro = fresh ? snap.axes?.onchain?.bmpro : null;
+  let source = fresh ? "snapshot" : "cache";
+  let ts = snap?.ts;
+
+  if (bmpro?.rhodl?.valeur == null && bmpro?.reserveRisk?.valeur == null) {
+    const result = await new BmproCollector().collect();
+    if (!result.stale && (result.data?.rhodl?.valeur != null || result.data?.reserveRisk?.valeur != null)) {
+      bmpro = result.data;
+      source = "cache";
+      ts = result.data.scrapedTs ?? result.ts;
+    }
+  }
+
+  if (bmpro?.rhodl?.valeur == null && bmpro?.reserveRisk?.valeur == null) {
+    return res.status(503).json({ error: "indicateurs BMPro indisponibles (scrape pas encore passé)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...bmpro });
+}
+
+/**
  * Date ISO (minuit UTC) de la décision d'une réunion FOMC.
  * @param {{year: number, month: number, day: number}} meeting Réunion.
  * @returns {string} Date ISO du jour de décision.
@@ -889,6 +921,7 @@ export function createApp() {
   app.get("/api/liquidations", wrapAsync(getLiquidations));
   app.get("/api/derivatives", wrapAsync(getDerivatives));
   app.get("/api/whales", wrapAsync(getWhales));
+  app.get("/api/onchain-extras", wrapAsync(getOnchainExtras));
   app.get("/api/fed", wrapAsync(getFedExpectation));
 
   app.get("/api/snapshots", wrapAsync(getSnapshots));

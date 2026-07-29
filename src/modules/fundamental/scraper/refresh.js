@@ -1,3 +1,4 @@
+import { scrapeBmpro } from "./bmpro.js";
 import { closeBrowser } from "./browser.js";
 import { writeScrapeCache } from "./cache.js";
 import { scrapeDerivatives, scrapeLiquidationLevels, scrapeWhalePositions } from "./coinglass.js";
@@ -13,6 +14,7 @@ const SCRAPES = [
   { name: "coinglass-liquidations", run: scrapeLiquidationLevels },
   { name: "coinglass-derivatives", run: scrapeDerivatives },
   { name: "coinglass-whales", run: scrapeWhalePositions },
+  { name: "bmpro", run: scrapeBmpro },
 ];
 
 const SECOND_MS = 1000;
