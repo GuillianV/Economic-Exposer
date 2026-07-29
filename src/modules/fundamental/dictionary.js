@@ -121,6 +121,12 @@ export const METRIC_DICTIONARY = {
   totalVolume24hUsd: { label: "Volume crypto 24h", unit: "USD", axis: "structure", source: "CoinGecko", sens: "la CONVICTION derrière les mouvements : un prix qui bouge sans volume est suspect" },
   altMarketCapUsd: { label: "Cap. alts hors BTC (TOTAL2)", unit: "USD", axis: "structure", source: "CoinGecko", sens: "force des altcoins" },
   total3MarketCapUsd: { label: "Cap. hors BTC+ETH (TOTAL3)", unit: "USD", axis: "structure", source: "CoinGecko", sens: "spéculation sur les alts (risk-on extrême)" },
+  fundingAgg: { label: "Funding agrégé (pondéré OI)", unit: "%", axis: "structure", source: "Coinglass (scrape)", sens: "coût de portage cross-exchange ; très positif = longs en excès (risque de purge)" },
+  oiAgg: { label: "Open Interest agrégé", unit: "USD", axis: "structure", source: "Coinglass (scrape)", sens: "levier total dans le système ; ↑ = accumulation de levier (squeeze possible) ; ↓ = deleveraging sain" },
+  lsRetailAgg: { label: "Long/short retail (agrégé)", unit: "ratio", axis: "structure", source: "Coinglass (scrape)", sens: "positionnement de la foule ; à lire en contrarian" },
+  lsTopTraders: { label: "Long/short top-traders", unit: "ratio", axis: "structure", source: "Coinglass (scrape)", sens: "positionnement smart money ; à SUIVRE, divergence vs retail = signal" },
+  liq24hUsd: { label: "Liquidations 24h (agrégées)", unit: "USD", axis: "structure", source: "Coinglass (scrape)", sens: "purges de levier récentes ; pic = capitulation/stress court terme" },
+  whalesLongPct: { label: "Whales Hyperliquid (% long)", unit: "%", axis: "structure", source: "Coinglass/Hyperliquid (scrape)", sens: "positionnement des gros comptes ; corrobore les top-traders (smart money)" },
 
   // --- on-chain ---
   totalTvlUsd: { label: "TVL DeFi totale", unit: "USD", axis: "onchain", source: "DefiLlama", sens: "capitaux engagés en DeFi (appétit risque on-chain)" },
@@ -129,6 +135,16 @@ export const METRIC_DICTIONARY = {
   txCount24h: { label: "Transactions BTC (24h)", unit: "count", axis: "onchain", source: "blockchain.info", sens: "activité d'usage du réseau" },
   mempoolFeeFast: { label: "Frais BTC rapides", unit: "sat/vB", axis: "onchain", source: "mempool.space", sens: "↑ = congestion / forte demande de blockspace (activité réelle)" },
   mempoolCount: { label: "Transactions en attente (mempool)", unit: "count", axis: "onchain", source: "mempool.space", sens: "↑ = réseau congestionné (pic d'activité)" },
+
+  // --- valorisation / cycle on-chain (V2) ---
+  mvrvZ: { label: "MVRV Z-Score", unit: "z-score", axis: "onchain", source: "CoinMetrics (calc)", sens: "valorisation de cycle : < 0,1 = creux historique (accumulation) ; > 7 = sommet (distribution) — LE repère de cycle" },
+  mvrv: { label: "MVRV", unit: "ratio", axis: "onchain", source: "CoinMetrics", sens: "cap marché / cap réalisée : < 1 = sous le coût de base (capitulation) ; > 3,2 = zones de sommet" },
+  nupl: { label: "NUPL (profit latent net)", unit: "ratio", axis: "onchain", source: "CoinMetrics (dérivé)", sens: "sentiment du réseau : < 0 = capitulation ; > 0,75 = euphorie" },
+  puell: { label: "Puell Multiple", unit: "ratio", axis: "onchain", source: "CoinMetrics (calc)", sens: "revenu mineurs / moyenne 365j : < 0,5 = revenu déprimé (accumulation) ; > 4 = sommet" },
+  valuationPosition: { label: "Position de valorisation on-chain", unit: "0-100", axis: "onchain", source: "calc (MVRV+Puell)", sens: "jauge bon marché → cher : bas = accumulation, haut = surchauffe" },
+  cyclePosition: { label: "Position de cycle (prix)", unit: "0-100", axis: "onchain", source: "calc (Mayer/Pi Cycle/200 sem)", sens: "où est le BTC dans son cycle de PRIX : bas = plancher, haut = sommet" },
+  rhodl: { label: "RHODL Ratio", unit: "ratio", axis: "onchain", source: "BitcoinMagazinePro (scrape)", sens: "âge relatif des pièces : creux (~centaines) = accumulation ; sommet (~dizaines de milliers) = distribution" },
+  reserveRisk: { label: "Reserve Risk", unit: "ratio", axis: "onchain", source: "BitcoinMagazinePro (scrape)", sens: "conviction des HODLers vs prix : < 0,002 = accumulation attractive ; > 0,02 = surévalué" },
 
   // --- géopolitique (volumes = proxy d'intensité) ---
   gdeltHeadlines: { label: "Volume de manchettes conflit (GDELT)", unit: "count", axis: "geopolitics", source: "GDELT", sens: "↑ = tension géopolitique médiatique" },
@@ -153,4 +169,11 @@ export const GLOSSARY = [
   { terme: "Surprise économique", definition: "Écart entre la donnée RÉELLE publiée et la PRÉVISION du consensus. C'est l'écart, pas le niveau, qui meut les marchés." },
   { terme: "Percentile (pXX/5a)", definition: "Position d'une valeur dans sa distribution sur ~5 ans. p<10 = extrême bas, p>90 = extrême haut — bien plus parlant qu'un niveau brut." },
   { terme: "Stablecoins (poudre sèche)", definition: "Capitaux en stablecoins prêts à être déployés. Leur hausse = liquidité crypto disponible pour acheter." },
+  { terme: "MVRV Z-Score", definition: "Écart entre capitalisation de marché et capitalisation réalisée (coût de base), normalisé sur tout l'historique. Repère de cycle : creux historique en bas, sommet en haut." },
+  { terme: "Prix réalisé", definition: "Coût de base moyen du réseau (prix moyen auquel les pièces ont bougé pour la dernière fois). Sert de support/résistance macro." },
+  { terme: "Puell Multiple", definition: "Revenu quotidien des mineurs rapporté à sa moyenne annuelle. Bas = revenu déprimé (fond de cycle) ; haut = zones de sommet." },
+  { terme: "RHODL / Reserve Risk", definition: "Indicateurs on-chain avancés (âge des pièces, conviction des HODLers) : bas = accumulation attractive, haut = distribution. Data BitcoinMagazinePro." },
+  { terme: "FedWatch (probas FOMC)", definition: "Probabilités de décision de la Fed implicites dans les futures Fed Funds (ZQ) : le mouvement de taux pricé par le marché pour la prochaine réunion." },
+  { terme: "Smart money (top-traders / whales)", definition: "Positionnement des gros comptes (top-traders Binance, whales Hyperliquid). À SUIVRE plutôt qu'à contrer ; une divergence avec la foule retail est un signal riche." },
+  { terme: "Aimants de liquidation", definition: "Niveaux de prix concentrant de gros volumes de liquidation. Le marché tend à aller y chasser la liquidité (cibles de prix court terme)." },
 ];

@@ -50,6 +50,11 @@ export function extractMetrics(state) {
   const defillama = axes.onchain?.defillama ?? {};
   const chain = axes.onchain?.["blockchain-info"] ?? {};
   const mempool = axes.onchain?.mempool ?? {};
+  const valuation = axes.onchain?.valuation ?? {};
+  const cycle = axes.onchain?.cycle ?? {};
+  const bmpro = axes.onchain?.bmpro ?? {};
+  const derivatives = axes.structure?.derivatives ?? {};
+  const whales = axes.structure?.whales ?? {};
   const gdelt = axes.geopolitics?.gdelt ?? {};
   const acled = axes.geopolitics?.acled ?? {};
 
@@ -177,6 +182,22 @@ export function extractMetrics(state) {
     txCount24h: toFiniteNumber(chain.nTx),
     mempoolFeeFast: toFiniteNumber(mempool.feeFast),
     mempoolCount: toFiniteNumber(mempool.mempoolCount),
+    // valorisation / cycle on-chain (V2)
+    mvrvZ: toFiniteNumber(valuation.mvrvZ?.valeur),
+    mvrv: toFiniteNumber(valuation.mvrv?.valeur),
+    nupl: toFiniteNumber(valuation.nupl?.valeur),
+    puell: toFiniteNumber(valuation.puell?.valeur),
+    valuationPosition: toFiniteNumber(valuation.position),
+    cyclePosition: toFiniteNumber(cycle.position),
+    rhodl: toFiniteNumber(bmpro.rhodl?.valeur),
+    reserveRisk: toFiniteNumber(bmpro.reserveRisk?.valeur),
+    // dérivés agrégés Coinglass (V2) — funding pondéré OI, OI total, long/short, liquidations 24h
+    fundingAgg: toFiniteNumber(derivatives.fundingPct),
+    oiAgg: toFiniteNumber(derivatives.openInterestUsd),
+    lsRetailAgg: toFiniteNumber(derivatives.longShortRatio),
+    lsTopTraders: toFiniteNumber(derivatives.longShortTopTraders),
+    liq24hUsd: toFiniteNumber(derivatives.liquidations24h?.totalUsd),
+    whalesLongPct: toFiniteNumber(whales.longPct),
     // géopolitique (volumes = proxy d'intensité)
     gdeltHeadlines: toFiniteNumber(gdelt.headlineCount),
     acledEvents: toFiniteNumber(acled.totalEvents),

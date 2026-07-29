@@ -232,13 +232,14 @@ function formatFedWatch(fedwatch, fedFunds, events) {
 /**
  * Ligne "dérivés agrégés" (Coinglass cross-exchange) pour le prompt.
  * @param {object} der Dérivés du snapshot (axes.structure.derivatives).
+ * @param {object} trends Tendances (pour annoter funding et top-traders).
  * @returns {string} Ligne formatée.
  */
-function formatDerivatives(der) {
+function formatDerivatives(der, trends) {
   const oi7 = der.oiVariation7jPct;
   const oi7txt = oi7 != null ? `${oi7 > 0 ? "+" : ""}${oi7}%` : "?";
   const liq = der.liquidations24h?.totalUsd;
-  return `- Dérivés agrégés (Coinglass cross-exchange) : funding ${der.fundingPct}% · OI total ${big(der.openInterestUsd)} $ (7j ${oi7txt}) · long/short retail ${der.longShortRatio} vs TOP-TRADERS ${der.longShortTopTraders} (smart money — suivre, divergence = signal) · liquidations 24h ${big(liq)} $ (long ${big(der.liquidations24h?.longUsd)} / short ${big(der.liquidations24h?.shortUsd)}). Funding très positif + retail crowded long = risque de purge ; OI qui gonfle = levier accumulé.`;
+  return `- Dérivés agrégés (Coinglass cross-exchange) : funding ${der.fundingPct}%${fmtTrend(trends, "fundingAgg")} · OI total ${big(der.openInterestUsd)} $ (7j ${oi7txt}) · long/short retail ${der.longShortRatio} vs TOP-TRADERS ${der.longShortTopTraders}${fmtTrend(trends, "lsTopTraders")} (smart money — suivre, divergence = signal) · liquidations 24h ${big(liq)} $ (long ${big(der.liquidations24h?.longUsd)} / short ${big(der.liquidations24h?.shortUsd)}). Funding très positif + retail crowded long = risque de purge ; OI qui gonfle = levier accumulé.`;
 }
 
 /**
@@ -281,10 +282,10 @@ export function formatState(state, trends) {
       `- Basis futures BTC (trimestriel, annualisé) : ${fut.basis.annualizedPct > 0 ? "+" : ""}${fut.basis.annualizedPct}%/an${fmtTrend(trends, "btcBasisAnnualized")}${fmtNorm(trends, "btcBasisAnnualized")} — jauge de levier/demande spéculative plus propre que le funding : >10%/an = euphorie (levier long en excès), ~0 = désintérêt, NÉGATIF (backwardation) = capitulation/stress. Croise avec le funding : basis bas + funding neutre = marché purgé (terrain de creux) ; basis haut + funding chaud = excès.`,
     );
   const derivatives = a.structure?.derivatives;
-  if (derivatives?.openInterestUsd != null) push(formatDerivatives(derivatives));
+  if (derivatives?.openInterestUsd != null) push(formatDerivatives(derivatives, trends));
   const whales = a.structure?.whales;
   if (whales?.longPct != null)
-    push(`- Whales Hyperliquid (gros comptes) : ${whales.longPct}% long / ${whales.shortPct}% short (${big(whales.positionUsd)} $ de positions) — à lire en CORROBORATION des top-traders Binance (même cohorte smart money, venue différente) : convergence = conviction du positionnement smart money ; divergence = signal. NE le compte PAS comme un driver indépendant (évite le double-compte avec le long/short top-traders).`);
+    push(`- Whales Hyperliquid (gros comptes) : ${whales.longPct}% long${fmtTrend(trends, "whalesLongPct")} / ${whales.shortPct}% short (${big(whales.positionUsd)} $ de positions) — à lire en CORROBORATION des top-traders Binance (même cohorte smart money, venue différente) : convergence = conviction du positionnement smart money ; divergence = signal. NE le compte PAS comme un driver indépendant (évite le double-compte avec le long/short top-traders).`);
 
   const cot = a.positioning?.["cftc-cot"];
   push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
@@ -384,11 +385,11 @@ export function formatState(state, trends) {
   if (val?.position != null || cyc?.position != null || bmpro?.rhodl?.valeur != null) {
     push(`\n## VALORISATION / CYCLE (contexte structurel long terme)`);
     if (val?.position != null)
-      push(`- Valo on-chain : MVRV ${r(val.mvrv?.valeur, 2)} (${val.mvrv?.statut}) · MVRV Z-Score ${r(val.mvrvZ?.valeur, 2)} (${val.mvrvZ?.statut}) · NUPL ${r(val.nupl?.valeur, 2)} · Puell ${r(val.puell?.valeur, 2)} (${val.puell?.statut}) · prix réalisé ${big(val.realizedPrice)} $ · position ${val.position}/100 (${val.positionLabel})`);
+      push(`- Valo on-chain : MVRV ${r(val.mvrv?.valeur, 2)} (${val.mvrv?.statut}) · MVRV Z-Score ${r(val.mvrvZ?.valeur, 2)}${fmtTrend(trends, "mvrvZ")} (${val.mvrvZ?.statut}) · NUPL ${r(val.nupl?.valeur, 2)} · Puell ${r(val.puell?.valeur, 2)} (${val.puell?.statut}) · prix réalisé ${big(val.realizedPrice)} $ · position ${val.position}/100${fmtTrend(trends, "valuationPosition")} (${val.positionLabel})`);
     if (cyc?.position != null)
-      push(`- Cycle prix : Mayer ${r(cyc.mayer?.valeur, 2)} (${cyc.mayer?.statut}) · Pi Cycle ${r(cyc.piCycle?.valeur, 2)} (${cyc.piCycle?.statut}) · 200 sem ${r(cyc.w200?.valeur, 2)} (${cyc.w200?.statut}) · position ${cyc.position}/100 (${cyc.positionLabel})`);
+      push(`- Cycle prix : Mayer ${r(cyc.mayer?.valeur, 2)} (${cyc.mayer?.statut}) · Pi Cycle ${r(cyc.piCycle?.valeur, 2)} (${cyc.piCycle?.statut}) · 200 sem ${r(cyc.w200?.valeur, 2)} (${cyc.w200?.statut}) · position ${cyc.position}/100${fmtTrend(trends, "cyclePosition")} (${cyc.positionLabel})`);
     if (bmpro?.rhodl?.valeur != null || bmpro?.reserveRisk?.valeur != null)
-      push(`- Indicateurs avancés (BMPro) : RHODL ${r(bmpro.rhodl?.valeur, 0)} (${bmpro.rhodl?.statut}) · Reserve Risk ${r(bmpro.reserveRisk?.valeur, 4)} (${bmpro.reserveRisk?.statut}) — data on-chain avancée (coût de base par âge, coin-days) ; confirment/nuancent la valo de cycle (creux = accumulation, sommet = distribution).`);
+      push(`- Indicateurs avancés (BMPro) : RHODL ${r(bmpro.rhodl?.valeur, 0)}${fmtTrend(trends, "rhodl")} (${bmpro.rhodl?.statut}) · Reserve Risk ${r(bmpro.reserveRisk?.valeur, 4)}${fmtTrend(trends, "reserveRisk")} (${bmpro.reserveRisk?.statut}) — data on-chain avancée (coût de base par âge, coin-days) ; confirment/nuancent la valo de cycle (creux = accumulation, sommet = distribution).`);
   }
 
   push(`\n## GÉOPOLITIQUE`);
