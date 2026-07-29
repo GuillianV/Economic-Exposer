@@ -3,6 +3,7 @@ import * as gemini from "./providers/gemini.js";
 import * as groq from "./providers/groq.js";
 import { validateVerdict } from "./validate.js";
 import { logger } from "../../logs/index.js";
+import { computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../collectors/fedwatch.js";
 
 const PROVIDERS = { deepseek, gemini, groq };
 
@@ -30,6 +31,10 @@ export function getProviderChain() {
  * prédiction de prix. On veut un état du monde + scénarios + asymétrie +
  * confiance + alertes — un support à la décision humaine.
  */
+// 2026-07-29 : ajout aux entrées du verdict des données V2 — valorisation/cycle
+// on-chain (MVRV-Z, position, Puell), probabilités FOMC fedwatch (futures ZQ) et
+// dérivés agrégés Coinglass (funding/OI/top-traders). Enrichissement des INPUTS,
+// pas un ajustement aux résultats de la veille (cf. protocole anti-overfitting).
 const SYSTEM = `Tu es un analyste macro/cross-market senior. Tu analyses le MARCHÉ CRYPTO DANS SON CONTEXTE GLOBAL — pas en vase clos — au service d'un investisseur swing qui décide lui-même. Le BITCOIN est l'actif de RÉFÉRENCE (le chef de file), mais tu couvres aussi ETHEREUM, SOLANA, BNB, XRP et le COMPLEXE DES ALTCOINS (via TOTAL2/TOTAL3, dominance, ETH/BTC). Tu écris de façon dense, précise et utile — jamais générique.
 
 Ton rôle : à partir des données fournies (sentiment, macro, marchés TradFi, matières premières, structure crypto, on-chain, géopolitique, calendrier, news) ET de leurs TENDANCES (variations 1h/24h/7j), produire une lecture RICHE du régime de marché ET des CORRÉLATIONS CROSS-MARKET.
@@ -41,6 +46,12 @@ ANALYSE CROSS-MARKET (important) : compare et croise explicitement le BTC avec l
 LIQUIDITÉ (driver prioritaire) : la LIQUIDITÉ NETTE Fed (bilan Fed − RRP − TGA) ET la LIQUIDITÉ GLOBALE (Fed + BCE + BoJ) avec leur TENDANCE sont un moteur de fond majeur du BTC — une contraction est un vent de face structurel, une expansion un soutien. Pondère-les fortement, ainsi que les taux RÉELS (un taux réel qui monte pénalise les actifs sans rendement).
 
 POSITIONNEMENT MULTI-ACTIFS (CFTC COT) : le net spéculatif est fourni pour le BTC mais aussi le forex (EUR/JPY/GBP), les actions (S&P500/Nasdaq) et les matières (or/WTI). Croise-les : un positionnement extrême (cf. percentile) sur plusieurs actifs révèle le régime de risque global et d'éventuels retournements (capitulation/euphorie).
+
+VALORISATION DE CYCLE (contexte structurel, on-chain) : le MVRV Z-Score, la position de cycle 0-100 (mélange Mayer/Pi Cycle/200 sem et MVRV/Puell) et le Puell Multiple situent le BTC dans son cycle LONG — creux/sous-évalué = base d'accumulation (favorable au risque à moyen terme par mean-reversion), sommet/surchauffe = risque de distribution. C'est un CONTEXTE DE FOND qui pondère ta conviction et le niveau_de_risque ; il ne renverse pas à lui seul les drivers macro court-moyen terme, mais un EXTRÊME de valorisation qui CONTREDIT la macro est un signal à nommer explicitement.
+
+DÉRIVÉS AGRÉGÉS (Coinglass, cross-exchange) : funding pondéré par l'OI, open interest TOTAL et sa tendance 7j, ratio long/short RETAIL vs TOP-TRADERS, liquidations 24h — plus larges que le seul Binance, ils affinent le pilier sentiment/positionnement. Lis funding et retail en CONTRARIAN (funding très positif + retail crowded long = risque de purge) ; les TOP-TRADERS (smart money) se SUIVENT, pas se fadent — une DIVERGENCE retail vs top-traders est un signal riche. OI qui gonfle = levier qui s'accumule (squeeze possible) ; OI qui se purge = deleveraging sain.
+
+PROBABILITÉS FOMC (fedwatch) : quand elles sont fournies, utilise les probabilités de décision de la PROCHAINE réunion (hausse/baisse/statu quo + ampleur en bps, implicites dans les futures Fed Funds) comme biais monétaire — plus précis que le seul proxy de courbe 2Y − Fed Funds.
 
 HIÉRARCHIE DES DRIVERS (arbitrage des signaux contradictoires) : quand les axes se contredisent, pondère dans cet ordre — 1) taux RÉELS + liquidité globale (le coût de l'argent), 2) crédit HY + MOVE (le stress systémique — le crédit casse avant les actions), 3) flux ETF spot (l'acheteur marginal du BTC), 4) extrêmes de positionnement/sentiment (percentiles p≤10 / p≥90), 5) news & géopolitique (du contexte — ne renverse JAMAIS à elle seule une lecture ancrée sur 1-3). Les tensions que tu ne peux pas trancher vont dans "signaux_contradictoires" — ne les moyenne pas artificiellement dans le régime.
 
@@ -76,14 +87,14 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour, selon ce schém
   "confiance": 0.0,
   "niveau_de_risque": "faible" | "modéré" | "élevé",
   "lecture_par_axe": {
-    "sentiment": "Fear&Greed, funding BTC/ETH/SOL, DVOL (vol implicite) ET ratio long/short BTC interprétés ; lis le ratio long/short en CONTRARIAN (foule très longue = risque de purge) et souligne toute DIVERGENCE foule vs gros traders, et tout excès de funding sur ETH/SOL",
+    "sentiment": "Fear&Greed, funding BTC/ETH/SOL, DVOL (vol implicite), ratio long/short BTC ET DÉRIVÉS AGRÉGÉS Coinglass (funding pondéré OI, open interest total + tendance 7j, retail vs top-traders, liquidations 24h) ; lis funding et retail en CONTRARIAN (foule longue = risque de purge), SUIS les top-traders (smart money), souligne toute DIVERGENCE retail vs top-traders et tout excès de funding",
     "positionnement": "COT MULTI-ACTIFS : net spéculatif BTC + forex (EUR/JPY/GBP) + actions (S&P500/Nasdaq) + or/pétrole ; souligne les extrêmes de positionnement (percentile)",
     "macro": "taux nominaux/réels, courbe, crédit, conditions/stress, incertitude, dollar/FX, éco réelle (avec percentiles)",
     "liquidite": "liquidité nette Fed ET liquidité GLOBALE (Fed+BCE+BoJ), niveau ET tendance, implication pour le risque/BTC",
     "marches_tradfi": "lecture S&P500/Nasdaq/VIX et alignement avec BTC",
     "matieres_premieres": "...",
     "structure_crypto": "dominance BTC/ETH, TOTAL2/TOTAL3 (force des alts) ET volume 24h comme CONVICTION (un mouvement de prix sans volume est suspect)",
-    "onchain": "TVL, stablecoins (poudre sèche), hashrate, ET activité réseau BTC : transactions 24h + frais/congestion mempool (frais qui montent = demande réelle de blockspace)",
+    "onchain": "TVL, stablecoins (poudre sèche), hashrate, activité réseau BTC (transactions 24h + frais/congestion mempool), ET la VALORISATION DE CYCLE : MVRV Z-Score, position de cycle 0-100, Puell, prix réalisé — situe le BTC dans son cycle (creux/accumulation vs sommet/distribution) comme contexte de fond",
     "geopolitique": "..."
   },
   "signaux_cles": [
@@ -190,6 +201,46 @@ function big(n) {
 }
 
 /**
+ * Ligne "probabilités FOMC" pour le prompt, calculée depuis les contrats ZQ du
+ * snapshot (même logique que la route /api/fed). Renvoie null si indisponible.
+ * @param {object} fedwatch Données fedwatch du snapshot ({ contracts }).
+ * @param {number} fedFunds Taux Fed Funds (EFFR) de repli.
+ * @returns {string|null} Ligne formatée, ou null.
+ */
+function formatFedWatch(fedwatch, fedFunds) {
+  if (!fedwatch?.contracts?.length || fedFunds == null) return null;
+  const meeting = nextFomcMeeting(new Date());
+  if (!meeting) return null;
+
+  const isDecember = meeting.month === 12;
+  const nextYear = isDecember ? meeting.year + 1 : meeting.year;
+  const nextMonth = isDecember ? 1 : meeting.month + 1;
+  const meetingImplied = impliedRateFor(fedwatch.contracts, meeting.year, meeting.month);
+  const nextImplied = impliedRateFor(fedwatch.contracts, nextYear, nextMonth);
+  const startRate = fedStartRate({ meeting, contracts: fedwatch.contracts, fallbackRate: fedFunds });
+  const probas = computeFedProbabilities({ meeting, startRate, meetingImplied, nextImplied });
+  if (!probas) return null;
+
+  const pct = Math.round(probas.proba * 100);
+  const dominant = probas.issues[0];
+  const mouvement = probas.biais === "statu quo" ? "statu quo" : `${probas.biais} de ${Math.abs(dominant.mouvementBps)} bps`;
+  const jour = `${meeting.year}-${String(meeting.month).padStart(2, "0")}-${String(meeting.day).padStart(2, "0")}`;
+  return `- Probabilités FOMC (fedwatch, futures ZQ, réunion ${jour}) : ${pct}% ${mouvement} — le mouvement de taux PRICÉ pour la prochaine décision (biais monétaire plus précis que le proxy de courbe).`;
+}
+
+/**
+ * Ligne "dérivés agrégés" (Coinglass cross-exchange) pour le prompt.
+ * @param {object} der Dérivés du snapshot (axes.structure.derivatives).
+ * @returns {string} Ligne formatée.
+ */
+function formatDerivatives(der) {
+  const oi7 = der.oiVariation7jPct;
+  const oi7txt = oi7 != null ? `${oi7 > 0 ? "+" : ""}${oi7}%` : "?";
+  const liq = der.liquidations24h?.totalUsd;
+  return `- Dérivés agrégés (Coinglass cross-exchange) : funding ${der.fundingPct}% · OI total ${big(der.openInterestUsd)} $ (7j ${oi7txt}) · long/short retail ${der.longShortRatio} vs TOP-TRADERS ${der.longShortTopTraders} (smart money — suivre, divergence = signal) · liquidations 24h ${big(liq)} $ (long ${big(der.liquidations24h?.longUsd)} / short ${big(der.liquidations24h?.shortUsd)}). Funding très positif + retail crowded long = risque de purge ; OI qui gonfle = levier accumulé.`;
+}
+
+/**
  * Met en forme le world-state + tendances en texte compact pour le LLM
  * (message utilisateur). PROMPT FIGÉ : toute modification relève du protocole
  * anti-overfitting (défaut de démarrage daté uniquement).
@@ -228,6 +279,8 @@ export function formatState(state, trends) {
     push(
       `- Basis futures BTC (trimestriel, annualisé) : ${fut.basis.annualizedPct > 0 ? "+" : ""}${fut.basis.annualizedPct}%/an${fmtTrend(trends, "btcBasisAnnualized")}${fmtNorm(trends, "btcBasisAnnualized")} — jauge de levier/demande spéculative plus propre que le funding : >10%/an = euphorie (levier long en excès), ~0 = désintérêt, NÉGATIF (backwardation) = capitulation/stress. Croise avec le funding : basis bas + funding neutre = marché purgé (terrain de creux) ; basis haut + funding chaud = excès.`,
     );
+  const derivatives = a.structure?.derivatives;
+  if (derivatives?.openInterestUsd != null) push(formatDerivatives(derivatives));
 
   const cot = a.positioning?.["cftc-cot"];
   push(`\n## POSITIONNEMENT (CFTC COT, net spéculatif, ${cot?.date ?? "?"})`);
@@ -253,6 +306,8 @@ export function formatState(state, trends) {
       const ps = Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100;
       push(`- Attentes de politique (2Y − Fed Funds) : ${ps > 0 ? "+" : ""}${ps} pt${fmtNorm(trends, "policySpread2y")} — < 0 = baisses pricées ; > 0 = PAS de baisses pricées. Croise avec l'éco réelle : une éco qui casse SANS baisses pricées = la Fed est perçue comme coincée (prime de terme/fiscale), vent de face durable pour le risque.`);
     }
+    const fedWatchLine = formatFedWatch(a.macro?.fedwatch, fred.fedFunds?.value);
+    if (fedWatchLine) push(fedWatchLine);
     if (fred.yield10y?.value != null && fred.breakeven10y?.value != null) {
       push(`- Décomposition du 10Y : quand les nominaux MONTENT avec des breakevens qui BAISSENT sur une mauvaise nouvelle éco, c'est un choc de taux RÉELS (prime de terme/fiscale), pas d'inflation — le régime le plus défavorable aux actifs de duration et sans rendement. Signale-le explicitement si observé dans les tendances.`);
     }
@@ -318,6 +373,16 @@ export function formatState(state, trends) {
   if (dl) push(`- TVL DeFi : ${big(dl.totalTvlUsd)} $${fmtTrend(trends, "totalTvlUsd")} · Stablecoins : ${big(dl.stablecoinMcapUsd)} $${fmtTrend(trends, "stablecoinMcapUsd")}`);
   if (ch) push(`- Hashrate : ${big(ch.hashRate)}${fmtTrend(trends, "hashRate")} · Transactions 24h : ${ch.nTx}${fmtTrend(trends, "txCount24h")}`);
   if (mp) push(`- Réseau BTC : frais rapides ${mp.feeFast} sat/vB${fmtTrend(trends, "mempoolFeeFast")} · mempool ${mp.mempoolCount} tx en attente${fmtTrend(trends, "mempoolCount")} (congestion = demande réelle de blockspace)`);
+
+  const val = a.onchain?.valuation;
+  const cyc = a.onchain?.cycle;
+  if (val?.position != null || cyc?.position != null) {
+    push(`\n## VALORISATION / CYCLE (contexte structurel long terme)`);
+    if (val?.position != null)
+      push(`- Valo on-chain : MVRV ${r(val.mvrv?.valeur, 2)} (${val.mvrv?.statut}) · MVRV Z-Score ${r(val.mvrvZ?.valeur, 2)} (${val.mvrvZ?.statut}) · NUPL ${r(val.nupl?.valeur, 2)} · Puell ${r(val.puell?.valeur, 2)} (${val.puell?.statut}) · prix réalisé ${big(val.realizedPrice)} $ · position ${val.position}/100 (${val.positionLabel})`);
+    if (cyc?.position != null)
+      push(`- Cycle prix : Mayer ${r(cyc.mayer?.valeur, 2)} (${cyc.mayer?.statut}) · Pi Cycle ${r(cyc.piCycle?.valeur, 2)} (${cyc.piCycle?.statut}) · 200 sem ${r(cyc.w200?.valeur, 2)} (${cyc.w200?.statut}) · position ${cyc.position}/100 (${cyc.positionLabel})`);
+  }
 
   push(`\n## GÉOPOLITIQUE`);
   const gd = a.geopolitics?.gdelt;
