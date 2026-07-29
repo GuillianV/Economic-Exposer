@@ -185,7 +185,8 @@ export function computeOnChainValuation(rows) {
     );
   }
 
-  return { btcPrice, mvrv, mvrvZ, nupl, realizedPrice, puell, position, positionLabel };
+  const asOf = latest?.time ?? null;
+  return { asOf, btcPrice, mvrv, mvrvZ, nupl, realizedPrice, puell, position, positionLabel };
 }
 
 /**

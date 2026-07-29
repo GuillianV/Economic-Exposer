@@ -380,12 +380,15 @@ export function formatState(state, trends) {
 
   const val = a.onchain?.valuation;
   const cyc = a.onchain?.cycle;
-  if (val?.position != null || cyc?.position != null) {
+  const bmpro = a.onchain?.bmpro;
+  if (val?.position != null || cyc?.position != null || bmpro?.rhodl?.valeur != null) {
     push(`\n## VALORISATION / CYCLE (contexte structurel long terme)`);
     if (val?.position != null)
       push(`- Valo on-chain : MVRV ${r(val.mvrv?.valeur, 2)} (${val.mvrv?.statut}) · MVRV Z-Score ${r(val.mvrvZ?.valeur, 2)} (${val.mvrvZ?.statut}) · NUPL ${r(val.nupl?.valeur, 2)} · Puell ${r(val.puell?.valeur, 2)} (${val.puell?.statut}) · prix réalisé ${big(val.realizedPrice)} $ · position ${val.position}/100 (${val.positionLabel})`);
     if (cyc?.position != null)
       push(`- Cycle prix : Mayer ${r(cyc.mayer?.valeur, 2)} (${cyc.mayer?.statut}) · Pi Cycle ${r(cyc.piCycle?.valeur, 2)} (${cyc.piCycle?.statut}) · 200 sem ${r(cyc.w200?.valeur, 2)} (${cyc.w200?.statut}) · position ${cyc.position}/100 (${cyc.positionLabel})`);
+    if (bmpro?.rhodl?.valeur != null || bmpro?.reserveRisk?.valeur != null)
+      push(`- Indicateurs avancés (BMPro) : RHODL ${r(bmpro.rhodl?.valeur, 0)} (${bmpro.rhodl?.statut}) · Reserve Risk ${r(bmpro.reserveRisk?.valeur, 4)} (${bmpro.reserveRisk?.statut}) — data on-chain avancée (coût de base par âge, coin-days) ; confirment/nuancent la valo de cycle (creux = accumulation, sommet = distribution).`);
   }
 
   push(`\n## GÉOPOLITIQUE`);

@@ -197,6 +197,8 @@ export class CycleCollector extends Collector {
     ]);
 
     const data = computeCycle(closesOf(dailyRaw), closesOf(weeklyRaw));
+    const lastDaily = Array.isArray(dailyRaw) && dailyRaw.length ? dailyRaw[dailyRaw.length - 1] : null;
+    data.asOf = lastDaily ? new Date(Number(lastDaily[0])).toISOString() : null;
     this.cache = { ts: Date.now(), data };
     return data;
   }
