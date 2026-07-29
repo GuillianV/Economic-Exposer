@@ -4,8 +4,13 @@ import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
+import { CoinglassDerivativesCollector } from "../fundamental/collectors/coinglass-derivatives.js";
+import { CoinglassLiquidationsCollector } from "../fundamental/collectors/coinglass-liquidations.js";
+import { CoinglassWhalesCollector } from "../fundamental/collectors/coinglass-whales.js";
 import { CycleCollector } from "../fundamental/collectors/cycle.js";
+import { FedWatchCollector, computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../fundamental/collectors/fedwatch.js";
 import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
+import { OnChainValuationCollector } from "../fundamental/collectors/onchain-valuation.js";
 import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
 import { extractMetrics } from "../fundamental/persistence/metrics.js";
@@ -46,6 +51,9 @@ const TRENDS_LOOKBACK_DAYS = 8;
 const RATE_WINDOW_MS = MINUTE_MS;
 const CALENDAR_FRESH_MS = HOUR_MS;
 const CYCLE_FRESH_MS = 12 * HOUR_MS;
+const VALUATION_FRESH_MS = 12 * HOUR_MS;
+const SCRAPE_FRESH_MS = 2 * HOUR_MS;
+const FEDWATCH_FRESH_MS = 6 * HOUR_MS;
 const FED_SPREAD_DOVISH = -0.25; // pt : 2Y nettement sous le taux directeur = baisses pricées
 const FED_SPREAD_HAWKISH = 0.35; // pt : 2Y nettement au-dessus = pas de baisse, biais restrictif
 const PREVISION_PREVIOUS_WINDOW_MS = 7 * DAY_MS;
@@ -320,10 +328,177 @@ async function getCycle(req, res) {
 }
 
 /**
- * GET /api/fed — attentes de taux implicites (proxy : 2Y - taux directeur).
- * Read directionnel depuis FRED (pas les probabilités FedWatch exactes, qui
- * exigent l'API CME payante) : spread négatif = baisses pricées, positif franc
- * = biais restrictif.
+ * GET /api/valuation — valorisation on-chain du BTC (MVRV / NUPL / prix réalisé
+ * / Puell), basée sur la realized cap. Sert la valeur du dernier snapshot si
+ * fraîche, sinon recalcule en direct depuis CoinMetrics.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getValuation(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < VALUATION_FRESH_MS;
+  let valuation = fresh ? snap.axes?.onchain?.valuation : null;
+  let source = fresh ? "snapshot" : "live";
+  let ts = snap?.ts;
+
+  if (valuation?.position == null) {
+    const result = await new OnChainValuationCollector().collect();
+    if (!result.stale && result.data?.position != null) {
+      valuation = result.data;
+      source = "live";
+      ts = result.ts;
+    }
+  }
+
+  if (valuation?.position == null) {
+    return res.status(503).json({ error: "valorisation on-chain indisponible (CoinMetrics en échec)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...valuation });
+}
+
+/**
+ * GET /api/liquidations — niveaux/aimants de liquidation Coinglass (scrape
+ * navigateur découplé). Sert la valeur du dernier snapshot si fraîche, sinon lit
+ * le cache disque via le collecteur (jamais le navigateur dans le chemin route).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getLiquidations(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
+  let liquidations = fresh ? snap.axes?.structure?.liquidations : null;
+  let source = fresh ? "snapshot" : "cache";
+  let ts = snap?.ts;
+
+  if (liquidations?.levels == null) {
+    const result = await new CoinglassLiquidationsCollector().collect();
+    if (!result.stale && result.data?.levels) {
+      liquidations = result.data;
+      source = "cache";
+      ts = result.data.scrapedTs ?? result.ts;
+    }
+  }
+
+  if (liquidations?.levels == null) {
+    return res.status(503).json({ error: "liquidations indisponibles (scrape Coinglass pas encore passé)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...liquidations });
+}
+
+/**
+ * GET /api/derivatives — dérivés BTC agrégés Coinglass (funding, open interest,
+ * long/short retail et top-traders, liquidations 24h, volume, leverage). Sert la
+ * valeur du snapshot si fraîche, sinon lit le cache via le collecteur (jamais le
+ * navigateur dans le chemin route).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getDerivatives(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
+  let derivatives = fresh ? snap.axes?.structure?.derivatives : null;
+  let source = fresh ? "snapshot" : "cache";
+  let ts = snap?.ts;
+
+  if (derivatives?.openInterestUsd == null) {
+    const result = await new CoinglassDerivativesCollector().collect();
+    if (!result.stale && result.data?.openInterestUsd != null) {
+      derivatives = result.data;
+      source = "cache";
+      ts = result.data.scrapedTs ?? result.ts;
+    }
+  }
+
+  if (derivatives?.openInterestUsd == null) {
+    return res.status(503).json({ error: "dérivés indisponibles (scrape Coinglass pas encore passé)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...derivatives });
+}
+
+/**
+ * GET /api/whales — positionnement des gros comptes Hyperliquid sur BTC (part
+ * long/short, taille totale). Sert la valeur du snapshot si fraîche, sinon lit le
+ * cache via le collecteur (jamais le navigateur dans le chemin route).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getWhales(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
+  let whales = fresh ? snap.axes?.structure?.whales : null;
+  let source = fresh ? "snapshot" : "cache";
+  let ts = snap?.ts;
+
+  if (whales?.longPct == null) {
+    const result = await new CoinglassWhalesCollector().collect();
+    if (!result.stale && result.data?.longPct != null) {
+      whales = result.data;
+      source = "cache";
+      ts = result.data.scrapedTs ?? result.ts;
+    }
+  }
+
+  if (whales?.longPct == null) {
+    return res.status(503).json({ error: "whales indisponibles (scrape Coinglass pas encore passé)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...whales });
+}
+
+/**
+ * Date ISO (minuit UTC) de la décision d'une réunion FOMC.
+ * @param {{year: number, month: number, day: number}} meeting Réunion.
+ * @returns {string} Date ISO du jour de décision.
+ */
+function reunionIso(meeting) {
+  return new Date(Date.UTC(meeting.year, meeting.month - 1, meeting.day)).toISOString();
+}
+
+/**
+ * Taux implicite du contrat du mois SUIVANT une réunion (gère décembre → janvier).
+ * @param {{year: number, month: number}} meeting Réunion.
+ * @param {Array<object>} contracts Contrats ZQ collectés.
+ * @returns {number|null} Taux implicite du mois suivant, ou null si absent.
+ */
+function nextMonthImplied(meeting, contracts) {
+  const isDecember = meeting.month === 12;
+  const year = isDecember ? meeting.year + 1 : meeting.year;
+  const month = isDecember ? 1 : meeting.month + 1;
+  return impliedRateFor(contracts, year, month);
+}
+
+/**
+ * Charge les futures Fed Funds : valeur du snapshot si fraîche, sinon collecte
+ * en direct. Une panne renvoie null (le handler bascule alors sur le proxy FRED).
+ * @param {object|null} snap Dernier snapshot.
+ * @returns {Promise<{contracts: Array<object>, source: string,
+ *   ts: number|null}|null>} Contrats ZQ, ou null si indisponibles.
+ */
+async function loadFedWatch(snap) {
+  const fresh = snap && Date.now() - snap.ts < FEDWATCH_FRESH_MS;
+  const snapData = fresh ? snap.axes?.macro?.fedwatch : null;
+  if (snapData?.contracts?.length) return { contracts: snapData.contracts, source: "snapshot", ts: snap.ts };
+
+  const result = await new FedWatchCollector().collect();
+  if (!result.stale && result.data?.contracts?.length) {
+    return { contracts: result.data.contracts, source: "live", ts: result.ts };
+  }
+  return null;
+}
+
+/**
+ * GET /api/fed — attentes de décision de la Fed pour la prochaine réunion.
+ * Voie PRIMAIRE : probabilités réelles implicites dans les futures Fed Funds
+ * (ZQ, méthode CME FedWatch). REPLI si les futures manquent : proxy directionnel
+ * 2Y - taux directeur (FRED) — spread négatif = baisses pricées, positif franc =
+ * biais restrictif. Une panne d'une voie ne casse jamais la route.
  * @param {object} req Requête Express.
  * @param {object} res Réponse Express.
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
@@ -335,8 +510,28 @@ async function getFedExpectation(req, res) {
   const metrics = extractMetrics(snap);
   const fedFunds = metrics?.fedFunds;
   const yield2y = metrics?.yield2y;
+
+  const meeting = nextFomcMeeting(new Date());
+  const fedwatch = fedFunds != null && meeting ? await loadFedWatch(snap) : null;
+  if (fedwatch) {
+    const meetingImplied = impliedRateFor(fedwatch.contracts, meeting.year, meeting.month);
+    const nextImplied = nextMonthImplied(meeting, fedwatch.contracts);
+    const startRate = fedStartRate({ meeting, contracts: fedwatch.contracts, fallbackRate: fedFunds });
+    const probas = computeFedProbabilities({ meeting, startRate, meetingImplied, nextImplied });
+    if (probas) {
+      return res.json({
+        source: "fedwatch",
+        methode: "futures Fed Funds (ZQ)",
+        ts: fedwatch.ts,
+        iso: fedwatch.ts ? new Date(fedwatch.ts).toISOString() : null,
+        reunion: { annee: meeting.year, mois: meeting.month, jour: meeting.day, iso: reunionIso(meeting) },
+        ...probas,
+      });
+    }
+  }
+
   if (fedFunds == null || yield2y == null) {
-    return res.status(503).json({ error: "taux indisponibles (FRED)" });
+    return res.status(503).json({ error: "attentes de taux indisponibles (futures ZQ + FRED en échec)" });
   }
 
   const spread = yield2y - fedFunds;
@@ -345,7 +540,7 @@ async function getFedExpectation(req, res) {
   else if (spread >= FED_SPREAD_HAWKISH) biais = "pas de baisse pricée";
 
   res.json({
-    source: "fred",
+    source: "fred-proxy",
     ts: snap.ts,
     iso: new Date(snap.ts).toISOString(),
     fedFunds,
@@ -689,6 +884,10 @@ export function createApp() {
   app.post("/api/explain", express.json({ limit: EXPLAIN_BODY_LIMIT }), wrapAsync(postExplain));
   app.get("/api/calendar", wrapAsync(getCalendar));
   app.get("/api/cycle", wrapAsync(getCycle));
+  app.get("/api/valuation", wrapAsync(getValuation));
+  app.get("/api/liquidations", wrapAsync(getLiquidations));
+  app.get("/api/derivatives", wrapAsync(getDerivatives));
+  app.get("/api/whales", wrapAsync(getWhales));
   app.get("/api/fed", wrapAsync(getFedExpectation));
 
   app.get("/api/snapshots", wrapAsync(getSnapshots));

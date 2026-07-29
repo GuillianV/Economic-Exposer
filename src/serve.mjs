@@ -2,6 +2,8 @@ import "dotenv/config";
 import { createApp } from "./modules/api/server.js";
 import { startDailyPrevision, startService } from "./modules/fundamental/ai/runner.js";
 import { HOUR_MS } from "./modules/fundamental/persistence/scheduler.js";
+import { closeBrowser } from "./modules/fundamental/scraper/browser.js";
+import { startScrapeJob } from "./modules/fundamental/scraper/refresh.js";
 import { logger } from "./modules/logs/index.js";
 
 /**
@@ -17,6 +19,7 @@ const PORT = Number(process.env.API_PORT) || DEFAULT_PORT;
 
 const stopService = startService({ intervalMs: HOUR_MS });
 const stopPrevision = startDailyPrevision();
+const stopScrapeJob = startScrapeJob();
 
 const server = createApp().listen(PORT, () => {
   logger.info(`[api] API publique sur http://localhost:${PORT}/api`);
@@ -27,12 +30,14 @@ server.on("error", (err) => {
 });
 
 /**
- * Arrêt propre : stoppe la boucle de service, le scheduler quotidien et le
- * serveur HTTP avant de quitter.
+ * Arrêt propre : stoppe la boucle de service, le scheduler quotidien, le job de
+ * scrape (et ferme le navigateur) et le serveur HTTP avant de quitter.
  */
 function shutdown() {
   stopService();
   stopPrevision();
+  stopScrapeJob();
+  closeBrowser();
   server.close();
   process.exit(0);
 }
