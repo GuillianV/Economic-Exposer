@@ -205,11 +205,12 @@ function big(n) {
  * snapshot (même logique que la route /api/fed). Renvoie null si indisponible.
  * @param {object} fedwatch Données fedwatch du snapshot ({ contracts }).
  * @param {number} fedFunds Taux Fed Funds (EFFR) de repli.
+ * @param {Array<object>} events Événements calendrier (pour dater la réunion).
  * @returns {string|null} Ligne formatée, ou null.
  */
-function formatFedWatch(fedwatch, fedFunds) {
+function formatFedWatch(fedwatch, fedFunds, events) {
   if (!fedwatch?.contracts?.length || fedFunds == null) return null;
-  const meeting = nextFomcMeeting(new Date());
+  const meeting = nextFomcMeeting(new Date(), events);
   if (!meeting) return null;
 
   const isDecember = meeting.month === 12;
@@ -309,7 +310,7 @@ export function formatState(state, trends) {
       const ps = Math.round((fred.yield2y.value - fred.fedFunds.value) * 100) / 100;
       push(`- Attentes de politique (2Y − Fed Funds) : ${ps > 0 ? "+" : ""}${ps} pt${fmtNorm(trends, "policySpread2y")} — < 0 = baisses pricées ; > 0 = PAS de baisses pricées. Croise avec l'éco réelle : une éco qui casse SANS baisses pricées = la Fed est perçue comme coincée (prime de terme/fiscale), vent de face durable pour le risque.`);
     }
-    const fedWatchLine = formatFedWatch(a.macro?.fedwatch, fred.fedFunds?.value);
+    const fedWatchLine = formatFedWatch(a.macro?.fedwatch, fred.fedFunds?.value, a.macro?.["nasdaq-calendar"]?.events);
     if (fedWatchLine) push(fedWatchLine);
     if (fred.yield10y?.value != null && fred.breakeven10y?.value != null) {
       push(`- Décomposition du 10Y : quand les nominaux MONTENT avec des breakevens qui BAISSENT sur une mauvaise nouvelle éco, c'est un choc de taux RÉELS (prime de terme/fiscale), pas d'inflation — le régime le plus défavorable aux actifs de duration et sans rendement. Signale-le explicitement si observé dans les tendances.`);

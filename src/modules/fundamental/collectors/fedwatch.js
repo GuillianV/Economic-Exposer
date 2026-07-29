@@ -95,13 +95,39 @@ function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+// Repère un événement FOMC / décision de taux de la Fed (US) dans le calendrier.
+const FOMC_EVENT_RX = /fomc|fed interest rate|federal funds rate/i;
+
 /**
- * Prochaine réunion du FOMC strictement postérieure à une date.
+ * Prochaine réunion FOMC déduite du CALENDRIER scrappé (source vivante), plus
+ * fiable que le planning codé (qui peut dater d'un jour et faire sauter la
+ * réunion imminente).
  * @param {Date} now Date de référence.
- * @returns {{year: number, month: number, day: number}|null} Réunion à venir,
- *   ou null si le calendrier codé ne va pas assez loin.
+ * @param {Array<object>} events Événements calendrier ({ datetime, event }).
+ * @returns {{year: number, month: number, day: number}|null} Réunion à venir, ou null.
  */
-export function nextFomcMeeting(now) {
+function fomcFromCalendar(now, events) {
+  if (!Array.isArray(events)) return null;
+  const nowMs = now.getTime();
+  const upcoming = events
+    .filter((e) => e && typeof e.datetime === "number" && e.datetime > nowMs && FOMC_EVENT_RX.test(e.event || ""))
+    .sort((a, b) => a.datetime - b.datetime)[0];
+  if (!upcoming) return null;
+  const decision = new Date(upcoming.datetime);
+  return { year: decision.getUTCFullYear(), month: decision.getUTCMonth() + 1, day: decision.getUTCDate() };
+}
+
+/**
+ * Prochaine réunion du FOMC strictement postérieure à une date : d'abord depuis
+ * le calendrier fourni (à jour), sinon repli sur le planning FOMC codé en dur.
+ * @param {Date} now Date de référence.
+ * @param {Array<object>|null} [events] Événements calendrier (facultatif).
+ * @returns {{year: number, month: number, day: number}|null} Réunion à venir,
+ *   ou null si ni le calendrier ni le planning codé ne vont assez loin.
+ */
+export function nextFomcMeeting(now, events = null) {
+  const fromCalendar = fomcFromCalendar(now, events);
+  if (fromCalendar) return fromCalendar;
   const nowMs = now.getTime();
   for (const meeting of FOMC_MEETINGS) {
     const decisionMs = Date.UTC(meeting.year, meeting.month - 1, meeting.day);

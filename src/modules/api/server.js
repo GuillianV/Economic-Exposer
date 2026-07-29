@@ -511,7 +511,8 @@ async function getFedExpectation(req, res) {
   const fedFunds = metrics?.fedFunds;
   const yield2y = metrics?.yield2y;
 
-  const meeting = nextFomcMeeting(new Date());
+  const calendarEvents = snap.axes?.macro?.["nasdaq-calendar"]?.events ?? null;
+  const meeting = nextFomcMeeting(new Date(), calendarEvents);
   const fedwatch = fedFunds != null && meeting ? await loadFedWatch(snap) : null;
   if (fedwatch) {
     const meetingImplied = impliedRateFor(fedwatch.contracts, meeting.year, meeting.month);
