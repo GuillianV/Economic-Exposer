@@ -37,6 +37,35 @@ const AUTOPSY_TIMEOUT_MS = 60000;
 const AUTOPSY_MAX_CHARS = 900;
 const RODAGE_JOURS = 7;
 
+// Calendrier de cotation par actif (3e champ d'ASSETS), pour ancrer l'échéance
+// d'évaluation sur la vraie journée de trading de chaque actif.
+const CALENDAR_BY_KEY = new Map(ASSETS.map(([key, , calendrier]) => [key, calendrier || "24_7"]));
+
+const SATURDAY = 6;
+const SUNDAY = 0;
+
+/**
+ * Échéance d'évaluation d'une prévision selon le calendrier de cotation.
+ * "24_7" : +24 h sec (crypto, cote en continu). "usClose" : +24 h roulé
+ * jusqu'au prochain jour ouvré — l'or ne cote pas le week-end, une cible
+ * samedi/dimanche mesurerait un cours figé (retPct 0, éval non mesurable).
+ * Fonction PURE — testable isolément.
+ * @param {number} baseTs Instant d'émission (epoch ms).
+ * @param {string} calendrier "24_7" | "usClose".
+ * @returns {number} Échéance cible (epoch ms).
+ */
+export function nextTargetTs(baseTs, calendrier) {
+  let target = baseTs + HORIZON_HOURS * HOUR_MS;
+  if (calendrier === "usClose") {
+    let day = new Date(target).getUTCDay();
+    while (day === SATURDAY || day === SUNDAY) {
+      target += HORIZON_HOURS * HOUR_MS;
+      day = new Date(target).getUTCDay();
+    }
+  }
+  return target;
+}
+
 const DISCLAIMER =
   "Prévision directionnelle IA à 24h, évaluée publiquement contre le réalisé le " +
   "lendemain. PAS un conseil financier : même un bon système se trompe souvent — " +
@@ -261,15 +290,25 @@ export async function projectPrevisions({ provider } = {}) {
       for (const predicted of parsed.actifs) {
         const key = labelToKey.get(predicted.actif);
         if (!key || traj.current[key] == null) continue;
-        actifs.push(normalizePredictedAsset(predicted, key, traj.current[key], vols[key]));
+        const asset = normalizePredictedAsset(predicted, key, traj.current[key], vols[key]);
+        // Échéance PAR ACTIF : chaque actif est jugé sur SA prochaine clôture
+        // (crypto +24 h ; or roulé hors week-end) — clôture-à-clôture par actif.
+        asset.targetTs = nextTargetTs(baseTs, CALENDAR_BY_KEY.get(key) || "24_7");
+        asset.horizonHeures = Math.round((asset.targetTs - baseTs) / HOUR_MS);
+        actifs.push(asset);
       }
+      // targetTs du record = la plus TARDIVE des échéances d'actifs : gate
+      // grossier « tout est évaluable » (l'évaluation fine se fait par actif).
+      const targetTs = actifs.length
+        ? Math.max(...actifs.map((a) => a.targetTs))
+        : baseTs + HORIZON_HOURS * HOUR_MS;
 
       return {
         provider: p.name,
         previsions: {
           disclaimer: DISCLAIMER,
           baseTs,
-          targetTs: baseTs + HORIZON_HOURS * HOUR_MS,
+          targetTs,
           horizonHeures: HORIZON_HOURS,
           actifs,
         },
@@ -326,9 +365,9 @@ function resultOf(dist) {
 }
 
 /**
- * Évalue un record de prévision si son échéance est passée : classe réalisée
- * par actif (avec LES SEUILS STOCKÉS), outcome exact/adjacent/faux + direction.
- * Une seule lecture de la série : même fenêtre pour les 8+ actifs du record.
+ * Évalue les actifs d'un record dont l'échéance PAR ACTIF est passée : classe
+ * réalisée (avec LES SEUILS STOCKÉS), outcome exact/adjacent/faux + direction.
+ * Une seule lecture de série, appariant chaque actif à sa propre échéance.
  * @mutates record — ajoute `realise` par actif et `outcome` quand tout est évalué
  *   (les champs d'émission ne sont JAMAIS réécrits).
  * @param {object} record Record de prévision persisté.
@@ -337,13 +376,23 @@ function resultOf(dist) {
  */
 export async function evaluatePrevision(record) {
   if (!record?.actifs?.length || record.outcome) return { record, evaluated: 0 };
-  if (Date.now() < record.targetTs) return { record, evaluated: 0 };
+  const now = Date.now();
+  // Échéance PAR ACTIF ; rétro-compat : les anciens records sans targetTs par
+  // actif retombent sur le targetTs global du record.
+  const cibleDe = (asset) => asset.targetTs ?? record.targetTs;
+  const echus = record.actifs.filter((asset) => !asset.realise && cibleDe(asset) != null && now >= cibleDe(asset));
+  if (!echus.length) return { record, evaluated: 0 };
 
-  const series = await loadMetricsSince(record.targetTs);
+  // Une seule lecture de série, depuis la plus PRÉCOCE des échéances échues :
+  // couvre toutes les cibles d'actifs (chacun apparié à SA propre échéance).
+  const depuis = Math.min(...echus.map(cibleDe));
+  const series = await loadMetricsSince(depuis);
   let evaluated = 0;
   for (const asset of record.actifs) {
     if (asset.realise) continue;
-    const px = priceAt(series, asset.metricKey, record.targetTs);
+    const cible = cibleDe(asset);
+    if (cible == null || now < cible) continue;
+    const px = priceAt(series, asset.metricKey, cible);
     if (!px || asset.prixBase == null || asset.prixBase === 0) continue;
 
     const retPct = r2(((px.v - asset.prixBase) / asset.prixBase) * 100);
@@ -361,7 +410,7 @@ export async function evaluatePrevision(record) {
     evaluated++;
   }
 
-  if (evaluated && record.actifs.every((asset) => asset.realise)) {
+  if (record.actifs.every((asset) => asset.realise)) {
     record.outcome = { evaluatedAt: Date.now() };
   }
   return { record, evaluated };

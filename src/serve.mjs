@@ -10,7 +10,7 @@ import { logger } from "./modules/logs/index.js";
  * Service 24/7 « lance et oublie » dans UN SEUL process :
  *   - boucle de collecte horaire + analyse IA (fond toutes les
  *     AI_BASELINE_HOURS, défaut 4h, + sur bascule) + push webhook sur verdict ;
- *   - prévision 24h une fois par jour (PREVISION_DAILY_HOUR, défaut midi) ;
+ *   - prévision 24h une fois par jour (PREVISION_DAILY_HOUR, défaut 21:00 UTC) ;
  *   - API HTTP de lecture (même process), pour qu'un consommateur lise les
  *     snapshots/verdicts sans dépendre d'un second process.
  */

@@ -19,7 +19,11 @@ const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
 const EVAL_WINDOW_MS = 7 * DAY_MS; // fenêtre de rescan des prévisions à évaluer
 const DEFAULT_BASELINE_HOURS = 4;
-const DEFAULT_DAILY_HOUR = 12;
+// 2026-07-30 : ancrage passé de midi LOCAL à 21:00 UTC — clôture US/COMEX.
+// Prédire à midi enjambait les sessions et le week-end (base = cours figé,
+// horizon désaligné) ; à la clôture, la fenêtre 24h colle à la journée de
+// trading. L'or est ancré à SA clôture ; la crypto (24/7) suit le même repère.
+const DEFAULT_DAILY_HOUR_UTC = 21;
 
 /**
  * Qualité des données ayant servi au verdict (fraîcheur des sources).
@@ -237,13 +241,13 @@ export async function generateDailyPrevision() {
 
 /**
  * Planifie la génération de la prévision UNE FOIS par jour à `hour` (heure
- * locale serveur). Ne bloque pas ; s'auto-replanifie. Rattrapage au démarrage
- * si aucune prévision n'a été générée aujourd'hui.
- * @param {{ hour?: number }} [options] Heure locale de génération (défaut :
- *   PREVISION_DAILY_HOUR / CURVE_DAILY_HOUR / midi).
+ * UTC). Ne bloque pas ; s'auto-replanifie. Rattrapage au démarrage si aucune
+ * prévision n'a été générée aujourd'hui.
+ * @param {{ hour?: number }} [options] Heure UTC de génération (défaut :
+ *   PREVISION_DAILY_HOUR / CURVE_DAILY_HOUR / 21:00 UTC, clôture US/COMEX).
  * @returns {Function} Fonction stop (annule le timer en cours).
  */
-export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || DEFAULT_DAILY_HOUR } = {}) {
+export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || DEFAULT_DAILY_HOUR_UTC } = {}) {
   let timer = null;
   let stopped = false;
 
@@ -254,8 +258,8 @@ export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_
     if (stopped) return;
     const now = new Date();
     const next = new Date(now);
-    next.setHours(hour, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
+    next.setUTCHours(hour, 0, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
     const delay = next - now;
     timer = setTimeout(async () => {
       if (stopped) return;

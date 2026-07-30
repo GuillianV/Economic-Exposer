@@ -65,20 +65,29 @@ function extremesOf(trends) {
   return extremes;
 }
 
-// Cours majeurs suivis : clé métrique -> libellé affiché.
+// Cours majeurs suivis : [clé métrique, libellé affiché, calendrier de cotation].
+// Le calendrier pilote l'ancrage de la prévision (voir prevision.js) :
+//   "24_7"    : cote en continu (crypto) — ancre 00:00 UTC, horizon +24 h.
+//   "usClose" : cote en séance, fermé le week-end (or COMEX/spot) — ancre à la
+//               clôture US, horizon roulé jusqu'à la PROCHAINE clôture ouvrée.
+//
 // RETRAIT 2026-07-20 de dxy/eurusd/usdjpy (défaut de démarrage identifié) :
 // ces trois cours viennent de FRED, séries QUOTIDIENNES publiées avec 1 à 2
 // jours de retard et figées le week-end. Une prévision à 24h y était comparée
 // à un cours inchangé (mouvement mesuré 0.00 % exact) ou au même saut recyclé
 // plusieurs jours — la source est structurellement incapable de mesurer
 // l'horizon prévu. Réintégrables le jour où une source intraday les alimente.
+//
+// RETRAIT 2026-07-30 de sp500/nasdaq (MÊME défaut) : ils viennent du collecteur
+// `markets` (FRED, clôture J-1 figée le week-end), donc non mesurables à 24 h —
+// track record confirmé au niveau du hasard (S&P direction 9 %). L'or reste : il
+// vient de `metals` (gold-api/Yahoo, temps réel COMEX), mesurable, avec gestion
+// du week-end via le calendrier "usClose".
 export const ASSETS = [
-  ["btcPrice", "BTC/USD"],
-  ["ethPrice", "ETH/USD"],
-  ["solPrice", "SOL/USD"],
-  ["sp500", "S&P 500"],
-  ["nasdaq", "Nasdaq 100"],
-  ["gold", "Or (XAU/USD)"],
+  ["btcPrice", "BTC/USD", "24_7"],
+  ["ethPrice", "ETH/USD", "24_7"],
+  ["solPrice", "SOL/USD", "24_7"],
+  ["gold", "Or (XAU/USD)", "usClose"],
 ];
 
 /**
