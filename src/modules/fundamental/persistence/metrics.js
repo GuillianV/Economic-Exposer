@@ -68,6 +68,13 @@ export function extractMetrics(state) {
   const fred = macro.fred ?? {};
   const cotMarkets = cot.markets ?? {};
 
+  const copper = toFiniteNumber(commodities.copper?.value);
+  const gold = toFiniteNumber(metals.gold?.value);
+  // Ratio Cuivre/Or : baromètre croissance-vs-peur (Dr Copper industriel /
+  // refuge). Échelle arbitraire (unités hétérogènes) — c'est la TENDANCE qui
+  // porte le signal : ↑ = réflation/appétit risque, ↓ = fuite vers le refuge.
+  const copperGoldRatio = copper != null && gold ? copper / gold : null;
+
   return {
     // sentiment
     fearGreed: toFiniteNumber(fearGreed.value),
@@ -153,10 +160,11 @@ export function extractMetrics(state) {
     wtiOil: toFiniteNumber(commodities.wtiOil?.value),
     brentOil: toFiniteNumber(commodities.brentOil?.value),
     natGas: toFiniteNumber(commodities.natGas?.value),
-    copper: toFiniteNumber(commodities.copper?.value),
+    copper,
     wheat: toFiniteNumber(commodities.wheat?.value),
-    gold: toFiniteNumber(metals.gold?.value),
+    gold,
     silver: toFiniteNumber(metals.silver?.value),
+    copperGoldRatio, // baromètre croissance-vs-peur ; lire la tendance, pas le niveau
     // marchés TradFi (cross-market)
     sp500: toFiniteNumber(markets.sp500?.value),
     nasdaq: toFiniteNumber(markets.nasdaq?.value),

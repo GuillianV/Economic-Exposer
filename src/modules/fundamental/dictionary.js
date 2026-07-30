@@ -98,6 +98,7 @@ export const METRIC_DICTIONARY = {
   brentOil: { label: "Pétrole Brent", unit: "USD/baril", axis: "commodities", source: "FRED", sens: "référence pétrole mondiale" },
   natGas: { label: "Gaz naturel (Henry Hub)", unit: "USD/MMBtu", axis: "commodities", source: "FRED", sens: "coût énergie (saisonnier, volatil)" },
   copper: { label: "Cuivre", unit: "USD", axis: "commodities", source: "FRED", sens: "baromètre de la croissance industrielle (Dr. Copper)" },
+  copperGoldRatio: { label: "Ratio Cuivre/Or", unit: "ratio", axis: "commodities", source: "dérivé (cuivre/or)", sens: "croissance vs peur : ↑ = réflation/risque, ↓ = refuge (lire la tendance)" },
   wheat: { label: "Blé", unit: "USD", axis: "commodities", source: "FRED", sens: "inflation alimentaire / risque géopolitique" },
   gold: { label: "Or", unit: "USD/oz", axis: "commodities", source: "gold-api → Yahoo (COMEX)", sens: "valeur refuge ; ↑ souvent avec baisse des taux réels" },
   silver: { label: "Argent", unit: "USD/oz", axis: "commodities", source: "gold-api → Yahoo (COMEX)", sens: "refuge + demande industrielle" },

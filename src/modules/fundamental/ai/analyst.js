@@ -341,6 +341,8 @@ export function formatState(state, trends) {
   const com = a.commodities?.commodities;
   const met = a.commodities?.metals;
   if (com) push(`\n## MATIÈRES PREMIÈRES\n- Énergie : WTI ${com.wtiOil?.value}${fmtTrend(trends, "wtiOil")}${fmtNorm(trends, "wtiOil")} · Brent ${com.brentOil?.value} · Gaz ${com.natGas?.value}\n- Métaux : Or ${r(met?.gold?.value, 1)}${fmtTrend(trends, "gold")} · Argent ${r(met?.silver?.value, 1)} · Cuivre ${r(com.copper?.value, 0)}${fmtNorm(trends, "copper")} (Dr Copper) · Blé ${r(com.wheat?.value, 1)}`);
+  if (com && met?.gold?.value && com.copper?.value)
+    push(`- Ratio Cuivre/Or${fmtTrend(trends, "copperGoldRatio")} : baromètre croissance-vs-peur (échelle arbitraire, lis la TENDANCE) — en HAUSSE = réflation/appétit pour le risque (haussier cycliques et risque) ; en BAISSE = fuite vers le refuge, ralentissement anticipé (risk-off). Croise avec le sens du 10Y réel et de l'or.`);
 
   const mk = a.markets?.markets;
   if (mk) push(`\n## MARCHÉS TRADFI (clôture J-1)\n- S&P500 : ${mk.sp500?.value}${fmtTrend(trends, "sp500")}${fmtNorm(trends, "sp500")} · Nasdaq : ${mk.nasdaq?.value}${fmtTrend(trends, "nasdaq")} · Dow : ${mk.djia?.value} · VIX : ${mk.vix?.value}${fmtTrend(trends, "vix")}${fmtNorm(trends, "vix")}${mk.cboeSkew?.value != null ? ` · CBOE SKEW : ${mk.cboeSkew.value}${fmtTrend(trends, "cboeSkew")}${fmtNorm(trends, "cboeSkew")} (↑ = hedge crash)` : ""}${mk.move?.value != null ? ` · MOVE (vol des taux) : ${mk.move.value}${fmtTrend(trends, "move")} — compare-le au VIX : MOVE élevé avec VIX bas = le stress est dans les TAUX, pas encore transmis aux actions (typique d'un régime fiscal/prime de terme) ; les deux élevés = stress systémique` : ""}`);
