@@ -222,9 +222,11 @@ export function computeRegime(m) {
   else if (accord >= 0.6) confiance = "moyenne";
 
   const ma200 = m.btcPrice != null && m.mayer ? Math.round(m.btcPrice / m.mayer) : null;
+  const prixRealise = m.realizedPrice != null ? Math.round(m.realizedPrice) : null;
   const triggers = [
     { nom: "Reconquête du 200j MA", niveau: ma200, condition: "BTC repasse au-dessus", tauxHistorique: "92 % haussier a 180 j" },
-    { nom: "Capitulation profonde", niveau: prixAuMvrv(MVRV_CAPITULATION, m.realizedPrice), condition: "BTC sous ce niveau (MVRV<0.8)", tauxHistorique: "94-96 % haussier a 90-180 j" },
+    { nom: "1re zone de valeur (coût de base)", niveau: prixRealise, condition: "BTC sous le prix réalisé (MVRV<1)", tauxHistorique: "détenteurs sous l'eau — accumulation prudente, pas encore le signal fort" },
+    { nom: "Capitulation profonde", niveau: prixAuMvrv(MVRV_CAPITULATION, m.realizedPrice), condition: "BTC sous ce niveau (MVRV<0.8)", tauxHistorique: "94-96 % haussier a 90-180 j — achat fort" },
     { nom: "Distribution", niveau: prixAuMvrv(MVRV_EUPHORIE, m.realizedPrice), condition: "BTC au-dessus (MVRV>3)", tauxHistorique: "forward negatif — alléger" },
   ];
 
@@ -239,7 +241,7 @@ export function computeRegime(m) {
     triggers,
     niveaux: {
       ma200,
-      prixRealise: m.realizedPrice != null ? Math.round(m.realizedPrice) : null,
+      prixRealise,
       capitulation: prixAuMvrv(MVRV_CAPITULATION, m.realizedPrice),
       distribution: prixAuMvrv(MVRV_EUPHORIE, m.realizedPrice),
       cyclePosition: m.cyclePosition ?? null,
