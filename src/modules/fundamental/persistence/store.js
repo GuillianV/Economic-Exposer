@@ -29,6 +29,16 @@ const AI_STATE_FILE = path.join(DATA, "ai-state.json");
  */
 export const SCHEMA_VERSION = 1;
 
+/**
+ * Version du JEU DE DONNÉES (sources + métriques exposées), distincte de la
+ * forme d'enveloppe (SCHEMA_VERSION). À INCRÉMENTER à chaque modification des
+ * données : ajout/retrait d'une source ou d'une métrique, changement de source.
+ * Exposée en `paramsVersion` dans les réponses API pour qu'un consommateur
+ * détecte qu'un nouveau jeu de données est en ligne. Baseline 1 = jeu introduit
+ * avec cette clé (inclut cuivre/or + trésoreries).
+ */
+export const DATA_PARAMS_VERSION = 1;
+
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MINUTE_MS = 60000;
 const NEAREST_TOL_MS = MINUTE_MS;
@@ -142,7 +152,7 @@ async function writeRecord(rootDir, ts, record) {
   const dayDir = path.join(rootDir, dayKey(ts));
   await fs.mkdir(dayDir, { recursive: true });
   const file = path.join(dayDir, tsToName(ts));
-  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...record }, null, 2), "utf8");
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: SCHEMA_VERSION, paramsVersion: DATA_PARAMS_VERSION, ...record }, null, 2), "utf8");
   return file;
 }
 

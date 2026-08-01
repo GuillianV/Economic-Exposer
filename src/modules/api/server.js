@@ -19,6 +19,7 @@ import { extractMetrics } from "../fundamental/persistence/metrics.js";
 import { computeOutcome } from "../fundamental/persistence/outcome.js";
 import { getTrends } from "../fundamental/persistence/scheduler.js";
 import {
+  DATA_PARAMS_VERSION,
   SCHEMA_VERSION,
   getSnapshotForVerdict,
   getVerdictForSnapshot,
@@ -157,6 +158,7 @@ function createRateLimitMiddleware(maxPerWindow) {
 const API_INDEX = {
   service: "crypto-fundamental",
   schemaVersion: SCHEMA_VERSION,
+  paramsVersion: DATA_PARAMS_VERSION,
   endpoints: [
     "GET /api/health",
     "GET /api/snapshots?since=&limit=",
@@ -903,7 +905,7 @@ async function getMetrics(req, res) {
  * @param {object} res Réponse Express.
  */
 function getHealth(req, res) {
-  res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION });
+  res.json({ ok: true, ts: Date.now(), schemaVersion: SCHEMA_VERSION, paramsVersion: DATA_PARAMS_VERSION });
 }
 
 /**
@@ -912,7 +914,7 @@ function getHealth(req, res) {
  * @param {object} res Réponse Express.
  */
 function getDictionary(req, res) {
-  res.json({ schemaVersion: SCHEMA_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY });
+  res.json({ schemaVersion: SCHEMA_VERSION, paramsVersion: DATA_PARAMS_VERSION, count: Object.keys(METRIC_DICTIONARY).length, metrics: METRIC_DICTIONARY });
 }
 
 /**

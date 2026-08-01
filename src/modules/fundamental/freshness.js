@@ -5,6 +5,8 @@
  * /api/snapshots/:ts/freshness) — une seule source de vérité.
  */
 
+import { DATA_PARAMS_VERSION } from "./persistence/store.js";
+
 const SECONDS_EPOCH_THRESHOLD = 1e12; // en-dessous, un nombre est un epoch en secondes
 
 /**
@@ -87,8 +89,9 @@ export function freshnessRows(state) {
  * globale du snapshot.
  * @param {object} state World-state ou snapshot (doit porter axes + ts + meta).
  * @returns {{snapshotTs: number|null, snapshotIso: string|null,
- *   generatedAt: number, ok: number|null, total: number|null,
- *   staleSources: Array<string>, sources: Array<object>}} Payload sérialisable.
+ *   generatedAt: number, paramsVersion: number, ok: number|null,
+ *   total: number|null, staleSources: Array<string>, sources: Array<object>}}
+ *   Payload sérialisable.
  */
 export function freshnessPayload(state) {
   const now = Date.now();
@@ -97,6 +100,7 @@ export function freshnessPayload(state) {
     snapshotTs: state?.ts ?? null,
     snapshotIso: state?.ts != null ? new Date(state.ts).toISOString() : null,
     generatedAt: now,
+    paramsVersion: DATA_PARAMS_VERSION,
     ok: state?.meta?.ok ?? null,
     total: state?.meta?.total ?? null,
     staleSources: state?.meta?.staleSources ?? [],
