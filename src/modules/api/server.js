@@ -2,6 +2,7 @@ import express from "express";
 import { createSignatureAuthMiddleware } from "./auth.js";
 import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
+import { computeRegime } from "../fundamental/ai/regime.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
 import { BmproCollector } from "../fundamental/collectors/bmpro.js";
@@ -10,6 +11,7 @@ import { CoinglassLiquidationsCollector } from "../fundamental/collectors/coingl
 import { CoinglassWhalesCollector } from "../fundamental/collectors/coinglass-whales.js";
 import { CycleCollector } from "../fundamental/collectors/cycle.js";
 import { FedWatchCollector, computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../fundamental/collectors/fedwatch.js";
+import { fetchMacroMomentum } from "../fundamental/collectors/macro-momentum.js";
 import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
 import { OnChainValuationCollector } from "../fundamental/collectors/onchain-valuation.js";
 import { TreasuriesCollector } from "../fundamental/collectors/treasuries.js";
@@ -489,6 +491,36 @@ async function getTreasuries(req, res) {
 }
 
 /**
+ * GET /api/regime — boussole de régime swing/cycle (90-180 j) : zone, biais,
+ * blocs, triggers et niveaux. Assemble les facteurs on-chain du dernier
+ * snapshot (trend/valo via cycle + valuation) et le momentum macro (fetch FRED),
+ * puis applique le moteur pur computeRegime.
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getRegime(req, res) {
+  const snap = await loadLatestSnapshot();
+  const cycle = snap?.axes?.onchain?.cycle ?? {};
+  const valuation = snap?.axes?.onchain?.valuation ?? {};
+  const fred = snap?.axes?.macro?.fred ?? {};
+
+  const macro = await fetchMacroMomentum();
+  const regime = computeRegime({
+    btcPrice: valuation.btcPrice ?? cycle.btcPrice ?? null,
+    mayer: cycle.mayer?.valeur ?? null,
+    mvrv: valuation.mvrv?.valeur ?? null,
+    puell: valuation.puell?.valeur ?? null,
+    realizedPrice: valuation.realizedPrice ?? null,
+    cyclePosition: cycle.position ?? null,
+    hySpread: fred.highYieldSpread?.value ?? null,
+    ...macro,
+  });
+
+  res.json({ ts: snap?.ts ?? Date.now(), iso: snap?.ts ? new Date(snap.ts).toISOString() : null, ...regime });
+}
+
+/**
  * GET /api/onchain-extras — indicateurs de cycle BitcoinMagazinePro (RHODL Ratio,
  * Reserve Risk) via scrape. Sert la valeur du snapshot si fraîche, sinon lit le
  * cache via le collecteur (jamais le navigateur dans le chemin route).
@@ -957,6 +989,7 @@ export function createApp() {
   app.get("/api/derivatives", wrapAsync(getDerivatives));
   app.get("/api/whales", wrapAsync(getWhales));
   app.get("/api/treasuries", wrapAsync(getTreasuries));
+  app.get("/api/regime", wrapAsync(getRegime));
   app.get("/api/onchain-extras", wrapAsync(getOnchainExtras));
   app.get("/api/fed", wrapAsync(getFedExpectation));
 
