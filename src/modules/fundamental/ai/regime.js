@@ -48,6 +48,27 @@ const ZONE_PRUDENCE_FORTE = -0.65; // réservé au cumul trend + valo + macro ba
 // construction (l'edge y est quasi nul, cf. backtest).
 const VALO_MILIEU_MAX = 0.35;
 
+// Anti-girouette : un changement de ZONE n'est publié qu'après ce nombre
+// d'émissions quotidiennes concordantes (le score brut peut osciller au
+// boundary d'un seuil). Le compteur n'avance qu'à la persistance quotidienne ;
+// les lectures API recalculent le même état figé (idempotent).
+const REGIME_CONFIRM_CYCLES = 2;
+
+// Flux corporate (trésoreries BTC) : variation nette sur ~30 j sous laquelle le
+// flux est PLAT (bruit de reporting, pas un signal de demande structurelle).
+const CORP_FLUX_DEADBAND = 5000; // BTC
+
+// Fraîcheur du snapshot d'entrée : au-delà, la boussole calcule sur des données
+// vieillissantes -> confiance plafonnée et drapeau `perime`.
+const STALE_SNAPSHOT_MS = 24 * 60 * 60 * 1000; // 24 h (on-chain quotidien)
+
+// Seuils d'accord des blocs pour la confiance (fraction de blocs alignés).
+const ACCORD_FORT = 0.99;
+const ACCORD_MOYEN = 0.6;
+
+// Niveaux de confiance, ordre CROISSANT (l'indice sert au plafonnement).
+const NIVEAUX_CONFIANCE = ["faible", "moyenne", "haute"];
+
 /**
  * Sous-score de TENDANCE (gate 200 j MA). Le discriminant le plus fiable.
  * @param {number|null} mayer Multiple de Mayer (prix / MM200 j).
@@ -161,6 +182,102 @@ function prixAuMvrv(mvrvCible, realizedPrice) {
 }
 
 /**
+ * Sous-score de FLUX corporate (trésoreries BTC) : lecture STRUCTURELLE, HORS
+ * score composé (aucun edge forward mesuré au backtest -> ne commande pas la
+ * direction, protocole anti-overfitting). Sert de modulateur de confiance :
+ * une distribution corporate nette qui contredit un biais haussier le fragilise.
+ * @param {number|null} corpBtcMom Variation nette des trésoreries sur ~30 j (BTC).
+ * @returns {{score: number, label: string, note: string}|null} Bloc, ou null.
+ */
+function blocFlux(corpBtcMom) {
+  if (corpBtcMom == null) return null;
+  if (corpBtcMom > CORP_FLUX_DEADBAND) {
+    return { score: 1, label: "accumulation corporate nette", note: "demande structurelle des trésoreries sur ~30 j" };
+  }
+  if (corpBtcMom < -CORP_FLUX_DEADBAND) {
+    return { score: -1, label: "distribution corporate nette", note: "retrait d'un bid structurel sur ~30 j" };
+  }
+  return { score: 0, label: "flux corporate stable", note: "pas de variation nette significative des trésoreries" };
+}
+
+/**
+ * Amortisseur anti-girouette de la ZONE : une zone brute différente de la
+ * dernière zone publiée n'est adoptée qu'après REGIME_CONFIRM_CYCLES émissions
+ * concordantes ; entre-temps la zone publiée est tenue et la zone pressentie
+ * mémorisée. Fonction PURE (mémoire portée par `previous`).
+ * @param {string} zoneBrute Zone brute de la lecture courante.
+ * @param {object|null} previous Dernière émission publiée ({ zone, damper: {
+ *   zonePressentie, compteur } }).
+ * @returns {{zonePubliee: string, zonePressentie: string|null, compteur: number,
+ *   tenue: boolean}} Zone à publier + état de l'amortisseur ; `tenue` vrai si on
+ *   conserve la zone précédente en attendant confirmation.
+ */
+function amortirZone(zoneBrute, previous) {
+  const zoneConfirmeePrec = previous?.zone ?? zoneBrute;
+  if (zoneBrute === zoneConfirmeePrec) {
+    return { zonePubliee: zoneBrute, zonePressentie: null, compteur: 0, tenue: false };
+  }
+  const pressentiePrec = previous?.damper?.zonePressentie ?? null;
+  const compteurPrec = previous?.damper?.compteur ?? 0;
+  const compteur = zoneBrute === pressentiePrec ? compteurPrec + 1 : 1;
+  if (compteur >= REGIME_CONFIRM_CYCLES) {
+    return { zonePubliee: zoneBrute, zonePressentie: null, compteur: 0, tenue: false };
+  }
+  return { zonePubliee: zoneConfirmeePrec, zonePressentie: zoneBrute, compteur, tenue: true };
+}
+
+/**
+ * Indice d'un niveau dans NIVEAUX_CONFIANCE (croissant).
+ * @param {string} niveau Niveau ("faible"|"moyenne"|"haute").
+ * @returns {number} Indice, ou 0 si inconnu.
+ */
+function indiceConfiance(niveau) {
+  const indice = NIVEAUX_CONFIANCE.indexOf(niveau);
+  return indice < 0 ? 0 : indice;
+}
+
+/**
+ * Plafonne un niveau de confiance par le plus bas d'une liste de plafonds.
+ * @param {string} niveau Niveau de base.
+ * @param {Array<string>} plafonds Plafonds à appliquer.
+ * @returns {string} Niveau plafonné.
+ */
+function plafonneConfiance(niveau, plafonds) {
+  let indiceMin = indiceConfiance(niveau);
+  for (const plafond of plafonds) indiceMin = Math.min(indiceMin, indiceConfiance(plafond));
+  return NIVEAUX_CONFIANCE[indiceMin];
+}
+
+/**
+ * Niveau de confiance : accord des blocs directionnels, PLAFONNÉ par la
+ * complétude des données (un seul bloc ne fait pas une conviction), une bascule
+ * de zone en attente, la péremption du snapshot et une divergence du flux.
+ * @param {object} params Paramètres.
+ * @param {number} params.accord Fraction de blocs alignés sur le signe du score.
+ * @param {number} params.score Score composé.
+ * @param {string|null} params.override Override actif, ou null.
+ * @param {number} params.blocsDirectionnels Blocs directionnels présents (0-3).
+ * @param {boolean} params.tenue Vrai si une bascule de zone attend confirmation.
+ * @param {boolean} params.perime Vrai si le snapshot d'entrée est périmé.
+ * @param {boolean} params.fluxDivergent Vrai si le flux corporate contredit le biais.
+ * @returns {string} Niveau ("faible"|"moyenne"|"haute").
+ */
+function niveauConfiance({ accord, score, override, blocsDirectionnels, tenue, perime, fluxDivergent }) {
+  let niveau = "faible";
+  if (override) niveau = "haute";
+  else if (accord >= ACCORD_FORT && Math.abs(score) >= ZONE_CONSTRUCTIF) niveau = "haute";
+  else if (accord >= ACCORD_MOYEN) niveau = "moyenne";
+
+  const plafonds = [];
+  if (blocsDirectionnels <= 1) plafonds.push("faible");
+  else if (blocsDirectionnels === 2) plafonds.push("moyenne");
+  if (tenue) plafonds.push("moyenne");
+  if (perime) plafonds.push("faible");
+  if (fluxDivergent) plafonds.push("moyenne");
+  return plafonneConfiance(niveau, plafonds);
+}
+
+/**
  * Boussole de régime complète : blocs, score composé, zone, triggers et niveaux.
  * Overrides d'extrêmes (capitulation / stress / euphorie) court-circuitant les
  * poids. Fonction PURE.
@@ -175,20 +292,27 @@ function prixAuMvrv(mvrvCible, realizedPrice) {
  * @param {number|null} [m.netLiqMom] Momentum liquidité nette ~120 j (Md$).
  * @param {number|null} [m.realYieldMom] Momentum taux réel ~30 j (pp).
  * @param {number|null} [m.dxyMom] Momentum dollar ~30 j (%).
- * @returns {{zone: string, biais: string, confiance: string, horizon: string,
- *   score: number, override: string|null, blocs: object, triggers: Array,
- *   niveaux: object}} Boussole de régime sérialisable.
+ * @param {number|null} [m.corpBtcMom] Flux net trésoreries corporate ~30 j (BTC).
+ * @param {number|null} [m.snapshotAgeMs] Âge du snapshot d'entrée (ms).
+ * @param {object|null} [previous] Dernière émission publiée (amortisseur de zone).
+ * @returns {{zone: string, zoneBrute: string, biais: string, confiance: string,
+ *   horizon: string, score: number, override: string|null, perime: boolean,
+ *   snapshotAgeMs: number|null, damper: {zonePressentie: string|null,
+ *   compteur: number}, blocs: object, triggers: Array, niveaux: object}}
+ *   Boussole de régime sérialisable.
  */
-export function computeRegime(m) {
+export function computeRegime(m, previous = null) {
   const blocs = {
     trend: blocTrend(m.mayer),
     valorisation: blocValorisation(m.mvrv, m.mayer, m.puell),
     macro: blocMacro(m.netLiqMom, m.realYieldMom, m.dxyMom),
     stress: blocStress(m.hySpread),
+    flux: blocFlux(m.corpBtcMom),
   };
 
   // Score composé : moyenne pondérée des blocs directionnels disponibles
-  // (trend/valo/macro), poids renormalisés sur les seuls blocs présents.
+  // (trend/valo/macro ; le flux est hors score par choix anti-overfitting),
+  // poids renormalisés sur les seuls blocs présents.
   const parts = [];
   if (blocs.trend) parts.push([POIDS.trend, blocs.trend.score]);
   if (blocs.valorisation) parts.push([POIDS.valo, blocs.valorisation.score]);
@@ -197,29 +321,44 @@ export function computeRegime(m) {
   const scoreBrut = poidsTotal ? parts.reduce((sum, [poids, score]) => sum + poids * score, 0) / poidsTotal : 0;
   const score = Math.round(scoreBrut * 100) / 100;
 
-  // Overrides d'extrêmes : court-circuitent le blend (l'edge y est maximal).
-  let override = null;
-  let zone;
-  let biais;
+  // Zone/biais/override BRUTS (avant amortisseur). Overrides d'extrêmes :
+  // court-circuitent le blend (l'edge y est maximal).
+  let overrideBrut = null;
+  let zoneBrute;
+  let biaisBrut;
   if ((m.mvrv != null && m.mvrv < MVRV_CAPITULATION) || (m.hySpread != null && m.hySpread > HY_STRESS)) {
-    override = "achat fort (capitulation / stress crédit)";
-    zone = "accumulation forte";
-    biais = "haussier fort";
+    overrideBrut = "achat fort (capitulation / stress crédit)";
+    zoneBrute = "accumulation forte";
+    biaisBrut = "haussier fort";
   } else if ((m.mvrv != null && m.mvrv > MVRV_EUPHORIE) || (m.mayer != null && m.mayer > MAYER_EUPHORIE)) {
-    override = "distribution (euphorie / sommet de cycle)";
-    zone = "distribution";
-    biais = "baissier";
+    overrideBrut = "distribution (euphorie / sommet de cycle)";
+    zoneBrute = "distribution";
+    biaisBrut = "baissier";
   } else {
-    ({ zone, biais } = classeZone(score));
+    ({ zone: zoneBrute, biais: biaisBrut } = classeZone(score));
   }
 
-  // Confiance : alignement des blocs directionnels (même signe) + override.
+  // Amortisseur anti-girouette : zone publiée tenue tant qu'une bascule n'est
+  // pas confirmée. En attente, biais/override suivent la zone TENUE (précédente).
+  const damper = amortirZone(zoneBrute, previous);
+  const zone = damper.zonePubliee;
+  const biais = damper.tenue ? previous?.biais ?? biaisBrut : biaisBrut;
+  const override = damper.tenue ? previous?.override ?? null : overrideBrut;
+
+  // Confiance : accord des blocs, plafonné par complétude/attente/péremption/flux.
   const signes = parts.map(([, s]) => Math.sign(s)).filter((s) => s !== 0);
   const accord = signes.length ? signes.filter((s) => s === Math.sign(score || 1)).length / signes.length : 0;
-  let confiance = "faible";
-  if (override) confiance = "haute";
-  else if (accord >= 0.99 && Math.abs(score) >= ZONE_CONSTRUCTIF) confiance = "haute";
-  else if (accord >= 0.6) confiance = "moyenne";
+  const perime = m.snapshotAgeMs != null && m.snapshotAgeMs > STALE_SNAPSHOT_MS;
+  const fluxDivergent = Boolean(blocs.flux && blocs.flux.score !== 0 && Math.sign(blocs.flux.score) !== Math.sign(score || blocs.flux.score));
+  const confiance = niveauConfiance({
+    accord,
+    score,
+    override,
+    blocsDirectionnels: parts.length,
+    tenue: damper.tenue,
+    perime,
+    fluxDivergent,
+  });
 
   const ma200 = m.btcPrice != null && m.mayer ? Math.round(m.btcPrice / m.mayer) : null;
   const prixRealise = m.realizedPrice != null ? Math.round(m.realizedPrice) : null;
@@ -232,11 +371,15 @@ export function computeRegime(m) {
 
   return {
     zone,
+    zoneBrute,
     biais,
     confiance,
     horizon: "90-180 jours (swing / cycle)",
     score,
     override,
+    perime,
+    snapshotAgeMs: m.snapshotAgeMs ?? null,
+    damper: { zonePressentie: damper.zonePressentie, compteur: damper.compteur },
     blocs,
     triggers,
     niveaux: {

@@ -2,7 +2,7 @@ import express from "express";
 import { createSignatureAuthMiddleware } from "./auth.js";
 import { statsOf } from "../fundamental/ai/prevision.js";
 import * as groq from "../fundamental/ai/providers/groq.js";
-import { computeRegime } from "../fundamental/ai/regime.js";
+import { assembleRegime, statsOfRegimes } from "../fundamental/ai/regime-track.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
 import { BmproCollector } from "../fundamental/collectors/bmpro.js";
@@ -11,7 +11,6 @@ import { CoinglassLiquidationsCollector } from "../fundamental/collectors/coingl
 import { CoinglassWhalesCollector } from "../fundamental/collectors/coinglass-whales.js";
 import { CycleCollector } from "../fundamental/collectors/cycle.js";
 import { FedWatchCollector, computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../fundamental/collectors/fedwatch.js";
-import { fetchMacroMomentum } from "../fundamental/collectors/macro-momentum.js";
 import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
 import { OnChainValuationCollector } from "../fundamental/collectors/onchain-valuation.js";
 import { TreasuriesCollector } from "../fundamental/collectors/treasuries.js";
@@ -34,6 +33,7 @@ import {
   loadMetricsSince,
   loadPrevisionByTs,
   loadPrevisionsSince,
+  loadRegimesSince,
   loadSnapshotByTs,
   loadVerdictByTs,
 } from "../fundamental/persistence/store.js";
@@ -58,6 +58,7 @@ const CALENDAR_FRESH_MS = HOUR_MS;
 const CYCLE_FRESH_MS = 12 * HOUR_MS;
 const VALUATION_FRESH_MS = 12 * HOUR_MS;
 const TREASURIES_FRESH_MS = 12 * HOUR_MS; // trésoreries : donnée lente (reporting par à-coups)
+const REGIME_HORIZON_MS = 90 * DAY_MS; // horizon d'évaluation du track record de la boussole
 const SCRAPE_FRESH_MS = 2 * HOUR_MS;
 const FEDWATCH_FRESH_MS = 6 * HOUR_MS;
 const FED_SPREAD_DOVISH = -0.25; // pt : 2Y nettement sous le taux directeur = baisses pricées
@@ -178,6 +179,9 @@ const API_INDEX = {
     "GET /api/forecast/previsions/latest",
     "GET /api/forecast/previsions/stats?since=",
     "GET /api/forecast/previsions/:ts",
+    "GET /api/regime",
+    "GET /api/regime/track",
+    "GET /api/treasuries",
     "GET /api/trends?lookbackDays=",
     "GET /api/metrics?since=",
     "GET /api/dictionary",
@@ -500,24 +504,26 @@ async function getTreasuries(req, res) {
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getRegime(req, res) {
-  const snap = await loadLatestSnapshot();
-  const cycle = snap?.axes?.onchain?.cycle ?? {};
-  const valuation = snap?.axes?.onchain?.valuation ?? {};
-  const fred = snap?.axes?.macro?.fred ?? {};
-
-  const macro = await fetchMacroMomentum();
-  const regime = computeRegime({
-    btcPrice: valuation.btcPrice ?? cycle.btcPrice ?? null,
-    mayer: cycle.mayer?.valeur ?? null,
-    mvrv: valuation.mvrv?.valeur ?? null,
-    puell: valuation.puell?.valeur ?? null,
-    realizedPrice: valuation.realizedPrice ?? null,
-    cyclePosition: cycle.position ?? null,
-    hySpread: fred.highYieldSpread?.value ?? null,
-    ...macro,
+  const { regime, snapshotTs } = await assembleRegime();
+  res.json({
+    ts: snapshotTs ?? Date.now(),
+    iso: snapshotTs ? new Date(snapshotTs).toISOString() : null,
+    ...regime,
   });
+}
 
-  res.json({ ts: snap?.ts ?? Date.now(), iso: snap?.ts ? new Date(snap.ts).toISOString() : null, ...regime });
+/**
+ * GET /api/regime/track — track record de la boussole : forward 90 j du BTC
+ * confronté au biais émis. Reste `null`/rodage tant que le seuil d'échéances
+ * n'est pas atteint (l'horizon 90 j impose ~3 mois avant la première mesure).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getRegimeTrack(req, res) {
+  const since = Date.now() - STATS_SINCE_DAYS * DAY_MS - REGIME_HORIZON_MS;
+  const records = await loadRegimesSince(since);
+  res.json({ paramsVersion: DATA_PARAMS_VERSION, ...statsOfRegimes(records) });
 }
 
 /**
@@ -990,6 +996,7 @@ export function createApp() {
   app.get("/api/whales", wrapAsync(getWhales));
   app.get("/api/treasuries", wrapAsync(getTreasuries));
   app.get("/api/regime", wrapAsync(getRegime));
+  app.get("/api/regime/track", wrapAsync(getRegimeTrack));
   app.get("/api/onchain-extras", wrapAsync(getOnchainExtras));
   app.get("/api/fed", wrapAsync(getFedExpectation));
 

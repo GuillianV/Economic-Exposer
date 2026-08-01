@@ -21,6 +21,7 @@ const DATA = path.resolve(process.cwd(), "data");
 const SNAP_DIR = path.join(DATA, "snapshots");
 const VERDICT_DIR = path.join(DATA, "verdicts");
 const PREVISION_DIR = path.join(DATA, "previsions");
+const REGIME_DIR = path.join(DATA, "regimes");
 const AI_STATE_FILE = path.join(DATA, "ai-state.json");
 
 /**
@@ -315,6 +316,45 @@ export async function loadLatestPrevision() {
  */
 export async function loadPrevisionByTs(ts, tolMs = NEAREST_TOL_MS) {
   return loadRecordByTs(PREVISION_DIR, ts, tolMs);
+}
+
+/**
+ * Persiste une émission de boussole de régime (datée par son baseTs). Réécrit
+ * le même fichier lors de l'évaluation (ajout de `realise`/`outcome`).
+ * @param {object} record Émission { baseTs, targetTs, zone, biais, niveaux… }.
+ * @returns {Promise<string>} Chemin du fichier écrit.
+ */
+export async function saveRegime(record) {
+  return writeRecord(REGIME_DIR, record.baseTs, record);
+}
+
+/**
+ * Références des émissions de régime depuis un timestamp.
+ * @param {number} [sinceMs] Timestamp minimal (epoch ms).
+ * @returns {Promise<Array<{ts: number, file: string}>>} Références triées croissant.
+ */
+export async function listRegimes(sinceMs = 0) {
+  return listRecords(REGIME_DIR, sinceMs);
+}
+
+/**
+ * Émissions de régime complètes depuis un timestamp — un seul scan. Un fichier
+ * corrompu (écriture interrompue) est ignoré, pas propagé.
+ * @param {number} [sinceMs] Timestamp minimal (epoch ms).
+ * @returns {Promise<Array<object>>} Records complets triés croissant.
+ */
+export async function loadRegimesSince(sinceMs = 0) {
+  const refs = await listRecords(REGIME_DIR, sinceMs);
+  const records = await Promise.all(refs.map((ref) => readJson(ref.file).catch(() => null)));
+  return records.filter(Boolean);
+}
+
+/**
+ * Émission de régime la plus récente.
+ * @returns {Promise<object|null>} Record complet, ou null si aucun.
+ */
+export async function loadLatestRegime() {
+  return loadLatestRecord(REGIME_DIR);
 }
 
 /**

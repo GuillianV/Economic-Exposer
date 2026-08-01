@@ -1,5 +1,6 @@
 import { analyze } from "./analyst.js";
 import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
+import { emitDailyRegime, evaluateDueRegimes } from "./regime-track.js";
 import { calendarToday, detectChanges, formatChange } from "./triggers.js";
 import { logger } from "../../logs/index.js";
 import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
@@ -266,6 +267,9 @@ export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_
       // Prévisions directionnelles 24h (remplaçantes des courbes chiffrées,
       // choix produit 2026-07-07). L'évaluation des échues est incluse.
       await generateDailyPrevision();
+      // Boussole de régime : une émission par jour + évaluation des échues (track
+      // record forward 90 j). Self-throttlée, ne throw jamais.
+      await emitDailyRegime();
       scheduleNext();
     }, delay);
     logger.info(`[prevision] prochaine génération quotidienne à ${next.toISOString()} (dans ${Math.round(delay / MINUTE_MS)} min)`);
@@ -287,6 +291,12 @@ export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_
       }
     } catch (err) {
       logger.warn(`[prevision] rattrapage au démarrage échoué : ${err.message}`);
+    }
+    // Boussole : émission du jour si absente (self-throttlée) + évaluation des
+    // échues, indépendamment de la prévision.
+    if (!stopped) {
+      await emitDailyRegime();
+      await evaluateDueRegimes();
     }
   })();
 
