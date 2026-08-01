@@ -128,6 +128,8 @@ export const METRIC_DICTIONARY = {
   lsTopTraders: { label: "Long/short top-traders", unit: "ratio", axis: "structure", source: "Coinglass (scrape)", sens: "positionnement smart money ; à SUIVRE, divergence vs retail = signal" },
   liq24hUsd: { label: "Liquidations 24h (agrégées)", unit: "USD", axis: "structure", source: "Coinglass (scrape)", sens: "purges de levier récentes ; pic = capitulation/stress court terme" },
   whalesLongPct: { label: "Whales Hyperliquid (% long)", unit: "%", axis: "structure", source: "Coinglass/Hyperliquid (scrape)", sens: "positionnement des gros comptes ; corrobore les top-traders (smart money)" },
+  corpBtcHoldings: { label: "Trésoreries BTC (total entités)", unit: "BTC", axis: "structure", source: "bitcointreasuries (scrape) → CoinGecko", sens: "demande institutionnelle ; ↑ = accumulation, stagnation = retrait de l'acheteur marginal (lire en procyclique)" },
+  strategyBtc: { label: "BTC détenus par Strategy", unit: "BTC", axis: "structure", source: "bitcointreasuries (scrape) → CoinGecko", sens: "le plus gros acheteur corporate ; son arrêt d'achat = perte d'un bid structurel" },
 
   // --- on-chain ---
   totalTvlUsd: { label: "TVL DeFi totale", unit: "USD", axis: "onchain", source: "DefiLlama", sens: "capitaux engagés en DeFi (appétit risque on-chain)" },

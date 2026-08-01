@@ -372,6 +372,11 @@ export function formatState(state, trends) {
     if (ef.eth)
       push(`- Flux ETF spot ETH (${ef.eth.date}) : jour ${fm(ef.eth.dayFlowUsdM)}${fmtTrend(trends, "ethEtfFlowUsdM")} · 7j cumulés ${fm(ef.eth.flow7dUsdM)} (divergence vs BTC = rotation institutionnelle)`);
   }
+  const tr = a.structure?.treasuries;
+  if (tr?.totalBtc != null) {
+    const strat = tr.strategyBtc != null ? `, dont Strategy ${big(tr.strategyBtc)}${fmtTrend(trends, "strategyBtc")}` : "";
+    push(`- Trésoreries BTC d'entités : ${big(tr.totalBtc)} BTC${fmtTrend(trends, "corpBtcHoldings")}${strat} (${tr.entityCount ?? "?"} entités : entreprises, gouvernements, ETF) — l'acheteur institutionnel de FOND. Lis la TENDANCE en PROCYCLIQUE : accumulation = demande soutenue ; STAGNATION/repli = retrait de l'acheteur marginal, MAIS à valorisation basse c'est AMBIGU (capitulation de la demande près d'un creux), pas mécaniquement baissier. Complémentaire des flux ETF, PAS un double-compte (canaux distincts).`);
+  }
 
   const dl = a.onchain?.defillama;
   const ch = a.onchain?.["blockchain-info"];

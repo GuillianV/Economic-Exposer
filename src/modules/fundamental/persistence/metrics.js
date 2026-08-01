@@ -55,6 +55,7 @@ export function extractMetrics(state) {
   const bmpro = axes.onchain?.bmpro ?? {};
   const derivatives = axes.structure?.derivatives ?? {};
   const whales = axes.structure?.whales ?? {};
+  const treasuries = axes.structure?.treasuries ?? {};
   const gdelt = axes.geopolitics?.gdelt ?? {};
   const acled = axes.geopolitics?.acled ?? {};
 
@@ -206,6 +207,8 @@ export function extractMetrics(state) {
     lsTopTraders: toFiniteNumber(derivatives.longShortTopTraders),
     liq24hUsd: toFiniteNumber(derivatives.liquidations24h?.totalUsd),
     whalesLongPct: toFiniteNumber(whales.longPct),
+    corpBtcHoldings: toFiniteNumber(treasuries.totalBtc), // BTC détenus par les entités (trésoreries)
+    strategyBtc: toFiniteNumber(treasuries.strategyBtc),
     // géopolitique (volumes = proxy d'intensité)
     gdeltHeadlines: toFiniteNumber(gdelt.headlineCount),
     acledEvents: toFiniteNumber(acled.totalEvents),

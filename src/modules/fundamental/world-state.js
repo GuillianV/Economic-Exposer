@@ -25,6 +25,7 @@ import { NasdaqCalendarCollector } from "./collectors/nasdaq-calendar.js";
 import { NewsCollector } from "./collectors/news.js";
 import { OnChainValuationCollector } from "./collectors/onchain-valuation.js";
 import { OnChainCollector } from "./collectors/onchain.js";
+import { TreasuriesCollector } from "./collectors/treasuries.js";
 
 /**
  * Instancie la liste complète des collecteurs, par axe :
@@ -34,7 +35,7 @@ import { OnChainCollector } from "./collectors/onchain.js";
  *   liquidity   : liquidity (bilan Fed − RRP − TGA = liquidité nette)
  *   commodities : commodities (WTI/Brent/gaz/cuivre/blé FRED) + metals (or/argent, gold-api→Yahoo)
  *   markets     : markets (S&P500/Nasdaq/DJIA/VIX) — cross-market
- *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal), derivatives (funding/OI/long-short/liquidations 24h Coinglass), liquidations (niveaux/aimants de liquidation Coinglass), whales (positionnement gros comptes Hyperliquid) — trois derniers via scrape navigateur découplé
+ *   structure   : coingecko, etf-flows (flux ETF spot US BTC/ETH — l'acheteur marginal), treasuries (trésoreries BTC d'entités via bitcointreasuries, backup CoinGecko), derivatives (funding/OI/long-short/liquidations 24h Coinglass), liquidations (niveaux/aimants de liquidation Coinglass), whales (positionnement gros comptes Hyperliquid) — trois derniers via scrape navigateur découplé
  *   onchain     : defillama, blockchain-info, mempool (frais/congestion réseau BTC), cycle (Mayer/Pi Cycle/200 sem — position de cycle BTC prix), valuation (MVRV/NUPL/prix réalisé/Puell — valorisation realized-cap, CoinMetrics), bmpro (RHODL/Reserve Risk — cycle BitcoinMagazinePro via scrape navigateur)
  *   geopolitics : gdelt (manchettes conflit, dataset ngrams statique) — acled désactivé (accès API non accordé)
  *   news        : news (RSS), google-news (thématique)
@@ -58,6 +59,7 @@ export function buildCollectors() {
     new CoinglassLiquidationsCollector(),
     new CoinglassWhalesCollector(),
     new EtfFlowsCollector(),
+    new TreasuriesCollector(),
     new DefiLlamaCollector(),
     new BinanceFuturesCollector(),
     new OnChainCollector(),

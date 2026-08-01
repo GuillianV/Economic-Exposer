@@ -68,6 +68,7 @@ export function freshnessRows(state) {
     ["liquidations (Coinglass, scrape)", "~30 min (scrape)", toMs(a.structure?.liquidations?.scrapedTs)],
     ["derivatives (Coinglass, scrape)", "~30 min (scrape)", toMs(a.structure?.derivatives?.scrapedTs)],
     ["whales (Hyperliquid, scrape)", "~30 min (scrape)", toMs(a.structure?.whales?.scrapedTs)],
+    ["treasuries (trésoreries BTC entités)", "quotidien (lent)", toMs(a.structure?.treasuries?.asOf)],
     ["liquidity (Fed/RRP/TGA)", "hebdo/quotidien", freshest(a.liquidity?.liquidity?.fedBalanceSheet?.date, a.liquidity?.liquidity?.tga?.date)],
     ["markets (S&P/Nasdaq/VIX/SKEW/MOVE)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
     ["markets-live (Finnhub/TD)", "temps réel (intraday)", freshest(...Object.values(a.markets?.["markets-live"] || {}).map((quote) => quote?.datetime))],

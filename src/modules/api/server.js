@@ -12,6 +12,7 @@ import { CycleCollector } from "../fundamental/collectors/cycle.js";
 import { FedWatchCollector, computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../fundamental/collectors/fedwatch.js";
 import { NasdaqCalendarCollector } from "../fundamental/collectors/nasdaq-calendar.js";
 import { OnChainValuationCollector } from "../fundamental/collectors/onchain-valuation.js";
+import { TreasuriesCollector } from "../fundamental/collectors/treasuries.js";
 import { GLOSSARY, METRIC_DICTIONARY } from "../fundamental/dictionary.js";
 import { freshnessPayload } from "../fundamental/freshness.js";
 import { extractMetrics } from "../fundamental/persistence/metrics.js";
@@ -53,6 +54,7 @@ const RATE_WINDOW_MS = MINUTE_MS;
 const CALENDAR_FRESH_MS = HOUR_MS;
 const CYCLE_FRESH_MS = 12 * HOUR_MS;
 const VALUATION_FRESH_MS = 12 * HOUR_MS;
+const TREASURIES_FRESH_MS = 12 * HOUR_MS; // trésoreries : donnée lente (reporting par à-coups)
 const SCRAPE_FRESH_MS = 2 * HOUR_MS;
 const FEDWATCH_FRESH_MS = 6 * HOUR_MS;
 const FED_SPREAD_DOVISH = -0.25; // pt : 2Y nettement sous le taux directeur = baisses pricées
@@ -451,6 +453,37 @@ async function getWhales(req, res) {
   }
 
   res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...whales });
+}
+
+/**
+ * GET /api/treasuries — trésoreries BTC d'entités (total, top détenteurs,
+ * Strategy). Sert la valeur du snapshot si fraîche, sinon lit le collecteur
+ * (scrape bitcointreasuries, backup CoinGecko).
+ * @param {object} req Requête Express.
+ * @param {object} res Réponse Express.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function getTreasuries(req, res) {
+  const snap = await loadLatestSnapshot();
+  const fresh = snap && Date.now() - snap.ts < TREASURIES_FRESH_MS;
+  let treasuries = fresh ? snap.axes?.structure?.treasuries : null;
+  let source = fresh ? "snapshot" : "cache";
+  let ts = snap?.ts;
+
+  if (treasuries?.totalBtc == null) {
+    const result = await new TreasuriesCollector().collect();
+    if (!result.stale && result.data?.totalBtc != null) {
+      treasuries = result.data;
+      source = "cache";
+      ts = result.ts;
+    }
+  }
+
+  if (treasuries?.totalBtc == null) {
+    return res.status(503).json({ error: "trésoreries indisponibles (scrape et backup CoinGecko en échec)" });
+  }
+
+  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...treasuries });
 }
 
 /**
@@ -921,6 +954,7 @@ export function createApp() {
   app.get("/api/liquidations", wrapAsync(getLiquidations));
   app.get("/api/derivatives", wrapAsync(getDerivatives));
   app.get("/api/whales", wrapAsync(getWhales));
+  app.get("/api/treasuries", wrapAsync(getTreasuries));
   app.get("/api/onchain-extras", wrapAsync(getOnchainExtras));
   app.get("/api/fed", wrapAsync(getFedExpectation));
 
