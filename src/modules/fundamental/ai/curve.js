@@ -101,6 +101,16 @@ export function r2(n) {
 }
 
 /**
+ * Pourcentage entier d'une part sur un total, ou null si total nul.
+ * @param {number} part Numérateur.
+ * @param {number} total Dénominateur.
+ * @returns {number|null} Pourcentage arrondi, ou null.
+ */
+export function pourcentage(part, total) {
+  return total ? Math.round((part / total) * 100) : null;
+}
+
+/**
  * Construit la trajectoire depuis le store : timeline régime (verdicts) +
  * timeline des cours (métriques), sous-échantillonnée à ~maxPoints points,
  * plus extrêmes de percentile, contexte macro et signaux du dernier verdict.

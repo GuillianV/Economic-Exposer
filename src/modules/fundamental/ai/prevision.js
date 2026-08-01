@@ -1,5 +1,5 @@
 import { getProviderChain, parseJsonLoose } from "./analyst.js";
-import { ASSETS, buildTrajectory, r2 } from "./curve.js";
+import { ASSETS, buildTrajectory, pourcentage, r2 } from "./curve.js";
 import { logger } from "../../logs/index.js";
 import { loadMetricsSince } from "../persistence/store.js";
 
@@ -534,9 +534,9 @@ const ACTIFS_SUIVIS = new Set(ASSETS.map(([, label]) => label));
 function ratesOf(t) {
   return {
     n: t.n,
-    exactPct: t.n ? Math.round((t.exact / t.n) * 100) : null,
-    exactOuAdjacentPct: t.n ? Math.round(((t.exact + t.adjacent) / t.n) * 100) : null,
-    directionPct: t.n ? Math.round((t.directionOk / t.n) * 100) : null,
+    exactPct: pourcentage(t.exact, t.n),
+    exactOuAdjacentPct: pourcentage(t.exact + t.adjacent, t.n),
+    directionPct: pourcentage(t.directionOk, t.n),
   };
 }
 

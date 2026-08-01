@@ -75,7 +75,7 @@ function appliquerAmortisseur(verdict, previous) {
   if (!verdict?.regime) return;
   const { regimeConfirme, regimePressenti, compteur } = amortirRegime(verdict.regime, previous);
   verdict.regimeBrut = verdict.regime; // régime honnête de la lecture à froid
-  verdict.regime = regimeConfirme; // régime publié (confirmé sur REGIME_CONFIRM_CYCLES)
+  verdict.regime = regimeConfirme; // régime publié (confirmé sur CONFIRM_CYCLES lectures)
   verdict.damper = { regimePressenti, compteur }; // état anti-girouette persisté
 }
 
@@ -112,7 +112,7 @@ export async function maybeAnalyze(state, trends) {
 
   logger.info(`[ai] déclenchement → ${reasons.join(" | ")}`);
   // Analyse à froid + amortisseur : le régime brut est lu sans injecter le
-  // verdict précédent (anti-verrou), puis lissé sur REGIME_CONFIRM_CYCLES.
+  // verdict précédent (anti-verrou), puis lissé sur CONFIRM_CYCLES lectures.
   const previous = await loadLatestVerdict().catch(() => null);
   const { provider, verdict, raw, violations } = await analyze(state, trends);
   appliquerAmortisseur(verdict, previous);

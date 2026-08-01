@@ -1,4 +1,4 @@
-import { r2 } from "./curve.js";
+import { pourcentage, r2 } from "./curve.js";
 import { priceAt } from "./prevision.js";
 import { computeRegime } from "./regime.js";
 import { logger } from "../../logs/index.js";
@@ -85,21 +85,22 @@ export async function corpBtcFlux() {
  * recalcule le même état figé (le compteur n'avance qu'à l'émission).
  * @param {object} [options] Options.
  * @param {boolean} [options.force] Ignore le cache et le rafraîchit (émission).
- * @param {object|null} [options.previous] Dernière émission (évite un rechargement).
  * @returns {Promise<{regime: object, snapshotTs: number|null,
  *   snapshotAgeMs: number|null}>} Boussole + ts/âge du snapshot source.
  */
-export async function assembleRegime({ force = false, previous } = {}) {
+export async function assembleRegime({ force = false } = {}) {
   if (!force && regimeCache.value && Date.now() - regimeCache.ts < REGIME_CACHE_TTL_MS) {
     return regimeCache.value;
   }
 
   // 4 I/O indépendantes en une vague (snapshot + FRED live + scan flux + dernière
-  // émission). `previous` fourni par l'émission -> évite un 2e chargement.
-  const chargements = [loadLatestSnapshot(), fetchMacroMomentum(), corpBtcFlux()];
-  if (previous === undefined) chargements.push(loadLatestRegime().catch(() => null));
-  const [snap, macro, corpBtcMom, previousCharge] = await Promise.all(chargements);
-  const previousRegime = previous === undefined ? previousCharge : previous;
+  // émission, qui sert de mémoire à l'amortisseur).
+  const [snap, macro, corpBtcMom, previousRegime] = await Promise.all([
+    loadLatestSnapshot(),
+    fetchMacroMomentum(),
+    corpBtcFlux(),
+    loadLatestRegime().catch(() => null),
+  ]);
 
   const cycle = snap?.axes?.onchain?.cycle ?? {};
   const valuation = snap?.axes?.onchain?.valuation ?? {};
@@ -170,7 +171,7 @@ export async function emitDailyRegime() {
     return null;
   }
   try {
-    const { regime, snapshotTs } = await assembleRegime({ force: true, previous: last });
+    const { regime, snapshotTs } = await assembleRegime({ force: true });
     if (regime.niveaux?.prixBtc == null) {
       logger.warn("[regime] émission ignorée : pas de prix BTC dans le dernier snapshot");
       return null;
@@ -255,16 +256,6 @@ export async function evaluateDueRegimes({ force = false } = {}) {
     logger.warn(`[regime] évaluation échouée : ${err.message}`);
   }
   return done;
-}
-
-/**
- * Pourcentage entier d'une part sur un total, ou null si total nul.
- * @param {number} part Numérateur.
- * @param {number} total Dénominateur.
- * @returns {number|null} Pourcentage arrondi, ou null.
- */
-function pourcentage(part, total) {
-  return total ? Math.round((part / total) * 100) : null;
 }
 
 /**
