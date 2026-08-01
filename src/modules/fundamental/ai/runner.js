@@ -231,14 +231,15 @@ export async function generateDailyPrevision() {
 }
 
 /**
- * Planifie la génération de la prévision UNE FOIS par jour à `hour` (heure
- * UTC). Ne bloque pas ; s'auto-replanifie. Rattrapage au démarrage si aucune
- * prévision n'a été générée aujourd'hui.
- * @param {{ hour?: number }} [options] Heure UTC de génération (défaut :
+ * Planifie les travaux QUOTIDIENS UNE FOIS par jour à `hour` (heure UTC) :
+ * génération de la prévision 24h ET émission de la boussole de régime, chacun
+ * évaluant ses échéances. Ne bloque pas ; s'auto-replanifie. Rattrapage au
+ * démarrage si le travail du jour n'a pas encore tourné.
+ * @param {{ hour?: number }} [options] Heure UTC de déclenchement (défaut :
  *   PREVISION_DAILY_HOUR / CURVE_DAILY_HOUR / 21:00 UTC, clôture US/COMEX).
  * @returns {Function} Fonction stop (annule le timer en cours).
  */
-export function startDailyPrevision({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || DEFAULT_DAILY_HOUR_UTC } = {}) {
+export function startDailyJobs({ hour = Number(process.env.PREVISION_DAILY_HOUR) || Number(process.env.CURVE_DAILY_HOUR) || DEFAULT_DAILY_HOUR_UTC } = {}) {
   let timer = null;
   let stopped = false;
 

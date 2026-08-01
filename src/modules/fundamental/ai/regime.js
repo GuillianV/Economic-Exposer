@@ -46,6 +46,20 @@ const ZONE_CONSTRUCTIF = 0.15;
 const ZONE_PRUDENCE = -0.15;
 const ZONE_PRUDENCE_FORTE = -0.65; // réservé au cumul trend + valo + macro baissiers
 
+// Info par zone : biais directionnel + libellé d'override (null hors extrêmes).
+// SOURCE UNIQUE DE VÉRITÉ — biais et override sont des fonctions PURES de la
+// zone : quand l'amortisseur tient une zone, on n'a rien à reconstruire depuis
+// le record précédent, on relit simplement cette table.
+const ZONE_INFOS = {
+  "accumulation forte": { biais: "haussier fort", override: "achat fort (capitulation / stress crédit)" },
+  accumulation: { biais: "haussier", override: null },
+  constructif: { biais: "haussier modéré", override: null },
+  neutre: { biais: "neutre", override: null },
+  prudence: { biais: "baissier modéré", override: null },
+  "prudence forte": { biais: "baissier", override: null },
+  distribution: { biais: "baissier", override: "distribution (euphorie / sommet de cycle)" },
+};
+
 // Magnitude du sous-score de valo au MILIEU (hors extrêmes) : faible par
 // construction (l'edge y est quasi nul, cf. backtest).
 const VALO_MILIEU_MAX = 0.35;
@@ -155,16 +169,16 @@ function blocStress(hySpread) {
 }
 
 /**
- * Classe le score composé en zone lisible.
+ * Classe le score composé en zone lisible (le biais s'en déduit via ZONE_INFOS).
  * @param {number} score Score composé (-1 .. +1).
- * @returns {{zone: string, biais: string}} Zone et biais directionnel.
+ * @returns {string} Zone (clé de ZONE_INFOS).
  */
 function classeZone(score) {
-  if (score >= ZONE_ACCUMULATION) return { zone: "accumulation", biais: "haussier" };
-  if (score >= ZONE_CONSTRUCTIF) return { zone: "constructif", biais: "haussier modéré" };
-  if (score > ZONE_PRUDENCE) return { zone: "neutre", biais: "neutre" };
-  if (score > ZONE_PRUDENCE_FORTE) return { zone: "prudence", biais: "baissier modéré" };
-  return { zone: "prudence forte", biais: "baissier" };
+  if (score >= ZONE_ACCUMULATION) return "accumulation";
+  if (score >= ZONE_CONSTRUCTIF) return "constructif";
+  if (score > ZONE_PRUDENCE) return "neutre";
+  if (score > ZONE_PRUDENCE_FORTE) return "prudence";
+  return "prudence forte";
 }
 
 /**
@@ -312,29 +326,23 @@ export function computeRegime(m, previous = null) {
   const scoreBrut = poidsTotal ? parts.reduce((sum, [poids, score]) => sum + poids * score, 0) / poidsTotal : 0;
   const score = Math.round(scoreBrut * 100) / 100;
 
-  // Zone/biais/override BRUTS (avant amortisseur). Overrides d'extrêmes :
-  // court-circuitent le blend (l'edge y est maximal).
-  let overrideBrut = null;
+  // Zone BRUTE (avant amortisseur). Overrides d'extrêmes : court-circuitent le
+  // blend (l'edge y est maximal) en imposant une zone d'extrême.
   let zoneBrute;
-  let biaisBrut;
   if ((m.mvrv != null && m.mvrv < MVRV_CAPITULATION) || (m.hySpread != null && m.hySpread > HY_STRESS)) {
-    overrideBrut = "achat fort (capitulation / stress crédit)";
     zoneBrute = "accumulation forte";
-    biaisBrut = "haussier fort";
   } else if ((m.mvrv != null && m.mvrv > MVRV_EUPHORIE) || (m.mayer != null && m.mayer > MAYER_EUPHORIE)) {
-    overrideBrut = "distribution (euphorie / sommet de cycle)";
     zoneBrute = "distribution";
-    biaisBrut = "baissier";
   } else {
-    ({ zone: zoneBrute, biais: biaisBrut } = classeZone(score));
+    zoneBrute = classeZone(score);
   }
 
   // Amortisseur anti-girouette : zone publiée tenue tant qu'une bascule n'est
-  // pas confirmée. En attente, biais/override suivent la zone TENUE (précédente).
+  // pas confirmée. biais/override sont des fonctions PURES de la zone publiée
+  // (ZONE_INFOS) — aucune reconstruction depuis le record précédent.
   const damper = amortirZone(zoneBrute, previous);
   const zone = damper.zonePubliee;
-  const biais = damper.tenue ? previous?.biais ?? biaisBrut : biaisBrut;
-  const override = damper.tenue ? previous?.override ?? null : overrideBrut;
+  const { biais, override } = ZONE_INFOS[zone];
 
   // Confiance : accord des blocs, plafonné par complétude/attente/péremption/flux.
   const signes = parts.map(([, s]) => Math.sign(s)).filter((s) => s !== 0);

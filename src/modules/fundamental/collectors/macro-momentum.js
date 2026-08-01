@@ -8,9 +8,16 @@
  * Séparé du calcul pur (regime.js ne touche ni réseau ni disque). Toute panne
  * renvoie des null : la boussole dégrade proprement (bloc macro neutre).
  */
+import { Collector } from "./base.js";
+
 const FRED_URL = "https://api.stlouisfed.org/fred/series/observations";
 const FETCH_TIMEOUT_MS = 15000;
 const HISTORY_DAYS = 160; // couvre le lookback le plus long (momentum 120 j) + marge
+
+// Client HTTP mutualisé : passe par le limiteur par hôte + timeout + contrôle
+// du statut de la classe Collector (convention "call API safe"), sans être un
+// collecteur de snapshot (on-demand pour la boussole, pas dans le world-state).
+const fredClient = new Collector("macro-momentum", { axis: "macro" });
 
 // Séries FRED. WALCL & WTREGEN en MILLIONS (-> /1000 pour des Md$), RRP en Md$.
 const SERIES = {
@@ -45,9 +52,7 @@ async function fetchSeries(seriesId, apiKey) {
   const url =
     `${FRED_URL}?series_id=${seriesId}&api_key=${apiKey}&file_type=json` +
     `&observation_start=${isoDaysAgo(HISTORY_DAYS)}&sort_order=asc`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`HTTP ${res.status} FRED ${seriesId}`);
-  const json = await res.json();
+  const json = await fredClient.getJson(url, { timeout: FETCH_TIMEOUT_MS });
   return (json?.observations || [])
     .filter((o) => o.value !== ".")
     .map((o) => ({ date: o.date, value: Number(o.value) }));
