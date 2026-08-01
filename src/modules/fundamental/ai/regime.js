@@ -240,6 +240,7 @@ export function computeRegime(m) {
     blocs,
     triggers,
     niveaux: {
+      prixBtc: m.btcPrice != null ? Math.round(m.btcPrice) : null,
       ma200,
       prixRealise,
       capitulation: prixAuMvrv(MVRV_CAPITULATION, m.realizedPrice),
