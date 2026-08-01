@@ -16,6 +16,8 @@
  *              haussier à 180 j (rare).
  */
 
+import { amortirBascule } from "./damper.js";
+
 // Seuils de valorisation (MVRV = prix / prix réalisé).
 const MVRV_CAPITULATION = 0.8; // < : capitulation profonde, 94-96 % haussier 90-180 j
 const MVRV_EUPHORIE = 3.0; // > : distribution, forward négatif
@@ -47,12 +49,6 @@ const ZONE_PRUDENCE_FORTE = -0.65; // réservé au cumul trend + valo + macro ba
 // Magnitude du sous-score de valo au MILIEU (hors extrêmes) : faible par
 // construction (l'edge y est quasi nul, cf. backtest).
 const VALO_MILIEU_MAX = 0.35;
-
-// Anti-girouette : un changement de ZONE n'est publié qu'après ce nombre
-// d'émissions quotidiennes concordantes (le score brut peut osciller au
-// boundary d'un seuil). Le compteur n'avance qu'à la persistance quotidienne ;
-// les lectures API recalculent le même état figé (idempotent).
-const REGIME_CONFIRM_CYCLES = 2;
 
 // Flux corporate (trésoreries BTC) : variation nette sur ~30 j sous laquelle le
 // flux est PLAT (bruit de reporting, pas un signal de demande structurelle).
@@ -201,10 +197,10 @@ function blocFlux(corpBtcMom) {
 }
 
 /**
- * Amortisseur anti-girouette de la ZONE : une zone brute différente de la
- * dernière zone publiée n'est adoptée qu'après REGIME_CONFIRM_CYCLES émissions
- * concordantes ; entre-temps la zone publiée est tenue et la zone pressentie
- * mémorisée. Fonction PURE (mémoire portée par `previous`).
+ * Amortisseur anti-girouette de la ZONE (adaptateur de l'amortisseur générique
+ * amortirBascule) : la zone publiée ne bascule qu'après confirmation ; le
+ * compteur n'avance qu'à la persistance quotidienne (les lectures API
+ * recalculent le même état figé). Fonction PURE (mémoire portée par `previous`).
  * @param {string} zoneBrute Zone brute de la lecture courante.
  * @param {object|null} previous Dernière émission publiée ({ zone, damper: {
  *   zonePressentie, compteur } }).
@@ -213,17 +209,12 @@ function blocFlux(corpBtcMom) {
  *   conserve la zone précédente en attendant confirmation.
  */
 function amortirZone(zoneBrute, previous) {
-  const zoneConfirmeePrec = previous?.zone ?? zoneBrute;
-  if (zoneBrute === zoneConfirmeePrec) {
-    return { zonePubliee: zoneBrute, zonePressentie: null, compteur: 0, tenue: false };
-  }
-  const pressentiePrec = previous?.damper?.zonePressentie ?? null;
-  const compteurPrec = previous?.damper?.compteur ?? 0;
-  const compteur = zoneBrute === pressentiePrec ? compteurPrec + 1 : 1;
-  if (compteur >= REGIME_CONFIRM_CYCLES) {
-    return { zonePubliee: zoneBrute, zonePressentie: null, compteur: 0, tenue: false };
-  }
-  return { zonePubliee: zoneConfirmeePrec, zonePressentie: zoneBrute, compteur, tenue: true };
+  const resultat = amortirBascule(zoneBrute, {
+    confirmee: previous?.zone,
+    pressenti: previous?.damper?.zonePressentie ?? null,
+    compteur: previous?.damper?.compteur ?? 0,
+  });
+  return { zonePubliee: resultat.valeur, zonePressentie: resultat.pressenti, compteur: resultat.compteur, tenue: resultat.tenue };
 }
 
 /**

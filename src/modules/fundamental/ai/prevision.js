@@ -328,11 +328,12 @@ export async function projectPrevisions({ provider } = {}) {
  * @param {Array<{ts: number, metrics: object}>} series Snapshots triés croissant.
  * @param {string} metricKey Clé métrique de l'actif.
  * @param {number} ts Timestamp cible (epoch ms).
+ * @param {number} [tolMs] Fenêtre d'appariement après `ts` (défaut PRICE_MATCH_TOL_MS).
  * @returns {{v: number, ts: number}|null} Prix apparié, ou null.
  */
-function priceAt(series, metricKey, ts) {
+export function priceAt(series, metricKey, ts, tolMs = PRICE_MATCH_TOL_MS) {
   for (const snap of series) {
-    if (snap.ts >= ts && snap.ts <= ts + PRICE_MATCH_TOL_MS) {
+    if (snap.ts >= ts && snap.ts <= ts + tolMs) {
       const value = snap.metrics?.[metricKey];
       if (value != null && Number.isFinite(value)) return { v: value, ts: snap.ts };
     }

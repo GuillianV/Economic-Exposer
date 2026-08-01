@@ -61,13 +61,7 @@ async function fetchSeries(seriesId, apiKey) {
  */
 function valueDaysAgo(serie, daysAgo) {
   if (!serie.length) return null;
-  const cible = isoDaysAgo(daysAgo);
-  let choisie = null;
-  for (const obs of serie) {
-    if (obs.date <= cible) choisie = obs.value;
-    else break;
-  }
-  return choisie ?? serie[0].value;
+  return valueOnOrBefore(serie, isoDaysAgo(daysAgo)) ?? serie[0].value;
 }
 
 /**

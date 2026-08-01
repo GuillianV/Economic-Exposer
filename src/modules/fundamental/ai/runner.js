@@ -1,4 +1,5 @@
 import { analyze } from "./analyst.js";
+import { amortirBascule } from "./damper.js";
 import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
 import { emitDailyRegime, evaluateDueRegimes } from "./regime-track.js";
 import { calendarToday, detectChanges, formatChange } from "./triggers.js";
@@ -41,17 +42,11 @@ function dataQualityOf(state) {
   };
 }
 
-// Lectures consécutives concordantes requises pour publier un changement de
-// régime : l'IA lit à froid (aucun verdict précédent injecté au modèle, pour
-// éviter le verrou d'auto-confirmation), mais un flip ne devient officiel
-// qu'une fois confirmé — amortisseur anti-girouette au boundary.
-const REGIME_CONFIRM_CYCLES = 2;
-
 /**
- * Amortisseur anti-girouette du régime. Un régime différent du dernier publié
- * n'est adopté qu'après REGIME_CONFIRM_CYCLES lectures consécutives
- * concordantes ; entre-temps le régime publié est conservé et le régime
- * pressenti mémorisé. Fonction pure (aucune I/O).
+ * Amortisseur anti-girouette du régime (adaptateur de l'amortisseur générique
+ * amortirBascule). L'IA lit à froid (aucun verdict précédent injecté au modèle,
+ * pour éviter le verrou d'auto-confirmation), mais un flip ne devient officiel
+ * qu'une fois confirmé sur plusieurs lectures. Fonction pure (aucune I/O).
  * @param {string} regimeBrut Régime de la lecture à froid courante.
  * @param {object|null} previous Dernier verdict publié ({ verdict: { regime,
  *   damper: { regimePressenti, compteur } } }).
@@ -59,17 +54,12 @@ const REGIME_CONFIRM_CYCLES = 2;
  *   compteur: number}} Régime à publier + état de l'amortisseur à persister.
  */
 function amortirRegime(regimeBrut, previous) {
-  const regimeConfirmePrec = previous?.verdict?.regime ?? regimeBrut;
-  if (regimeBrut === regimeConfirmePrec) {
-    return { regimeConfirme: regimeBrut, regimePressenti: null, compteur: 0 };
-  }
-  const pressentiPrec = previous?.verdict?.damper?.regimePressenti ?? null;
-  const compteurPrec = previous?.verdict?.damper?.compteur ?? 0;
-  const compteur = regimeBrut === pressentiPrec ? compteurPrec + 1 : 1;
-  if (compteur >= REGIME_CONFIRM_CYCLES) {
-    return { regimeConfirme: regimeBrut, regimePressenti: null, compteur: 0 };
-  }
-  return { regimeConfirme: regimeConfirmePrec, regimePressenti: regimeBrut, compteur };
+  const resultat = amortirBascule(regimeBrut, {
+    confirmee: previous?.verdict?.regime,
+    pressenti: previous?.verdict?.damper?.regimePressenti ?? null,
+    compteur: previous?.verdict?.damper?.compteur ?? 0,
+  });
+  return { regimeConfirme: resultat.valeur, regimePressenti: resultat.pressenti, compteur: resultat.compteur };
 }
 
 /**

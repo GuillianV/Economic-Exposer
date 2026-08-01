@@ -1,4 +1,5 @@
 import { r2 } from "./curve.js";
+import { priceAt } from "./prevision.js";
 import { computeRegime } from "./regime.js";
 import { logger } from "../../logs/index.js";
 import { fetchMacroMomentum } from "../collectors/macro-momentum.js";
@@ -35,19 +36,20 @@ const EVAL_WINDOW_MS = 200 * DAY_MS; // rescan : couvre l'horizon 90-180 j + mar
 const NEUTRE_BAND_PCT = 5; // % : sous cette amplitude à 90 j, mouvement jugé neutre
 const EMISSION_THROTTLE_MS = 20 * HOUR_MS; // une seule émission par jour
 const EVAL_THROTTLE_MS = 10 * MINUTE_MS; // throttle du rescan d'évaluation
-const RODAGE_JOURS = 30; // ~1 émission/j : rodage avant publication du track record
+const REGIME_CACHE_TTL_MS = 15 * MINUTE_MS; // cache des lectures API (évite un fetch FRED live par requête)
 
-// Publication du track record GELÉE tant que le rodage (30 échéances à 90 j)
-// n'est pas atteint sur des émissions non modifiées. Les évaluations à 90 j
-// n'arrivent que 3 mois après la première émission — le score reste `null`
-// d'ici là, affiché comme « en rodage » et non comme une performance.
+// Publication du track record GELÉE tant que le rodage (~1 émission/j -> 30
+// échéances à 90 j) n'est pas atteint sur des émissions non modifiées. Les
+// évaluations à 90 j n'arrivent que 3 mois après la première émission — le
+// score reste `null` d'ici là, affiché comme « en rodage », pas une performance.
 const PUBLICATION_GELEE = true;
-const MIN_REGIME_EVALS = RODAGE_JOURS;
+const MIN_REGIME_EVALS = 30; // échéances évaluées requises (~30 j de rodage)
 
 const BIAIS_HAUSSIER = new Set(["haussier", "haussier modéré", "haussier fort"]);
 const BIAIS_BAISSIER = new Set(["baissier", "baissier modéré"]);
 
 let lastEvalTs = 0; // dernier scan d'évaluation (epoch ms)
+let regimeCache = { ts: 0, value: null }; // dernière boussole assemblée (cache lecture API)
 
 /**
  * Direction d'un biais de zone : +1 (haussier), −1 (baissier), 0 (neutre).
@@ -78,22 +80,30 @@ export async function corpBtcFlux() {
  * Assemble la boussole COURANTE : dernier snapshot + momentum macro + flux
  * corporate + amortisseur (vs dernière émission publiée). Orchestration I/O
  * partagée par la route API (lecture) et l'émission quotidienne (persistée).
- * Les lectures API ne persistent pas : l'amortisseur recalcule le même état
- * figé (le compteur n'avance qu'à l'émission).
+ * Les lectures API ne persistent pas et sont mises en cache (REGIME_CACHE_TTL_MS)
+ * pour ne pas déclencher un fetch FRED live à chaque requête ; l'amortisseur
+ * recalcule le même état figé (le compteur n'avance qu'à l'émission).
+ * @param {object} [options] Options.
+ * @param {boolean} [options.force] Ignore le cache et le rafraîchit (émission).
+ * @param {object|null} [options.previous] Dernière émission (évite un rechargement).
  * @returns {Promise<{regime: object, snapshotTs: number|null,
  *   snapshotAgeMs: number|null}>} Boussole + ts/âge du snapshot source.
  */
-export async function assembleRegime() {
-  const snap = await loadLatestSnapshot();
+export async function assembleRegime({ force = false, previous } = {}) {
+  if (!force && regimeCache.value && Date.now() - regimeCache.ts < REGIME_CACHE_TTL_MS) {
+    return regimeCache.value;
+  }
+
+  // 4 I/O indépendantes en une vague (snapshot + FRED live + scan flux + dernière
+  // émission). `previous` fourni par l'émission -> évite un 2e chargement.
+  const chargements = [loadLatestSnapshot(), fetchMacroMomentum(), corpBtcFlux()];
+  if (previous === undefined) chargements.push(loadLatestRegime().catch(() => null));
+  const [snap, macro, corpBtcMom, previousCharge] = await Promise.all(chargements);
+  const previousRegime = previous === undefined ? previousCharge : previous;
+
   const cycle = snap?.axes?.onchain?.cycle ?? {};
   const valuation = snap?.axes?.onchain?.valuation ?? {};
   const fred = snap?.axes?.macro?.fred ?? {};
-
-  const [macro, corpBtcMom, previous] = await Promise.all([
-    fetchMacroMomentum(),
-    corpBtcFlux(),
-    loadLatestRegime().catch(() => null),
-  ]);
   const snapshotAgeMs = snap?.ts != null ? Date.now() - snap.ts : null;
 
   const regime = computeRegime(
@@ -109,9 +119,11 @@ export async function assembleRegime() {
       snapshotAgeMs,
       ...macro,
     },
-    previous,
+    previousRegime,
   );
-  return { regime, snapshotTs: snap?.ts ?? null, snapshotAgeMs };
+  const result = { regime, snapshotTs: snap?.ts ?? null, snapshotAgeMs };
+  regimeCache = { ts: Date.now(), value: result };
+  return result;
 }
 
 /**
@@ -158,7 +170,7 @@ export async function emitDailyRegime() {
     return null;
   }
   try {
-    const { regime, snapshotTs } = await assembleRegime();
+    const { regime, snapshotTs } = await assembleRegime({ force: true, previous: last });
     if (regime.niveaux?.prixBtc == null) {
       logger.warn("[regime] émission ignorée : pas de prix BTC dans le dernier snapshot");
       return null;
@@ -171,23 +183,6 @@ export async function emitDailyRegime() {
     logger.warn(`[regime] émission quotidienne échouée : ${err.message}`);
     return null;
   }
-}
-
-/**
- * Prix BTC au plus près de `ts` dans une série chargée : premier snapshot ≥ ts
- * dans la tolérance PRICE_MATCH_TOL_MS.
- * @param {Array<{ts: number, metrics: object}>} series Snapshots triés croissant.
- * @param {number} ts Timestamp cible (epoch ms).
- * @returns {{v: number, ts: number}|null} Prix apparié, ou null.
- */
-function btcPriceAt(series, ts) {
-  for (const snap of series) {
-    if (snap.ts >= ts && snap.ts <= ts + PRICE_MATCH_TOL_MS) {
-      const value = snap.metrics?.btcPrice;
-      if (value != null && Number.isFinite(value)) return { v: value, ts: snap.ts };
-    }
-  }
-  return null;
 }
 
 /**
@@ -219,7 +214,7 @@ export async function evaluateRegime(record) {
   if (Date.now() < record.targetTs) return { record, evaluated: false };
 
   const series = await loadMetricsSince(record.targetTs - PRICE_MATCH_TOL_MS);
-  const px = btcPriceAt(series, record.targetTs);
+  const px = priceAt(series, "btcPrice", record.targetTs, PRICE_MATCH_TOL_MS);
   if (!px) return { record, evaluated: false };
 
   const retPct = r2(((px.v - record.prixBase) / record.prixBase) * 100);
@@ -263,6 +258,16 @@ export async function evaluateDueRegimes({ force = false } = {}) {
 }
 
 /**
+ * Pourcentage entier d'une part sur un total, ou null si total nul.
+ * @param {number} part Numérateur.
+ * @param {number} total Dénominateur.
+ * @returns {number|null} Pourcentage arrondi, ou null.
+ */
+function pourcentage(part, total) {
+  return total ? Math.round((part / total) * 100) : null;
+}
+
+/**
  * Statistiques agrégées du track record sur une liste d'émissions. Seules les
  * émissions évaluées comptent ; `justesseDirection` ignore les issues neutres
  * (le biais n'y était pas tranché).
@@ -283,9 +288,9 @@ export function statsOfRegimes(records) {
   const tranchants = counts.conforme + counts.contraire;
   return {
     n: counts.n,
-    conformePct: counts.n ? Math.round((counts.conforme / counts.n) * 100) : null,
-    justesseDirection: tranchants ? Math.round((counts.conforme / tranchants) * 100) : null,
-    neutrePct: counts.n ? Math.round((counts.neutre / counts.n) * 100) : null,
+    conformePct: pourcentage(counts.conforme, counts.n),
+    justesseDirection: pourcentage(counts.conforme, tranchants),
+    neutrePct: pourcentage(counts.neutre, counts.n),
     horizonJours: REGIME_HORIZON_JOURS,
     rodage: { minEvals: MIN_REGIME_EVALS, gelee: PUBLICATION_GELEE, pret: !PUBLICATION_GELEE && counts.n >= MIN_REGIME_EVALS },
   };
