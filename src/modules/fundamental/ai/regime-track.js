@@ -38,12 +38,12 @@ const EMISSION_THROTTLE_MS = 20 * HOUR_MS; // une seule émission par jour
 const EVAL_THROTTLE_MS = 10 * MINUTE_MS; // throttle du rescan d'évaluation
 const REGIME_CACHE_TTL_MS = 15 * MINUTE_MS; // cache des lectures API (évite un fetch FRED live par requête)
 
-// Publication du track record GELÉE tant que le rodage (~1 émission/j -> 30
-// échéances à 90 j) n'est pas atteint sur des émissions non modifiées. Les
-// évaluations à 90 j n'arrivent que 3 mois après la première émission — le
-// score reste `null` d'ici là, affiché comme « en rodage », pas une performance.
+// Publication du track record GELÉE. La base de jugement N'EST PAS le nombre
+// d'émissions quotidiennes (elles se recouvrent à 89/90 sur 90 j -> quasi UN
+// seul échantillon), mais le nombre de fenêtres 90 j DISJOINTES (~4/an). Le
+// rodage exige MIN_REGIME_INDEP fenêtres indépendantes -> plusieurs ANNÉES.
 const PUBLICATION_GELEE = true;
-const MIN_REGIME_EVALS = 30; // échéances évaluées requises (~30 j de rodage)
+const MIN_REGIME_INDEP = 8; // fenêtres 90 j non chevauchantes requises (~2 ans à 4/an)
 
 const BIAIS_HAUSSIER = new Set(["haussier", "haussier modéré", "haussier fort"]);
 const BIAIS_BAISSIER = new Set(["baissier", "baissier modéré"]);
@@ -259,30 +259,118 @@ export async function evaluateDueRegimes({ force = false } = {}) {
 }
 
 /**
- * Statistiques agrégées du track record sur une liste d'émissions. Seules les
- * émissions évaluées comptent ; `justesseDirection` ignore les issues neutres
- * (le biais n'y était pas tranché).
- * @param {Array<object>} records Émissions de régime (évaluées ou non).
- * @returns {{n: number, conformePct: number|null, justesseDirection: number|null,
- *   neutrePct: number|null, horizonJours: number,
- *   rodage: {minEvals: number, gelee: boolean, pret: boolean}}} Track record.
+ * Compte conforme/contraire/neutre sur des émissions évaluées.
+ * @param {Array<object>} recs Émissions (chacune avec `realise`).
+ * @returns {{n: number, conforme: number, contraire: number, neutre: number}} Compteur.
  */
-export function statsOfRegimes(records) {
+function compteResultats(recs) {
   const counts = { n: 0, conforme: 0, contraire: 0, neutre: 0 };
-  for (const rec of records) {
+  for (const rec of recs) {
     if (!rec.realise) continue;
     counts.n++;
     if (rec.realise.resultat === "conforme") counts.conforme++;
     else if (rec.realise.resultat === "contraire") counts.contraire++;
     else counts.neutre++;
   }
-  const tranchants = counts.conforme + counts.contraire;
+  return counts;
+}
+
+/**
+ * Taux (conforme/direction/neutre) d'un compteur.
+ * @param {{n: number, conforme: number, contraire: number, neutre: number}} c Compteur.
+ * @returns {{n: number, conformePct: number|null, justesseDirection: number|null,
+ *   neutrePct: number|null}} Taux ; `justesseDirection` ignore les neutres.
+ */
+function tauxDe(c) {
   return {
-    n: counts.n,
-    conformePct: pourcentage(counts.conforme, counts.n),
-    justesseDirection: pourcentage(counts.conforme, tranchants),
-    neutrePct: pourcentage(counts.neutre, counts.n),
+    n: c.n,
+    conformePct: pourcentage(c.conforme, c.n),
+    justesseDirection: pourcentage(c.conforme, c.conforme + c.contraire),
+    neutrePct: pourcentage(c.neutre, c.n),
+  };
+}
+
+/**
+ * Sélection gloutonne des émissions dont les fenêtres 90 j NE SE RECOUVRENT PAS.
+ * Les émissions quotidiennes évaluées à 90 j se chevauchent à 89/90 -> n=30
+ * quotidien ≈ 1 seul échantillon indépendant. On ne retient qu'une émission par
+ * fenêtre d'horizon (~4/an). Fonction PURE.
+ * @param {Array<object>} recsEvalues Émissions évaluées (avec baseTs).
+ * @returns {Array<object>} Sous-ensemble aux fenêtres 90 j disjointes.
+ */
+function fenetresIndependantes(recsEvalues) {
+  const tries = [...recsEvalues].sort((a, b) => a.baseTs - b.baseTs);
+  const retenues = [];
+  let borneLibre = -Infinity;
+  for (const rec of tries) {
+    if (rec.baseTs >= borneLibre) {
+      retenues.push(rec);
+      borneLibre = rec.baseTs + REGIME_HORIZON_MS;
+    }
+  }
+  return retenues;
+}
+
+/**
+ * Direction prédite (−1|0|+1) sous une bande neutre à partir d'un rendement.
+ * @param {number|null} retPct Rendement réalisé (%).
+ * @returns {number|null} Signe borné, ou null si absent.
+ */
+function signeSousBande(retPct) {
+  if (retPct == null) return null;
+  if (Math.abs(retPct) <= NEUTRE_BAND_PCT) return 0;
+  return Math.sign(retPct);
+}
+
+/**
+ * Taux de conformité d'une stratégie de BENCHMARK sur des fenêtres évaluées :
+ * un biais fixe/dérivé scoré exactement comme la boussole (même horizon, même
+ * bande neutre). Sert à situer l'edge de la boussole au-dessus du naïf.
+ * @param {Array<object>} recs Émissions évaluées (ordre chronologique).
+ * @param {Function} biaisSignDe (recs, i) -> direction prédite (−1|0|+1) du
+ *   benchmark à l'indice i, ou null si pas de prédiction.
+ * @returns {number|null} % conforme du benchmark, ou null si aucune prédiction.
+ */
+function conformePctBenchmark(recs, biaisSignDe) {
+  let n = 0;
+  let conforme = 0;
+  for (let i = 0; i < recs.length; i++) {
+    const retPct = recs[i].realise?.retPct;
+    if (retPct == null) continue;
+    const sign = biaisSignDe(recs, i);
+    if (sign == null) continue;
+    n++;
+    if (resultatRegime(sign, retPct) === "conforme") conforme++;
+  }
+  return pourcentage(conforme, n);
+}
+
+/**
+ * Track record du régime, HONNÊTE sur l'indépendance des échantillons. Deux
+ * lectures : `n` (émissions quotidiennes, chevauchantes à 89/90 -> INDICATIF) et
+ * `independant` (fenêtres 90 j disjointes -> BASE DE JUGEMENT + benchmarks naïfs
+ * pour situer l'edge). La publication ne se dégèle que sur l'indépendant.
+ * @param {Array<object>} records Émissions de régime (évaluées ou non).
+ * @returns {object} Track record { horizonJours, indicatif, independant, rodage, note }.
+ */
+export function statsOfRegimes(records) {
+  const evalues = records.filter((rec) => rec.realise);
+  const indep = fenetresIndependantes(evalues);
+
+  // Benchmarks naïfs sur les MÊMES fenêtres indépendantes : buy&hold (toujours
+  // haussier) donne le taux de base des hausses ; persistance (continue le
+  // dernier mouvement réalisé) est un baseline redoutable car les régimes sont
+  // autocorrélés. L'edge de la boussole = son conforme AU-DESSUS de ceux-là.
+  const benchmarks = {
+    toujoursHaussier: conformePctBenchmark(indep, () => 1),
+    persistance: conformePctBenchmark(indep, (recs, i) => (i > 0 ? signeSousBande(recs[i - 1].realise?.retPct) : null)),
+  };
+
+  return {
     horizonJours: REGIME_HORIZON_JOURS,
-    rodage: { minEvals: MIN_REGIME_EVALS, gelee: PUBLICATION_GELEE, pret: !PUBLICATION_GELEE && counts.n >= MIN_REGIME_EVALS },
+    indicatif: tauxDe(compteResultats(evalues)), // chevauchant : ne prouve rien seul
+    independant: { ...tauxDe(compteResultats(indep)), benchmarks },
+    rodage: { minIndependant: MIN_REGIME_INDEP, gelee: PUBLICATION_GELEE, pret: !PUBLICATION_GELEE && indep.n >= MIN_REGIME_INDEP },
+    note: "n indicatif = émissions quotidiennes (fenêtres 90j chevauchantes à 89/90) ; la publication se juge sur independant.n (fenêtres 90j disjointes, ~4/an) et son edge vs benchmarks.",
   };
 }
