@@ -17,6 +17,25 @@ function toFiniteNumber(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+// Bande neutre autour de 1 : sous cet écart, un ratio long/short est équilibré
+// (ni long ni short dominant), pas un signe directionnel lu sur du bruit.
+const LS_NEUTRE_BANDE = 0.1; // ratio
+
+/**
+ * Biais directionnel d'un ratio long/short (longs / shorts) : > 1 = majorité
+ * LONG, < 1 = majorité SHORT, autour de 1 = équilibré. La foule se lit en
+ * contrarian, les gros traders en corroboration — cette fonction ne fait que
+ * traduire le NOMBRE en direction, sans jugement contrarian. Fonction PURE.
+ * @param {number|null} ratio Ratio long/short (longs divisés par shorts).
+ * @returns {"long"|"short"|"équilibré"|null} Biais, ou null si ratio absent.
+ */
+export function biaisLongShort(ratio) {
+  if (ratio == null || !Number.isFinite(ratio)) return null;
+  if (ratio > 1 + LS_NEUTRE_BANDE) return "long";
+  if (ratio < 1 - LS_NEUTRE_BANDE) return "short";
+  return "équilibré";
+}
+
 /**
  * Spread 2Y − Fed Funds arrondi à 2 décimales : > 0 = le marché ne price PAS
  * de baisses (voire des hausses/prime) ; < 0 = baisses pricées.
@@ -203,7 +222,7 @@ export function extractMetrics(state) {
     // dérivés agrégés Coinglass (V2) — funding pondéré OI, OI total, long/short, liquidations 24h
     fundingAgg: toFiniteNumber(derivatives.fundingPct),
     oiAgg: toFiniteNumber(derivatives.openInterestUsd),
-    lsRetailAgg: toFiniteNumber(derivatives.longShortRatio),
+    lsRetailAgg: toFiniteNumber(derivatives.longShortRetail),
     lsTopTraders: toFiniteNumber(derivatives.longShortTopTraders),
     liq24hUsd: toFiniteNumber(derivatives.liquidations24h?.totalUsd),
     whalesLongPct: toFiniteNumber(whales.longPct),

@@ -13,7 +13,8 @@
     "fa:serve": "node src/serve.mjs",
     "fa:api": "node src/api.mjs",
     "lint": "eslint src scripts eslint.config.js",
-    "lint:fix": "eslint src scripts eslint.config.js --fix"
+    "lint:fix": "eslint src scripts eslint.config.js --fix",
+    "test": "node --test"
   },
   "author": "GuillianV",
   "license": "ISC",

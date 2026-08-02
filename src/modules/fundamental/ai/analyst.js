@@ -4,6 +4,7 @@ import * as groq from "./providers/groq.js";
 import { validateVerdict } from "./validate.js";
 import { logger } from "../../logs/index.js";
 import { computeFedProbabilities, fedStartRate, impliedRateFor, nextFomcMeeting } from "../collectors/fedwatch.js";
+import { biaisLongShort } from "../persistence/metrics.js";
 
 const PROVIDERS = { deepseek, gemini, groq };
 
@@ -239,7 +240,13 @@ function formatDerivatives(der, trends) {
   const oi7 = der.oiVariation7jPct;
   const oi7txt = oi7 != null ? `${oi7 > 0 ? "+" : ""}${oi7}%` : "?";
   const liq = der.liquidations24h?.totalUsd;
-  return `- Dérivés agrégés (Coinglass cross-exchange) : funding ${der.fundingPct}%${fmtTrend(trends, "fundingAgg")} · OI total ${big(der.openInterestUsd)} $ (7j ${oi7txt}) · long/short retail ${der.longShortRatio} vs TOP-TRADERS ${der.longShortTopTraders}${fmtTrend(trends, "lsTopTraders")} (smart money — suivre, divergence = signal) · liquidations 24h ${big(liq)} $ (long ${big(der.liquidations24h?.longUsd)} / short ${big(der.liquidations24h?.shortUsd)}). Funding très positif + retail crowded long = risque de purge ; OI qui gonfle = levier accumulé.`;
+  // 2026-08-02 : correction d'un mauvais champ — le « long/short retail » lisait
+  // le ratio L/S global 24h (h24Ls) au lieu du ratio des comptes retail, ce qui
+  // inversait le signe de la foule (0.8 « short » alors que la foule était à 1.9
+  // long). On lit désormais longShortRetail et on affiche la direction explicite.
+  const bRetail = biaisLongShort(der.longShortRetail);
+  const bTop = biaisLongShort(der.longShortTopTraders);
+  return `- Dérivés agrégés (Coinglass cross-exchange) : funding ${der.fundingPct}%${fmtTrend(trends, "fundingAgg")} · OI total ${big(der.openInterestUsd)} $ (7j ${oi7txt}) · long/short retail ${der.longShortRetail} (${bRetail}, >1 = majorité long, foule à lire en contrarian) vs TOP-TRADERS ${der.longShortTopTraders} (${bTop}${fmtTrend(trends, "lsTopTraders")}, smart money — suivre, divergence = signal) · liquidations 24h ${big(liq)} $ (long ${big(der.liquidations24h?.longUsd)} / short ${big(der.liquidations24h?.shortUsd)}). Funding très positif + retail crowded long = risque de purge ; OI qui gonfle = levier accumulé.`;
 }
 
 /**

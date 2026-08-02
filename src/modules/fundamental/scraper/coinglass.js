@@ -90,9 +90,14 @@ export async function scrapeLiquidationLevels() {
  * Fonction PURE. Le funding est en % (par intervalle de financement), les LS
  * ratios sont des rapports (>1 = plus de longs), les liquidations en USD sur 24h.
  * @param {object} s Résumé brut Coinglass pour BTC.
+ * Les deux ratios L/S exposés sont des ratios de COMPTES (>1 = plus de longs) :
+ * `longShortRetail` = tous les comptes (la foule, à lire en contrarian),
+ * `longShortTopTraders` = gros comptes (smart money). Le champ brut h24Ls (L/S
+ * global 24h, échelle différente) n'est PAS exposé : le confondre avec le ratio
+ * retail inversait le signe de la foule (défaut corrigé le 2026-08-02).
  * @returns {{prix: number, variation24hPct: number, openInterestUsd: number,
  *   openInterestBtc: number, oiVariation24hPct: number, oiVariation7jPct: number,
- *   fundingPct: number, longShortRatio: number, longShortTopTraders: number,
+ *   fundingPct: number, longShortTopTraders: number,
  *   longShortRetail: number, liquidations24h: {totalUsd: number, longUsd: number,
  *   shortUsd: number}, volume24hUsd: number, oiSurMcap: number, oiSurVol: number}}
  *   Vue dérivés BTC.
@@ -106,7 +111,6 @@ export function parseDerivatives(s) {
     oiVariation24hPct: toNumber(s.h24OiChangePercent),
     oiVariation7jPct: toNumber(s.oiChangePercent7d),
     fundingPct: toNumber(s.avgFundingRateByOi),
-    longShortRatio: toNumber(s.h24Ls),
     longShortTopTraders: toNumber(s.binanceTopAccountLsRadio),
     longShortRetail: toNumber(s.binanceAccountLsRadio),
     liquidations24h: {
