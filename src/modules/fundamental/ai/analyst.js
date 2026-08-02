@@ -148,7 +148,11 @@ function fmtTrend(trends, key) {
   const parts = [];
   for (const [label, hk] of [["24h", "d24h"], ["7j", "d7d"]]) {
     const d = m[hk];
-    if (d && d.pct != null) parts.push(`${label} ${d.abs >= 0 ? "+" : ""}${d.pct.toFixed(2)}%`);
+    if (!d) continue;
+    // Variation relative si elle a un sens ; sinon Δ ABSOLU (funding, nets COT,
+    // spreads… où le % est un artefact — voir METRIQUES_SANS_PCT).
+    if (d.pct != null) parts.push(`${label} ${d.abs >= 0 ? "+" : ""}${d.pct.toFixed(2)}%`);
+    else if (d.abs != null && d.abs !== 0) parts.push(`${label} ${d.abs >= 0 ? "+" : ""}${r(d.abs, 4)}`);
   }
   return parts.length ? ` (${parts.join(", ")})` : "";
 }

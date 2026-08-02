@@ -19,6 +19,22 @@ const HORIZONS = [
   { key: "d7d", ms: 7 * DAY_MS, tolMs: 2 * DAY_MS },
 ];
 
+// Métriques où la VARIATION RELATIVE (%) est un ARTEFACT mathématique, à lire en
+// ABSOLU (+ percentile) : grandeurs signées qui traversent zéro (funding, basis,
+// nets COT, spreads de taux, indices de conditions/stress, flux ETF nets) ou
+// bornées à un plancher bruité (frais mempool). Un « funding SOL -1706 % » vient
+// d'un passé proche de zéro, pas d'un mouvement réel. (défaut corrigé 2026-08-02)
+export const METRIQUES_SANS_PCT = new Set([
+  "funding", "ethFunding", "solFunding", "bnbFunding", "xrpFunding", "fundingAgg",
+  "btcBasisAnnualized",
+  "cotHedgeFundsNet", "cotAssetMgrNet", "cotEurNet", "cotJpyNet", "cotGbpNet",
+  "cotSp500Net", "cotNasdaqNet", "cotGoldNet", "cotWtiNet",
+  "yieldCurve", "policySpread2y", "realYield10y",
+  "financialConditions", "financialStress",
+  "btcEtfFlowUsdM", "btcEtfFlow7dUsdM", "ethEtfFlowUsdM", "ethEtfFlow7dUsdM",
+  "mempoolFeeFast",
+]);
+
 /**
  * Snapshot le plus proche d'un timestamp cible, dans une tolérance.
  * @param {Array<{ts: number, metrics: object}>} history Snapshots candidats.
@@ -43,14 +59,16 @@ function findNearest(history, targetTs, tolMs) {
  * Variation entre deux valeurs : absolue, relative (%) et direction.
  * @param {number|null} current Valeur courante.
  * @param {number|null} past Valeur passée de référence.
+ * @param {boolean} [avecPct] Calcule la variation relative ; false pour les
+ *   métriques où le % est un artefact (METRIQUES_SANS_PCT) -> pct reste null.
  * @returns {{abs: number, pct: number|null, dir: string}|null} Delta, ou null
  *   si une des deux valeurs manque. `dir` vaut "up" | "down" | "flat".
  */
-function delta(current, past) {
+function delta(current, past, avecPct = true) {
   if (current == null || past == null) return null;
 
   const abs = current - past;
-  const pct = past !== 0 ? (abs / Math.abs(past)) * 100 : null;
+  const pct = avecPct && past !== 0 ? (abs / Math.abs(past)) * 100 : null;
 
   let dir = "flat";
   if (abs > 0) dir = "up";
@@ -80,9 +98,10 @@ export function computeTrends(history, baselines = null) {
   for (const key of METRIC_KEYS) {
     const value = current.metrics?.[key] ?? null;
     const entry = { value };
+    const avecPct = !METRIQUES_SANS_PCT.has(key);
     for (const horizon of HORIZONS) {
       const ref = findNearest(past, now - horizon.ms, horizon.tolMs);
-      entry[horizon.key] = delta(value, ref?.metrics?.[key] ?? null);
+      entry[horizon.key] = delta(value, ref?.metrics?.[key] ?? null, avecPct);
     }
     const { z, pctRank } = normalize(key, value, baselines);
     entry.z = z;
