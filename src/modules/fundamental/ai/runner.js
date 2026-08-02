@@ -1,7 +1,7 @@
 import { analyze } from "./analyst.js";
 import { amortirBascule } from "./damper.js";
 import { autopsyPrevision, evaluatePrevision, projectPrevisions } from "./prevision.js";
-import { emitDailyRegime, evaluateDueRegimes } from "./regime-track.js";
+import { assembleRegime, emitDailyRegime, evaluateDueRegimes } from "./regime-track.js";
 import { calendarToday, detectChanges, formatChange } from "./triggers.js";
 import { logger } from "../../logs/index.js";
 import { emitWebhook, verdictEvent } from "../../notify/webhook.js";
@@ -114,7 +114,11 @@ export async function maybeAnalyze(state, trends) {
   // Analyse à froid + amortisseur : le régime brut est lu sans injecter le
   // verdict précédent (anti-verrou), puis lissé sur CONFIRM_CYCLES lectures.
   const previous = await loadLatestVerdict().catch(() => null);
-  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  // Boussole déterministe (régime de cycle) injectée au LLM comme référence
+  // autoritaire (audit 3.1) et persistée à côté du verdict (2 jauges distinctes :
+  // cycle-crypto déterministe + appétit-risque macro du LLM).
+  const { regime: boussole } = await assembleRegime().catch(() => ({ regime: null }));
+  const { provider, verdict, raw, violations } = await analyze(state, trends, { boussole });
   appliquerAmortisseur(verdict, previous);
   const record = {
     ts: now,
@@ -124,6 +128,7 @@ export async function maybeAnalyze(state, trends) {
     dataQuality: dataQualityOf(state),
     guardrails: violations ?? [], // garde-fous déterministes appliqués au verdict
     verdict,
+    boussole, // régime de cycle déterministe (source du régime cycle, distinct du regime macro du LLM)
     raw: verdict ? undefined : raw,
   };
   const file = await saveVerdict(record);
@@ -148,7 +153,8 @@ export async function analyzeNow() {
   const { state } = await collectOnce();
   const trends = await getTrends();
   const previous = await loadLatestVerdict().catch(() => null);
-  const { provider, verdict, raw, violations } = await analyze(state, trends);
+  const { regime: boussole } = await assembleRegime().catch(() => ({ regime: null }));
+  const { provider, verdict, raw, violations } = await analyze(state, trends, { boussole });
   appliquerAmortisseur(verdict, previous);
   const record = {
     ts: state.ts,
@@ -158,6 +164,7 @@ export async function analyzeNow() {
     dataQuality: dataQualityOf(state),
     guardrails: violations ?? [],
     verdict,
+    boussole,
     raw: verdict ? undefined : raw,
   };
   const file = await saveVerdict(record);

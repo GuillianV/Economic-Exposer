@@ -56,7 +56,9 @@ PROBABILITÉS FOMC (fedwatch) : quand elles sont fournies, utilise les probabili
 
 HIÉRARCHIE DES DRIVERS (arbitrage des signaux contradictoires) : quand les axes se contredisent, pondère dans cet ordre — 1) taux RÉELS + liquidité globale (le coût de l'argent), 2) crédit HY + MOVE (le stress systémique — le crédit casse avant les actions), 3) flux ETF spot (l'acheteur marginal du BTC), 4) extrêmes de positionnement/sentiment (percentiles p≤10 / p≥90), 5) news & géopolitique (du contexte — ne renverse JAMAIS à elle seule une lecture ancrée sur 1-3). Les tensions que tu ne peux pas trancher vont dans "signaux_contradictoires" — ne les moyenne pas artificiellement dans le régime.
 
-RÈGLE DE DÉCISION DU RÉGIME (obligatoire — le champ "regime") : le régime n'est PAS un ressenti, il se DÉDUIT de la balance de la hiérarchie de drivers ci-dessus. Procède explicitement :
+DEUX JAUGES DISTINCTES — NE PAS FUSIONNER : (1) le RÉGIME DE CYCLE CRYPTO t'est FOURNI par une BOUSSOLE DÉTERMINISTE backtestée (zone/biais/niveaux, en tête du message) — il FAIT AUTORITÉ : tu ne le réinventes pas, tu l'EXPLIQUES et tu situes le BTC dessus. (2) Ton champ "regime" ci-dessous est l'APPÉTIT-RISQUE MACRO (risk-on/off), déduit des drivers macro. Une DIVERGENCE entre les deux (ex. cycle-crypto en accumulation mais macro risk-off) est un signal de premier ordre à NOMMER explicitement (dans "resume"/"signaux_contradictoires"), jamais à moyenner en une seule lecture.
+
+RÈGLE DE DÉCISION DU RÉGIME (obligatoire — le champ "regime", = l'appétit-risque MACRO, PAS le cycle crypto de la boussole) : le régime n'est PAS un ressenti, il se DÉDUIT de la balance de la hiérarchie de drivers ci-dessus. Procède explicitement :
 1. Note chacun des 4 drivers prioritaires — (a) taux réels + liquidité globale, (b) crédit HY + MOVE, (c) flux ETF spot, (d) extrêmes de positionnement/sentiment — comme SOUTIEN au risque, VENT DE FACE, ou NEUTRE, en tenant compte de sa TENDANCE (pas seulement du niveau).
 2. Le driver (a) prime (poids double), puis (b), (c), (d). Fais la balance.
 3. Balance nette au SOUTIEN → "risk-on". Nette au VENT DE FACE → "risk-off".
@@ -254,20 +256,50 @@ function formatDerivatives(der, trends) {
 }
 
 /**
+ * Bloc AUTORITAIRE de la boussole déterministe (régime de cycle crypto), injecté
+ * en tête du message pour que le LLM ne réinvente pas un régime concurrent.
+ * 2026-08-02 (audit 3.1) : la boussole devient LA source du régime CYCLE ; le
+ * LLM ne produit plus qu'une jauge macro-risque + de la narration (défaut :
+ * régime LLM concurrent, parfois en contradiction avec les données dures).
+ * @param {object|null} boussole Régime déterministe (computeRegime), ou null.
+ * @returns {string|null} Bloc formaté, ou null si absente.
+ */
+function formatBoussole(boussole) {
+  if (!boussole) return null;
+  const niveaux = boussole.niveaux ?? {};
+  const blocs = boussole.blocs ?? {};
+  const bloc = (b) => (b ? `${b.label} (${b.score})` : "n/a");
+  const lignes = [
+    `\n# RÉGIME DE CYCLE CRYPTO — BOUSSOLE DÉTERMINISTE (backtest BTC 2010-2026, FAIT AUTORITÉ)`,
+    `Zone : ${boussole.zone} · biais : ${boussole.biais} · confiance : ${boussole.confiance} · score ${boussole.score} (horizon ${boussole.horizon})`,
+    `Blocs : trend ${bloc(blocs.trend)} · valo ${bloc(blocs.valorisation)} · macro ${bloc(blocs.macro)} · flux ${bloc(blocs.flux)}`,
+    `Niveaux BTC : prix ${niveaux.prixBtc} · 200j MA ${niveaux.ma200} · coût de base ${niveaux.prixRealise} · capitulation ${niveaux.capitulation} · distribution ${niveaux.distribution}`,
+    `=> C'est LE régime de CYCLE crypto, CALCULÉ (pas une opinion). NE le réinvente pas, ne le contredis pas : EXPLIQUE-le et situe le BTC dessus.`,
+    `   Ton champ "regime" est une jauge DIFFÉRENTE — l'APPÉTIT-RISQUE MACRO (risk-on/off), déduit des drivers macro (HY/VIX/actions/taux/liquidité).`,
+    `   Une DIVERGENCE entre ta jauge macro et cette boussole cycle (ex. cycle en accumulation mais macro risk-off) est un SIGNAL de premier ordre à NOMMER, jamais à fusionner.`,
+  ];
+  return lignes.join("\n");
+}
+
+/**
  * Met en forme le world-state + tendances en texte compact pour le LLM
  * (message utilisateur). PROMPT FIGÉ : toute modification relève du protocole
  * anti-overfitting (défaut de démarrage daté uniquement).
  * @param {object} state World-state complet.
  * @param {object} trends Tendances (getTrends).
+ * @param {object|null} [boussole] Régime déterministe (computeRegime) injecté en
+ *   tête comme référence de cycle autoritaire.
  * @returns {string} Message utilisateur complet.
  */
-export function formatState(state, trends) {
+export function formatState(state, trends, boussole = null) {
   const a = state.axes ?? {};
   const L = [];
   const push = (s) => L.push(s);
 
   push(`# CONTEXTE MARCHÉ — ${new Date(state.ts).toISOString()}`);
   if (state.meta?.staleSources?.length) push(`Sources indisponibles (stale) : ${state.meta.staleSources.join(", ")}`);
+  const boussoleBloc = formatBoussole(boussole);
+  if (boussoleBloc) push(boussoleBloc);
 
   const fg = a.sentiment?.["fear-greed"];
   const fut = a.sentiment?.["binance-futures"];
@@ -510,18 +542,19 @@ export function parseJsonLoose(raw) {
  * objectifs de prix, percentiles non sourcés, extrapolation de source stale).
  * @param {object} state World-state complet.
  * @param {object} trends Tendances (getTrends).
- * @param {{ provider?: object }} [options] Fournisseur imposé (sinon chaîne
- *   par défaut). L'analyse est TOUJOURS à froid : le verdict précédent n'est
- *   plus injecté au modèle (anti-verrou), l'anti-girouette est traité en aval
- *   par l'amortisseur de régime du runner.
+ * @param {{ provider?: object, boussole?: object }} [options] Fournisseur imposé
+ *   (sinon chaîne par défaut) et boussole déterministe (régime de cycle
+ *   autoritaire injecté au prompt). L'analyse est TOUJOURS à froid : le verdict
+ *   précédent n'est plus injecté au modèle (anti-verrou), l'anti-girouette est
+ *   traité en aval par l'amortisseur de régime du runner.
  * @returns {Promise<{provider: string, verdict: object|null, raw: string,
  *   prompt: string, violations: Array<object>}>} Verdict parsé (null si JSON
  *   inexploitable) + réponse brute + manquements relevés.
  * @throws {Error} Si TOUS les fournisseurs échouent.
  */
-export async function analyze(state, trends, { provider } = {}) {
+export async function analyze(state, trends, { provider, boussole = null } = {}) {
   const chain = provider ? [provider] : getProviderChain();
-  const user = formatState(state, trends);
+  const user = formatState(state, trends, boussole);
   const errors = [];
   for (const p of chain) {
     try {
