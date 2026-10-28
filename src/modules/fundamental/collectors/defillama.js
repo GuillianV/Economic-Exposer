@@ -1,4 +1,32 @@
 import { Collector } from "./base.js";
+import { logger } from "../../logs/index.js";
+
+const MAX_STABLECOIN_ASSET_USD = 1e12; // USD : aucun stablecoin n'approche 1 000 Md$ (USDT ~180 Md$) — au-delà, donnée corrompue
+
+/**
+ * Somme l'offre en circulation des stablecoins (peggedUSD) en écartant les
+ * actifs non plausibles : un seul actif corrompu faisait exploser le total
+ * (5,18e16 $ le 20/08/2026). Une corruption modérée (< 1 000 Md$) passe : la
+ * borne vise les valeurs absurdes. Fonction PURE.
+ * @param {Array<object>} assets Actifs DefiLlama ({ name, circulating: { peggedUSD } }).
+ * @returns {{totalUsd: number|null, rejected: Array<string>}} Total (USD, null
+ *   si rien d'exploitable) et noms des actifs écartés.
+ */
+export function sumStablecoinSupply(assets) {
+  let totalUsd = 0;
+  const rejected = [];
+  for (const asset of assets) {
+    const supplyUsd = asset?.circulating?.peggedUSD;
+    if (supplyUsd == null) continue;
+    const isPlausible = Number.isFinite(supplyUsd) && supplyUsd >= 0 && supplyUsd <= MAX_STABLECOIN_ASSET_USD;
+    if (!isPlausible) {
+      rejected.push(asset?.name ?? "inconnu");
+      continue;
+    }
+    totalUsd += supplyUsd;
+  }
+  return { totalUsd: totalUsd || null, rejected };
+}
 
 /**
  * DefiLlama — liquidité on-chain.
@@ -31,12 +59,15 @@ export class DefiLlamaCollector extends Collector {
     const lastTvlPoint = Array.isArray(tvlHistory) && tvlHistory.length ? tvlHistory[tvlHistory.length - 1] : null;
 
     const peggedAssets = Array.isArray(stablecoins?.peggedAssets) ? stablecoins.peggedAssets : [];
-    const stablecoinMcapUsd = peggedAssets.reduce((sum, asset) => sum + (asset.circulating?.peggedUSD ?? 0), 0);
+    const { totalUsd: stablecoinMcapUsd, rejected } = sumStablecoinSupply(peggedAssets);
+    if (rejected.length) {
+      logger.warn(`[defillama] stablecoins écartés (offre non plausible) : ${rejected.join(", ")}`);
+    }
 
     return {
       totalTvlUsd: lastTvlPoint?.tvl ?? null,
       tvlDate: lastTvlPoint?.date ? Number(lastTvlPoint.date) * 1000 : null,
-      stablecoinMcapUsd: stablecoinMcapUsd || null,
+      stablecoinMcapUsd,
       stablecoinCount: peggedAssets.length,
     };
   }
