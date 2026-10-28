@@ -44,22 +44,59 @@ function fredFreshest(block) {
 }
 
 /**
+ * Horodatage de collecte d'une source, null si elle a échoué : pour les flux
+ * temps réel, la donnée est aussi fraîche que sa dernière collecte RÉUSSIE —
+ * jamais « maintenant » par défaut. Fonction PURE.
+ * @param {object} state World-state ou snapshot (porte `sources`).
+ * @param {string} name Nom de la source (clé de `sources`).
+ * @returns {number|null} Epoch ms de la collecte réussie, ou null.
+ */
+export function getCollectedTs(state, name) {
+  const source = state?.sources?.[name];
+  if (!source?.ok) return null;
+  return toMs(source.ts);
+}
+
+/**
+ * Date la plus récente des articles Google News, tous thèmes confondus.
+ * @param {object|null} googleNews Bloc google-news ({ themes: { thème: [{ date }] } }).
+ * @returns {number|null} Epoch ms de l'article le plus récent, ou null.
+ */
+function googleNewsFreshest(googleNews) {
+  const items = Object.values(googleNews?.themes ?? {}).flat();
+  return freshest(...items.map((item) => item?.date));
+}
+
+/**
+ * Date de la salve GDELT lue (fileTs) ; repli sur la date des manchettes pour
+ * les snapshots antérieurs à fileTs.
+ * @param {object|null} gdelt Bloc gdelt ({ fileTs?, topHeadlines }).
+ * @returns {number|null} Epoch ms de la salve (ou de la manchette la plus récente), ou null.
+ */
+function gdeltFreshest(gdelt) {
+  const fileMs = toMs(gdelt?.fileTs);
+  if (fileMs != null) return fileMs;
+  return freshest(...(gdelt?.topHeadlines || []).map((headline) => headline.date));
+}
+
+/**
  * Date la plus récente par source à partir d'un état (live ou snapshot).
- * @param {object} state World-state ou snapshot (doit porter axes + ts).
+ * @param {object} state World-state ou snapshot (doit porter axes, ts et
+ *   sources — `sources` date les flux temps réel).
  * @returns {Array<{source: string, cadence: string, dataTs: number|null}>}
  *   Une ligne par source, dataTs en epoch ms (null si rien fourni).
  */
 export function freshnessRows(state) {
   const a = state?.axes ?? {};
-  const now = state?.ts ?? Date.now(); // les flux "temps réel" sont aussi frais que la collecte
   return [
     ["fear-greed", "quotidien", freshest(a.sentiment?.["fear-greed"]?.ts)],
-    ["binance-futures", "temps réel", now],
+    ["binance-futures", "temps réel", getCollectedTs(state, "binance-futures")],
     ["deribit (DVOL/skew/P-C BTC+ETH)", "temps réel (~h)", freshest(a.sentiment?.deribit?.ts)],
     ["cftc-cot", "HEBDO (mar., publié ven.)", toMs(a.positioning?.["cftc-cot"]?.date)],
-    ["coingecko", "temps réel", now],
+    ["coingecko", "temps réel", getCollectedTs(state, "coingecko")],
     ["etf-flows (BTC/ETH spot US)", "quotidien (J-1, clôture US)", freshest(a.structure?.["etf-flows"]?.btc?.date, a.structure?.["etf-flows"]?.eth?.date)],
-    ["blockchain-info", "temps réel (~10 min)", now],
+    ["blockchain-info", "temps réel (~10 min)", getCollectedTs(state, "blockchain-info")],
+    ["mempool", "temps réel", getCollectedTs(state, "mempool")],
     ["defillama", "quotidien", freshest(a.onchain?.defillama?.tvlDate)],
     ["fred (quotidien: DXY/taux)", "fin de séance J-1", freshest(a.macro?.fred?.dollarIndex?.date, a.macro?.fred?.yield10y?.date, a.macro?.fred?.yield2y?.date)],
     ["fred (mensuel: M2/CPI/PCE)", "MENSUEL", freshest(a.macro?.fred?.m2?.date, a.macro?.fred?.cpi?.date, a.macro?.fred?.pce?.date)],
@@ -74,13 +111,15 @@ export function freshnessRows(state) {
     ["liquidity (Fed/RRP/TGA)", "hebdo/quotidien", freshest(a.liquidity?.liquidity?.fedBalanceSheet?.date, a.liquidity?.liquidity?.tga?.date)],
     ["markets (S&P/Nasdaq/VIX/SKEW/MOVE)", "fin de séance J-1", fredFreshest(a.markets?.markets)],
     ["markets-live (Finnhub/TD)", "temps réel (intraday)", freshest(...Object.values(a.markets?.["markets-live"] || {}).map((quote) => quote?.datetime))],
-    ["commodities (pétrole)", "fin de séance J-1", freshest(a.commodities?.commodities?.wtiOil?.date)],
+    ["commodities (pétrole)", "quotidien, publié ~hebdo (EIA via FRED)", freshest(a.commodities?.commodities?.wtiOil?.date)],
     ["metals (or/argent)", "temps réel", freshest(a.commodities?.metals?.gold?.date, a.commodities?.metals?.silver?.date)],
-    ["gdelt", "~15 min", freshest(...(a.geopolitics?.gdelt?.topHeadlines || []).map((headline) => headline.date))],
+    ["gdelt", "~15 min", gdeltFreshest(a.geopolitics?.gdelt)],
     // acled retiré : collecteur désactivé dans world-state (accès API 403) — il
     // ne figure pas dans buildCollectors, donc axes.geopolitics.acled n'existe
     // jamais. Le lister ici produisait un null fantôme. À remettre si réactivé.
     ["news (RSS)", "temps réel (min)", freshest(...(a.news?.news?.items || []).map((item) => item.date))],
+    ["google-news", "temps réel (min)", googleNewsFreshest(a.news?.["google-news"])],
+    ["nasdaq-calendar (calendrier éco)", "horaire (collecte)", getCollectedTs(state, "nasdaq-calendar")],
   ].map(([source, cadence, dataTs]) => ({ source, cadence, dataTs }));
 }
 
