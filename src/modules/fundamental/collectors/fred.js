@@ -23,7 +23,7 @@ const SERIES = {
   realYield10y: "DFII10", // taux réel 10 ans (TIPS)
   breakeven10y: "T10YIE", // point mort d'inflation 10 ans
   yieldCurve: "T10Y2Y", // spread 10Y-2Y (signal récession)
-  fedFunds: "FEDFUNDS",
+  fedFunds: "DFF", // taux effectif QUOTIDIEN (pas FEDFUNDS, moyenne mensuelle retardée)
   sofr: "SOFR", // taux court garanti
   mortgage30y: "MORTGAGE30US",
   // crédit & conditions financières

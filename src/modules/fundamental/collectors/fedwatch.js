@@ -12,8 +12,8 @@ import { Collector } from "./base.js";
  * décision, on remonte au taux post-réunion, d'où la probabilité d'un palier de
  * 25 bps. Axe : macro.
  *
- * Limite assumée : le taux de départ vient de FEDFUNDS (EFFR mensuel FRED, un
- * poil retardé) et les probabilités portent sur le NIVEAU du taux, pas sur les
+ * Limite assumée : le taux de départ de repli vient de DFF (EFFR quotidien FRED,
+ * publié à J-1 ouvré) et les probabilités portent sur le NIVEAU du taux, pas sur les
  * fourchettes-cibles exactes de la Fed — les futures font l'essentiel du signal.
  */
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";

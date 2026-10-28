@@ -64,7 +64,7 @@ export const METRIC_DICTIONARY = {
   realYield10y: { label: "Taux US 10 ans RÉEL", unit: "%", axis: "macro", source: "FRED", sens: "↑ pénalise fortement les actifs sans rendement (or, BTC)" },
   breakeven10y: { label: "Point mort d'inflation 10 ans", unit: "%", axis: "macro", source: "FRED", sens: "anticipation d'inflation du marché" },
   yieldCurve: { label: "Pente 10Y-2Y", unit: "points", axis: "macro", source: "FRED", sens: "<0 = inversion (signal historique de récession)" },
-  fedFunds: { label: "Taux Fed Funds", unit: "%", axis: "macro", source: "FRED", sens: "taux directeur (↑ = restrictif)" },
+  fedFunds: { label: "Taux Fed Funds effectif (quotidien)", unit: "%", axis: "macro", source: "FRED", sens: "taux directeur (↑ = restrictif)" },
   sofr: { label: "SOFR", unit: "%", axis: "macro", source: "FRED", sens: "coût du financement court terme (tensions de liquidité)" },
   mortgage30y: { label: "Taux hypothécaire 30 ans", unit: "%", axis: "macro", source: "FRED", sens: "transmission des taux à l'économie réelle" },
   highYieldSpread: { label: "Spread crédit High Yield", unit: "points de %", axis: "macro", source: "FRED", sens: "↑ = stress crédit / aversion au risque (vent de face majeur)" },
