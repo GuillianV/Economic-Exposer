@@ -5,7 +5,7 @@ import * as groq from "../fundamental/ai/providers/groq.js";
 import { assembleRegime, statsOfRegimes } from "../fundamental/ai/regime-track.js";
 import { evaluateDuePrevisions } from "../fundamental/ai/runner.js";
 import { buildCalendar } from "../fundamental/calendar.js";
-import { BmproCollector } from "../fundamental/collectors/bmpro.js";
+import { BMPRO_CACHE_MAX_AGE_MS, BmproCollector } from "../fundamental/collectors/bmpro.js";
 import { CoinglassDerivativesCollector } from "../fundamental/collectors/coinglass-derivatives.js";
 import { CoinglassLiquidationsCollector } from "../fundamental/collectors/coinglass-liquidations.js";
 import { CoinglassWhalesCollector } from "../fundamental/collectors/coinglass-whales.js";
@@ -37,6 +37,7 @@ import {
   loadSnapshotByTs,
   loadVerdictByTs,
 } from "../fundamental/persistence/store.js";
+import { SCRAPE_MAX_AGE_MS, isScrapeFresh } from "../fundamental/scraper/cache.js";
 import { logger } from "../logs/index.js";
 
 /**
@@ -59,7 +60,6 @@ const CYCLE_FRESH_MS = 12 * HOUR_MS;
 const VALUATION_FRESH_MS = 12 * HOUR_MS;
 const TREASURIES_FRESH_MS = 12 * HOUR_MS; // trésoreries : donnée lente (reporting par à-coups)
 const REGIME_HORIZON_MS = 90 * DAY_MS; // horizon d'évaluation du track record de la boussole
-const SCRAPE_FRESH_MS = 2 * HOUR_MS;
 const FEDWATCH_FRESH_MS = 6 * HOUR_MS;
 const FED_SPREAD_DOVISH = -0.25; // pt : 2Y nettement sous le taux directeur = baisses pricées
 const FED_SPREAD_HAWKISH = 0.35; // pt : 2Y nettement au-dessus = pas de baisse, biais restrictif
@@ -370,6 +370,50 @@ async function getValuation(req, res) {
 }
 
 /**
+ * Envoie une vue scrapée au format commun des routes de scrape : origine,
+ * horodatage du SCRAPE (pas du snapshot) et contenu.
+ * @param {object} res Réponse Express.
+ * @param {"snapshot"|"cache"} source Origine de la vue.
+ * @param {object} view Vue scrapée portant `scrapedTs` (epoch ms).
+ */
+function sendScrapedView(res, source, view) {
+  const ts = view.scrapedTs ?? null;
+  const iso = ts ? new Date(ts).toISOString() : null;
+  res.json({ source, ts, iso, ...view });
+}
+
+/**
+ * Sert une vue issue d'un scrape (liquidations, dérivés, whales, BMPro) : la
+ * vue du dernier snapshot si SON SCRAPE est encore frais, sinon le cache via le
+ * collecteur (qui refuse lui-même un scrape périmé). Répond 503 avec la raison
+ * réelle (cache vide ou périmé) quand rien d'exploitable n'existe — une donnée
+ * figée n'est jamais resservie comme fraîche.
+ * @param {object} res Réponse Express.
+ * @param {{pickView: function(object): (object|null), hasData: function(object|null): boolean,
+ *   collector: object, maxAgeMs: number, label: string}} options Extraction de la
+ *   vue depuis un snapshot, test de présence, collecteur de repli, âge maximal
+ *   du scrape (ms) et libellé des messages.
+ * @returns {Promise<void>} Rien — la réponse est envoyée via res.
+ */
+async function respondWithScrapedView(res, { pickView, hasData, collector, maxAgeMs, label }) {
+  const snap = await loadLatestSnapshot();
+  const snapView = snap ? pickView(snap) : null;
+  const isSnapViewUsable = hasData(snapView) && isScrapeFresh(snapView.scrapedTs, maxAgeMs, Date.now());
+  if (isSnapViewUsable) {
+    sendScrapedView(res, "snapshot", snapView);
+    return;
+  }
+
+  const result = await collector.collect();
+  if (result.stale || !hasData(result.data)) {
+    const reason = result.error ?? "donnée vide";
+    res.status(503).json({ error: `${label} indisponibles : ${reason}` });
+    return;
+  }
+  sendScrapedView(res, "cache", result.data);
+}
+
+/**
  * GET /api/liquidations — niveaux/aimants de liquidation Coinglass (scrape
  * navigateur découplé). Sert la valeur du dernier snapshot si fraîche, sinon lit
  * le cache disque via le collecteur (jamais le navigateur dans le chemin route).
@@ -378,26 +422,13 @@ async function getValuation(req, res) {
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getLiquidations(req, res) {
-  const snap = await loadLatestSnapshot();
-  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
-  let liquidations = fresh ? snap.axes?.structure?.liquidations : null;
-  let source = fresh ? "snapshot" : "cache";
-  let ts = snap?.ts;
-
-  if (liquidations?.levels == null) {
-    const result = await new CoinglassLiquidationsCollector().collect();
-    if (!result.stale && result.data?.levels) {
-      liquidations = result.data;
-      source = "cache";
-      ts = result.data.scrapedTs ?? result.ts;
-    }
-  }
-
-  if (liquidations?.levels == null) {
-    return res.status(503).json({ error: "liquidations indisponibles (scrape Coinglass pas encore passé)" });
-  }
-
-  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...liquidations });
+  await respondWithScrapedView(res, {
+    pickView: (snap) => snap.axes?.structure?.liquidations ?? null,
+    hasData: (view) => view?.levels != null,
+    collector: new CoinglassLiquidationsCollector(),
+    maxAgeMs: SCRAPE_MAX_AGE_MS,
+    label: "liquidations",
+  });
 }
 
 /**
@@ -410,26 +441,13 @@ async function getLiquidations(req, res) {
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getDerivatives(req, res) {
-  const snap = await loadLatestSnapshot();
-  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
-  let derivatives = fresh ? snap.axes?.structure?.derivatives : null;
-  let source = fresh ? "snapshot" : "cache";
-  let ts = snap?.ts;
-
-  if (derivatives?.openInterestUsd == null) {
-    const result = await new CoinglassDerivativesCollector().collect();
-    if (!result.stale && result.data?.openInterestUsd != null) {
-      derivatives = result.data;
-      source = "cache";
-      ts = result.data.scrapedTs ?? result.ts;
-    }
-  }
-
-  if (derivatives?.openInterestUsd == null) {
-    return res.status(503).json({ error: "dérivés indisponibles (scrape Coinglass pas encore passé)" });
-  }
-
-  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...derivatives });
+  await respondWithScrapedView(res, {
+    pickView: (snap) => snap.axes?.structure?.derivatives ?? null,
+    hasData: (view) => view?.openInterestUsd != null,
+    collector: new CoinglassDerivativesCollector(),
+    maxAgeMs: SCRAPE_MAX_AGE_MS,
+    label: "dérivés",
+  });
 }
 
 /**
@@ -441,26 +459,13 @@ async function getDerivatives(req, res) {
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getWhales(req, res) {
-  const snap = await loadLatestSnapshot();
-  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
-  let whales = fresh ? snap.axes?.structure?.whales : null;
-  let source = fresh ? "snapshot" : "cache";
-  let ts = snap?.ts;
-
-  if (whales?.longPct == null) {
-    const result = await new CoinglassWhalesCollector().collect();
-    if (!result.stale && result.data?.longPct != null) {
-      whales = result.data;
-      source = "cache";
-      ts = result.data.scrapedTs ?? result.ts;
-    }
-  }
-
-  if (whales?.longPct == null) {
-    return res.status(503).json({ error: "whales indisponibles (scrape Coinglass pas encore passé)" });
-  }
-
-  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...whales });
+  await respondWithScrapedView(res, {
+    pickView: (snap) => snap.axes?.structure?.whales ?? null,
+    hasData: (view) => view?.longPct != null,
+    collector: new CoinglassWhalesCollector(),
+    maxAgeMs: SCRAPE_MAX_AGE_MS,
+    label: "whales",
+  });
 }
 
 /**
@@ -535,26 +540,13 @@ async function getRegimeTrack(req, res) {
  * @returns {Promise<void>} Rien — la réponse est envoyée via res.
  */
 async function getOnchainExtras(req, res) {
-  const snap = await loadLatestSnapshot();
-  const fresh = snap && Date.now() - snap.ts < SCRAPE_FRESH_MS;
-  let bmpro = fresh ? snap.axes?.onchain?.bmpro : null;
-  let source = fresh ? "snapshot" : "cache";
-  let ts = snap?.ts;
-
-  if (bmpro?.rhodl?.valeur == null && bmpro?.reserveRisk?.valeur == null) {
-    const result = await new BmproCollector().collect();
-    if (!result.stale && (result.data?.rhodl?.valeur != null || result.data?.reserveRisk?.valeur != null)) {
-      bmpro = result.data;
-      source = "cache";
-      ts = result.data.scrapedTs ?? result.ts;
-    }
-  }
-
-  if (bmpro?.rhodl?.valeur == null && bmpro?.reserveRisk?.valeur == null) {
-    return res.status(503).json({ error: "indicateurs BMPro indisponibles (scrape pas encore passé)" });
-  }
-
-  res.json({ source, ts, iso: ts ? new Date(ts).toISOString() : null, ...bmpro });
+  await respondWithScrapedView(res, {
+    pickView: (snap) => snap.axes?.onchain?.bmpro ?? null,
+    hasData: (view) => view?.rhodl?.valeur != null || view?.reserveRisk?.valeur != null,
+    collector: new BmproCollector(),
+    maxAgeMs: BMPRO_CACHE_MAX_AGE_MS,
+    label: "indicateurs BMPro",
+  });
 }
 
 /**

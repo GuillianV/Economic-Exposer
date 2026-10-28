@@ -1,6 +1,6 @@
 import { scrapeBmpro } from "./bmpro.js";
 import { closeBrowser } from "./browser.js";
-import { writeScrapeCache } from "./cache.js";
+import { SCRAPE_INTERVAL_MS, writeScrapeCache } from "./cache.js";
 import { scrapeDerivatives, scrapeLiquidationLevels, scrapeWhalePositions } from "./coinglass.js";
 import { logger } from "../../logs/index.js";
 
@@ -18,8 +18,6 @@ const SCRAPES = [
 ];
 
 const SECOND_MS = 1000;
-const MINUTE_MS = 60 * SECOND_MS;
-const DEFAULT_INTERVAL_MS = 30 * MINUTE_MS; // cadence propre du scrape, indépendante du snapshot horaire
 const INITIAL_DELAY_MS = 15 * SECOND_MS; // laisse le service démarrer avant de lancer Chromium
 
 /**
@@ -47,7 +45,7 @@ export async function refreshScrapes() {
  * @param {{intervalMs?: number}} [options] Intervalle entre deux scrapes.
  * @returns {Function} Fonction d'arrêt (annule les minuteries en cours).
  */
-export function startScrapeJob({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
+export function startScrapeJob({ intervalMs = SCRAPE_INTERVAL_MS } = {}) {
   const initial = setTimeout(() => {
     refreshScrapes().catch((err) => logger.warn(`[scraper] passage initial : ${err.message}`));
   }, INITIAL_DELAY_MS);

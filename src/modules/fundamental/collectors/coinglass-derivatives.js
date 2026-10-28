@@ -1,5 +1,5 @@
 import { Collector } from "./base.js";
-import { readScrapeCache } from "../scraper/cache.js";
+import { SCRAPE_MAX_AGE_MS, loadFreshScrape } from "../scraper/cache.js";
 
 /**
  * Dérivés BTC agrégés Coinglass (funding, open interest, long/short retail et
@@ -24,11 +24,9 @@ export class CoinglassDerivativesCollector extends Collector {
   /**
    * Lit le dernier résumé dérivés scrapé depuis le cache disque.
    * @returns {Promise<object>} Vue dérivés BTC + horodatage du scrape.
-   * @throws {Error} Si le cache est vide (scrape pas encore passé ou en panne).
+   * @throws {Error} Si le cache est vide ou périmé (scrape en panne).
    */
   async fetchData() {
-    const record = await readScrapeCache(CACHE_NAME);
-    if (!record) throw new Error("cache dérivés vide (scrape Coinglass pas encore passé)");
-    return { ...record.data, scrapedTs: record.ts };
+    return loadFreshScrape(CACHE_NAME, { label: "dérivés", maxAgeMs: SCRAPE_MAX_AGE_MS });
   }
 }

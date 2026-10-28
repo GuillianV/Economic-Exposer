@@ -1,5 +1,5 @@
 import { Collector } from "./base.js";
-import { readScrapeCache } from "../scraper/cache.js";
+import { SCRAPE_MAX_AGE_MS, loadFreshScrape } from "../scraper/cache.js";
 
 /**
  * Liquidations Coinglass par niveau de prix (aimants de liquidité). Ce collecteur
@@ -26,11 +26,9 @@ export class CoinglassLiquidationsCollector extends Collector {
    * @returns {Promise<{asOf: string|null, levels: Array<object>,
    *   clusters: Array<object>, totalBuyUsd: number, totalSellUsd: number,
    *   scrapedTs: number}>} Vue liquidations enrichie de l'horodatage du scrape.
-   * @throws {Error} Si le cache est vide (scrape pas encore passé ou en panne).
+   * @throws {Error} Si le cache est vide ou périmé (scrape en panne).
    */
   async fetchData() {
-    const record = await readScrapeCache(CACHE_NAME);
-    if (!record) throw new Error("cache liquidations vide (scrape Coinglass pas encore passé)");
-    return { ...record.data, scrapedTs: record.ts };
+    return loadFreshScrape(CACHE_NAME, { label: "liquidations", maxAgeMs: SCRAPE_MAX_AGE_MS });
   }
 }
