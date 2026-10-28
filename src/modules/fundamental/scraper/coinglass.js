@@ -33,6 +33,43 @@ function toNumber(value) {
 }
 
 /**
+ * Convertit en nombre fini, null si la valeur est absente, vide ou non
+ * numérique : une donnée manquante ne doit jamais devenir un 0 plausible.
+ * Fonction PURE.
+ * @param {*} value Valeur brute.
+ * @returns {number|null} Nombre fini, ou null.
+ */
+export function toNumberOrNull(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Ratio long/short exploitable : strictement positif (un ratio nul voudrait
+ * dire zéro long — c'est une donnée manquante, pas un marché). Fonction PURE.
+ * @param {*} value Ratio brut.
+ * @returns {number|null} Ratio > 0, ou null.
+ */
+function toPositiveRatio(value) {
+  const ratio = toNumberOrNull(value);
+  if (ratio == null || ratio <= 0) return null;
+  return ratio;
+}
+
+/**
+ * Somme de deux jambes, null si l'une manque (une somme partielle
+ * sous-estimerait le total). Fonction PURE.
+ * @param {number|null} first Première jambe.
+ * @param {number|null} second Seconde jambe.
+ * @returns {number|null} Somme, ou null.
+ */
+function sumBothOrNull(first, second) {
+  if (first == null || second == null) return null;
+  return first + second;
+}
+
+/**
  * Transforme les buckets bruts (niveaux de prix) en vue exploitable : niveaux
  * triés par prix + aimants (clusters de plus gros volume). Fonction PURE.
  * @param {Array<object>} rows Buckets bruts ({ price, buyVolUsd, sellVolUsd,
@@ -95,32 +132,34 @@ export async function scrapeLiquidationLevels() {
  * `longShortTopTraders` = gros comptes (smart money). Le champ brut h24Ls (L/S
  * global 24h, échelle différente) n'est PAS exposé : le confondre avec le ratio
  * retail inversait le signe de la foule (défaut corrigé le 2026-08-02).
- * @returns {{prix: number, variation24hPct: number, openInterestUsd: number,
- *   openInterestBtc: number, oiVariation24hPct: number, oiVariation7jPct: number,
- *   fundingPct: number, longShortTopTraders: number,
- *   longShortRetail: number, liquidations24h: {totalUsd: number, longUsd: number,
- *   shortUsd: number}, volume24hUsd: number, oiSurMcap: number, oiSurVol: number}}
- *   Vue dérivés BTC.
+ * @returns {{prix: number|null, variation24hPct: number|null,
+ *   openInterestUsd: number|null, openInterestBtc: number|null,
+ *   oiVariation24hPct: number|null, oiVariation7jPct: number|null,
+ *   fundingPct: number|null, longShortTopTraders: number|null,
+ *   longShortRetail: number|null, liquidations24h: {totalUsd: number|null,
+ *   longUsd: number|null, shortUsd: number|null}, volume24hUsd: number|null,
+ *   oiSurMcap: number|null, oiSurVol: number|null}} Vue dérivés BTC (null =
+ *   champ absent ou non plausible, jamais 0 par défaut).
  */
 export function parseDerivatives(s) {
   return {
-    prix: toNumber(s.price),
-    variation24hPct: toNumber(s.h24PriceChangePercent),
-    openInterestUsd: toNumber(s.openInterest),
-    openInterestBtc: toNumber(s.openInterestAmount),
-    oiVariation24hPct: toNumber(s.h24OiChangePercent),
-    oiVariation7jPct: toNumber(s.oiChangePercent7d),
-    fundingPct: toNumber(s.avgFundingRateByOi),
-    longShortTopTraders: toNumber(s.binanceTopAccountLsRadio),
-    longShortRetail: toNumber(s.binanceAccountLsRadio),
+    prix: toNumberOrNull(s.price),
+    variation24hPct: toNumberOrNull(s.h24PriceChangePercent),
+    openInterestUsd: toNumberOrNull(s.openInterest),
+    openInterestBtc: toNumberOrNull(s.openInterestAmount),
+    oiVariation24hPct: toNumberOrNull(s.h24OiChangePercent),
+    oiVariation7jPct: toNumberOrNull(s.oiChangePercent7d),
+    fundingPct: toNumberOrNull(s.avgFundingRateByOi),
+    longShortTopTraders: toPositiveRatio(s.binanceTopAccountLsRadio),
+    longShortRetail: toPositiveRatio(s.binanceAccountLsRadio),
     liquidations24h: {
-      totalUsd: toNumber(s.h24LiquidationUsd),
-      longUsd: toNumber(s.h24LongLiquidationUsd),
-      shortUsd: toNumber(s.h24ShortLiquidationUsd),
+      totalUsd: toNumberOrNull(s.h24LiquidationUsd),
+      longUsd: toNumberOrNull(s.h24LongLiquidationUsd),
+      shortUsd: toNumberOrNull(s.h24ShortLiquidationUsd),
     },
-    volume24hUsd: toNumber(s.h24LongVolUsd) + toNumber(s.h24ShortVolUsd),
-    oiSurMcap: toNumber(s.oiMarketCapRadio),
-    oiSurVol: toNumber(s.oiVolRadio),
+    volume24hUsd: sumBothOrNull(toNumberOrNull(s.h24LongVolUsd), toNumberOrNull(s.h24ShortVolUsd)),
+    oiSurMcap: toNumberOrNull(s.oiMarketCapRadio),
+    oiSurVol: toNumberOrNull(s.oiVolRadio),
   };
 }
 
@@ -145,21 +184,34 @@ export async function scrapeDerivatives() {
  * Fonction PURE.
  * @param {object} s Agrégat whale brut pour BTC ({ longUserPercent,
  *   shortUserPercent, longUserSize, shortUserSize, positionUsd }).
- * @returns {{longPct: number, shortPct: number, comptesLong: number,
- *   comptesShort: number, positionUsd: number, biais: string}} Positionnement
- *   whale (biais "long" si plus de longs que de shorts).
+ * @returns {{longPct: number|null, shortPct: number|null,
+ *   comptesLong: number|null, comptesShort: number|null,
+ *   positionUsd: number|null, biais: "long"|"short"|null}} Positionnement
+ *   whale (biais "long" si plus de longs que de shorts ; null = champ absent).
  */
 export function parseWhalePositions(s) {
-  const longPct = toNumber(s.longUserPercent);
-  const shortPct = toNumber(s.shortUserPercent);
+  const longPct = toNumberOrNull(s.longUserPercent);
+  const shortPct = toNumberOrNull(s.shortUserPercent);
   return {
     longPct,
     shortPct,
-    comptesLong: toNumber(s.longUserSize),
-    comptesShort: toNumber(s.shortUserSize),
-    positionUsd: toNumber(s.positionUsd),
-    biais: longPct >= shortPct ? "long" : "short",
+    comptesLong: toNumberOrNull(s.longUserSize),
+    comptesShort: toNumberOrNull(s.shortUserSize),
+    positionUsd: toNumberOrNull(s.positionUsd),
+    biais: whaleBias(longPct, shortPct),
   };
+}
+
+/**
+ * Biais du positionnement whale, null si une jambe manque (comparer deux
+ * valeurs absentes donnait « long » par défaut). Fonction PURE.
+ * @param {number|null} longPct Part des comptes long (%).
+ * @param {number|null} shortPct Part des comptes short (%).
+ * @returns {"long"|"short"|null} Biais, ou null.
+ */
+function whaleBias(longPct, shortPct) {
+  if (longPct == null || shortPct == null) return null;
+  return longPct >= shortPct ? "long" : "short";
 }
 
 /**
