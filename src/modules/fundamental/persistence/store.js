@@ -43,8 +43,12 @@ export const SCHEMA_VERSION = 1;
  * garde-fous de plausibilité (volume CoinGecko, flux ETF, stablecoins,
  * ratios Coinglass) ; scrapes périmés en stale ; FRED avec relance/repli ;
  * acledEvents/acledFatalities retirés (collecteur désactivé).
+ * v4 (2026-10-28) : historique rattrapé une fois (script ponctuel supprimé) —
+ * snapshots pré-v3 réécrits avec un champ `corrections` (fedFunds DFF, GDELT
+ * méthode v3, trous FRED, volume/stablecoins/flux ETF aberrants, doublons
+ * retirés) ; bruts d'origine dans data/snapshots-brut-2026-10-28.tar.gz.
  */
-export const DATA_PARAMS_VERSION = 3;
+export const DATA_PARAMS_VERSION = 4;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MINUTE_MS = 60000;
