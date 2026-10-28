@@ -151,8 +151,6 @@ export const METRIC_DICTIONARY = {
 
   // --- géopolitique (volumes = proxy d'intensité) ---
   gdeltHeadlines: { label: "Volume de manchettes conflit (GDELT)", unit: "count", axis: "geopolitics", source: "GDELT", sens: "↑ = tension géopolitique médiatique" },
-  acledEvents: { label: "Événements de conflit (ACLED, 7j)", unit: "count", axis: "geopolitics", source: "ACLED", sens: "intensité des conflits armés" },
-  acledFatalities: { label: "Morts liés aux conflits (ACLED, 7j)", unit: "count", axis: "geopolitics", source: "ACLED", sens: "gravité des conflits" },
 };
 
 /** Glossaire des termes clés — pour un consommateur néophyte. */

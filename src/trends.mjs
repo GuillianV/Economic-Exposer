@@ -13,7 +13,7 @@ console.log(`\n=== TENDANCES (${trends.count} snapshot(s) dans l'historique) ===
 const SHOWN_METRICS = [
   "btcPrice", "fearGreed", "funding", "btcDominance", "ethBtcRatio",
   "dxy", "yield10y", "m2", "wtiOil",
-  "totalTvlUsd", "stablecoinMcapUsd", "gdeltHeadlines", "acledEvents",
+  "totalTvlUsd", "stablecoinMcapUsd", "gdeltHeadlines",
 ];
 
 /**

@@ -38,8 +38,13 @@ export const SCHEMA_VERSION = 1;
  * détecte qu'un nouveau jeu de données est en ligne. Baseline 1 = jeu introduit
  * avec cette clé (inclut cuivre/or + trésoreries). v2 (2026-08-02) : lsRetailAgg
  * corrigé (lit le ratio des comptes retail, plus le L/S global 24h mal étiqueté).
+ * v3 (2026-10-28) : audit qualité — fedFunds lit DFF (quotidien, plus FEDFUNDS
+ * mensuel) ; gdeltHeadlines agrège la salve complète (changement d'échelle) ;
+ * garde-fous de plausibilité (volume CoinGecko, flux ETF, stablecoins,
+ * ratios Coinglass) ; scrapes périmés en stale ; FRED avec relance/repli ;
+ * acledEvents/acledFatalities retirés (collecteur désactivé).
  */
-export const DATA_PARAMS_VERSION = 2;
+export const DATA_PARAMS_VERSION = 3;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MINUTE_MS = 60000;

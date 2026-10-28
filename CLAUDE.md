@@ -111,6 +111,11 @@ Consommé par Economic-Reader (PWA) via `/api/*`.
   jamais un ajustement aux résultats de la veille.
 - Les records émis ne sont JAMAIS réécrits (seuils/prédictions de l'émission
   font foi) ; l'évaluation ne fait qu'ajouter `realise`/`outcome`/`autopsie`.
+- Défauts de mesure corrigés le 2026-10-28 (audit qualité, `paramsVersion` 3) :
+  `fedFunds` lit DFF (quotidien) au lieu de FEDFUNDS (moyenne mensuelle
+  retardée) ; `gdeltHeadlines` agrège la salve GDELT complète (changement
+  d'échelle : seuil du trigger à recalibrer après une semaine d'observation) ;
+  une ligne de flux ETF supérieure à 25 % de l'encours est rejetée.
 
 ## Git / déploiement
 

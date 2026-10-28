@@ -76,7 +76,6 @@ export function extractMetrics(state) {
   const whales = axes.structure?.whales ?? {};
   const treasuries = axes.structure?.treasuries ?? {};
   const gdelt = axes.geopolitics?.gdelt ?? {};
-  const acled = axes.geopolitics?.acled ?? {};
 
   const fearGreed = sentiment["fear-greed"] ?? {};
   const futures = sentiment["binance-futures"] ?? {};
@@ -230,8 +229,6 @@ export function extractMetrics(state) {
     strategyBtc: toFiniteNumber(treasuries.strategyBtc),
     // géopolitique (volumes = proxy d'intensité)
     gdeltHeadlines: toFiniteNumber(gdelt.headlineCount),
-    acledEvents: toFiniteNumber(acled.totalEvents),
-    acledFatalities: toFiniteNumber(acled.totalFatalities),
   };
 }
 
