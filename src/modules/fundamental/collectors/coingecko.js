@@ -1,4 +1,23 @@
 import { Collector } from "./base.js";
+import { logger } from "../../logs/index.js";
+
+const VOLUME_MCAP_MAX_RATIO = 0.5; // ratio volume 24h / capitalisation totale : au-delà, volume non plausible (sain observé <= 0.14)
+
+/**
+ * Valide le volume 24h global contre la capitalisation totale : un volume
+ * supérieur à la moitié de toute la capitalisation n'est pas plausible
+ * (CoinGecko renvoie ponctuellement des volumes corrompus). Fonction PURE.
+ * @param {number|null} volumeUsd Volume 24h global (USD).
+ * @param {number|null} marketCapUsd Capitalisation totale (USD).
+ * @returns {number|null} Le volume s'il est plausible, sinon null.
+ */
+export function sanitizeVolume(volumeUsd, marketCapUsd) {
+  if (!Number.isFinite(volumeUsd) || !Number.isFinite(marketCapUsd)) return null;
+  if (volumeUsd < 0) return null;
+  const maxVolumeUsd = marketCapUsd * VOLUME_MCAP_MAX_RATIO;
+  if (volumeUsd > maxVolumeUsd) return null;
+  return volumeUsd;
+}
 
 /**
  * CoinGecko — structure de marché crypto. Axe : structure.
@@ -39,7 +58,11 @@ export class CoinGeckoCollector extends Collector {
 
     const marketData = global?.data ?? {};
     const totalMarketCapUsd = marketData.total_market_cap?.usd ?? null;
-    const totalVolume24hUsd = marketData.total_volume?.usd ?? null; // volume 24h global = conviction
+    const rawVolumeUsd = marketData.total_volume?.usd ?? null;
+    const totalVolume24hUsd = sanitizeVolume(rawVolumeUsd, totalMarketCapUsd);
+    if (rawVolumeUsd != null && totalVolume24hUsd == null) {
+      logger.warn(`[coingecko] volume 24h rejeté (non plausible) : ${rawVolumeUsd} pour une capitalisation de ${totalMarketCapUsd}`);
+    }
     const btcDominance = marketData.market_cap_percentage?.btc ?? null;
     const ethDominance = marketData.market_cap_percentage?.eth ?? null;
 
