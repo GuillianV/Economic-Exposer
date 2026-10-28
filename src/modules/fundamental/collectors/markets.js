@@ -1,4 +1,6 @@
 import { Collector } from "./base.js";
+import { settleFredSeries } from "./fred-client.js";
+import { logger } from "../../logs/index.js";
 
 /**
  * Marchés actions / risque (TradFi) via FRED — pour les corrélations
@@ -33,25 +35,6 @@ export class MarketsCollector extends Collector {
   }
 
   /**
-   * Dernière observation d'une série FRED.
-   * @param {string} seriesId Identifiant de série FRED.
-   * @param {string} apiKey Clé API FRED.
-   * @returns {Promise<{value: number|null, date: string}|null>} Observation
-   *   la plus récente (value null si FRED renvoie "."), ou null si vide.
-   */
-  async #latest(seriesId, apiKey) {
-    const url =
-      `https://api.stlouisfed.org/fred/series/observations` +
-      `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1`;
-    const json = await this.getJson(url);
-    const observation = json?.observations?.[0];
-    if (!observation) return null;
-
-    const value = observation.value === "." ? null : Number(observation.value);
-    return { value, date: observation.date };
-  }
-
-  /**
    * Dernier cours d'un indice Yahoo Finance (indices sans série FRED).
    * @param {string} symbol Symbole Yahoo (ex. "^SKEW").
    * @returns {Promise<{value: number, date: string|null}|null>} Dernier cours,
@@ -72,30 +55,55 @@ export class MarketsCollector extends Collector {
   }
 
   /**
-   * Séries FRED + SKEW + MOVE en parallèle, tolérant aux pannes par série.
+   * Séries FRED (relance, log et repli : voir fred-client.js) + SKEW + MOVE en
+   * parallèle, tolérant aux pannes par série.
    * @returns {Promise<object>} Une entrée par clé de SERIES + `cboeSkew` et
-   *   `move` ({value, date} ou null si la série a échoué).
-   * @throws {Error} Si la clé FRED est absente.
+   *   `move` ({value, date, cached?} ou null si la série a échoué).
+   * @throws {Error} Si la clé FRED est absente ou si FRED et Yahoo échouent tous.
    */
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
-    const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled([
-      ...keys.map((key) => this.#latest(SERIES[key], apiKey)),
+    const [fredResult, skewResult, moveResult] = await Promise.allSettled([
+      settleFredSeries(SERIES, apiKey, (url) => this.getJson(url), { source: "markets" }),
       this.#yahooIndex("^SKEW"),
       this.#yahooIndex("^MOVE"),
     ]);
+    if (fredResult.status === "rejected" && skewResult.status === "rejected" && moveResult.status === "rejected") {
+      throw new Error(`FRED et Yahoo en échec : ${fredResult.reason?.message}`);
+    }
 
-    const valueAt = (i) => (settled[i].status === "fulfilled" ? settled[i].value : null);
+    const fredSeries = this.#fredOrEmpty(fredResult);
+    return {
+      ...fredSeries,
+      cboeSkew: this.#yahooOrNull(skewResult, "^SKEW"),
+      move: this.#yahooOrNull(moveResult, "^MOVE"),
+    };
+  }
 
-    const out = {};
-    keys.forEach((key, i) => {
-      out[key] = valueAt(i);
-    });
-    out.cboeSkew = valueAt(keys.length);
-    out.move = valueAt(keys.length + 1);
-    return out;
+  /**
+   * Séries FRED du lot, ou toutes à null si le lot entier a échoué (déjà
+   * loggé série par série par fred-client.js).
+   * @param {PromiseSettledResult} result Issue de settleFredSeries.
+   * @returns {object} Une entrée par clé de SERIES.
+   */
+  #fredOrEmpty(result) {
+    if (result.status === "fulfilled") return result.value;
+    const empty = {};
+    for (const key of Object.keys(SERIES)) empty[key] = null;
+    return empty;
+  }
+
+  /**
+   * Cours Yahoo d'un indice, ou null (échec loggé avec le symbole).
+   * @param {PromiseSettledResult} result Issue de #yahooIndex.
+   * @param {string} symbol Symbole Yahoo (logs).
+   * @returns {{value: number, date: string|null}|null} Dernier cours, ou null.
+   */
+  #yahooOrNull(result, symbol) {
+    if (result.status === "fulfilled") return result.value;
+    logger.warn(`[markets] indice Yahoo ${symbol} en échec : ${result.reason?.message}`);
+    return null;
   }
 }

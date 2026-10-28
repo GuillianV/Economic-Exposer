@@ -1,9 +1,11 @@
 import { Collector } from "./base.js";
+import { settleFredSeries } from "./fred-client.js";
 
 /**
  * FRED (Federal Reserve, St. Louis) — macro US (+ FX, conditions, éco réelle).
  * Nécessite une clé gratuite : process.env.FRED_API_KEY. Axe : macro.
- * Tolérant par série (allSettled) : une série en panne n'affecte pas les autres.
+ * Tolérant par série (relance, log et repli : voir fred-client.js) : une série
+ * en panne n'affecte pas les autres.
  */
 const SERIES = {
   // monétaire
@@ -46,19 +48,6 @@ const SERIES = {
 // non-signal, on calcule aussi le rythme annuel YoY % (la lecture macro utile).
 const YOY_KEYS = new Set(["cpi", "pce", "m2", "retailSales"]);
 
-// 14 observations mensuelles = de quoi retrouver le même mois un an plus tôt.
-const YOY_OBSERVATION_COUNT = 14;
-
-// Fenêtre d'observations récupérées pour une série SIMPLE (non-YoY). Corrige
-// un défaut identifié le 2026-07-24 : avec limit=1 on ne prenait que la toute
-// dernière ligne, souvent un « . » (valeur manquante) pour les séries
-// quotidiennes le week-end ou en attente de publication (FX, taux) — la série
-// retombait alors à null alors qu'une valeur réelle existait la veille. On
-// récupère 10 lignes pour sauter les « . » de queue et retrouver la dernière
-// valeur réellement publiée (un enchaînement de plus de 10 « . » = série
-// vraiment morte, null légitime).
-const LATEST_OBSERVATION_LOOKBACK = 10;
-
 /**
  *
  */
@@ -72,68 +61,16 @@ export class FredCollector extends Collector {
   }
 
   /**
-   * Dernière observation valide d'une série FRED, avec option rythme annuel.
-   * @param {string} seriesId Identifiant de série FRED (ex. "CPIAUCSL").
-   * @param {string} apiKey Clé API FRED.
-   * @param {{ yoy?: boolean }} [options] `yoy` ajoute la variation annuelle en %.
-   * @returns {Promise<{value: number, date: string, yoy?: number|null}|null>}
-   *   Observation la plus récente, ou null si la série est vide.
-   */
-  async #latest(seriesId, apiKey, { yoy = false } = {}) {
-    const limit = yoy ? YOY_OBSERVATION_COUNT : LATEST_OBSERVATION_LOOKBACK;
-    const url =
-      `https://api.stlouisfed.org/fred/series/observations` +
-      `?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=${limit}`;
-    const json = await this.getJson(url);
-
-    const observations = (json?.observations || []).filter((o) => o.value !== ".");
-    const latest = observations[0];
-    if (!latest) return null;
-
-    const result = { value: Number(latest.value), date: latest.date };
-    if (yoy) {
-      result.yoy = this.#yearOverYear(observations, result.value);
-    }
-    return result;
-  }
-
-  /**
-   * Variation annuelle (%) : compare la dernière observation au même mois un
-   * an plus tôt (match AAAA-MM ; repli : 12e observation en arrière).
-   * @param {Array<{value: string, date: string}>} observations Observations
-   *   triées de la plus récente à la plus ancienne.
-   * @param {number} latestValue Valeur de l'observation la plus récente.
-   * @returns {number|null} Variation YoY arrondie à 2 décimales, ou null.
-   */
-  #yearOverYear(observations, latestValue) {
-    const latestDate = observations[0].date;
-    const sameMonthLastYear = `${Number(latestDate.slice(0, 4)) - 1}${latestDate.slice(4, 7)}`;
-    const previous = observations.find((o) => o.date.startsWith(sameMonthLastYear)) ?? observations[12];
-    const previousValue = previous ? Number(previous.value) : null;
-    if (!previousValue) return null;
-
-    const yoyPct = (latestValue / previousValue - 1) * 100;
-    return Math.round(yoyPct * 100) / 100;
-  }
-
-  /**
-   * Récupère toutes les séries en parallèle, tolérant aux pannes par série.
+   * Récupère toutes les séries en parallèle (relance, log et repli par série :
+   * voir fred-client.js).
    * @returns {Promise<object>} Une entrée par clé de SERIES ({value, date,
-   *   yoy?} ou null si la série a échoué).
+   *   yoy?, cached?} ou null si la série a échoué sans repli).
+   * @throws {Error} Si la clé FRED est absente ou si toutes les séries échouent.
    */
   async fetchData() {
     const apiKey = process.env.FRED_API_KEY;
     if (!apiKey) throw new Error("FRED_API_KEY absente du .env");
 
-    const keys = Object.keys(SERIES);
-    const settled = await Promise.allSettled(
-      keys.map((k) => this.#latest(SERIES[k], apiKey, { yoy: YOY_KEYS.has(k) })),
-    );
-
-    const out = {};
-    keys.forEach((key, i) => {
-      out[key] = settled[i].status === "fulfilled" ? settled[i].value : null;
-    });
-    return out;
+    return settleFredSeries(SERIES, apiKey, (url) => this.getJson(url), { source: "fred", yoyKeys: YOY_KEYS });
   }
 }
